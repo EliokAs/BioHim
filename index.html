@@ -461,6 +461,7 @@ tr:hover td { background: var(--bg2); }
       <div class="student-selector" id="tests-student-selector"></div>
       <div class="card">
         <div class="card-title"><span class="dot"></span>Тесты для ученика</div>
+        <div id="tests-toggle-bar"></div>
         <button class="btn btn-green btn-sm" onclick="openModal('modal-create-test')">＋ Создать тест</button>
         <div id="tests-admin-list" style="margin-top:14px"></div>
       </div>
@@ -477,6 +478,7 @@ tr:hover td { background: var(--bg2); }
       <div class="student-selector" id="hw-student-selector"></div>
       <div class="card">
         <div class="card-title"><span class="dot"></span>ДЗ ученика</div>
+        <div id="hw-toggle-bar"></div>
         <button class="btn btn-green btn-sm" onclick="openModal('modal-create-hw')">＋ Создать ДЗ</button>
         <div id="hw-admin-list" style="margin-top:14px"></div>
       </div>
@@ -1522,28 +1524,58 @@ function deleteContent(id){
 
 // ─── TESTS ADMIN ───
 let _tempQuestions=[];
+let _testsShowAll = false;
 function renderTestsAdmin(){
   buildStudentSelector('tests-student-selector', ()=>{ renderTestsAdmin(); renderOpenAnswers(); });
-  const sid=getSelectedStudent();
-  const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
-  const el=document.getElementById('tests-admin-list');
-  el.innerHTML=tests.map(t=>`
-    <div class="content-item">
-      <div class="content-icon">📋</div>
-      <div class="content-info">
-        <div class="content-name">${t.title}</div>
-        <div class="content-meta">${t.questions.length} вопросов · Создан: ${t.date}</div>
-        <div class="content-meta" style="margin-top:4px">
-          ${t.submitted?`<span class="badge badge-green">Сдан</span> Результат: ${t.autoScore||0}/${t.autoTotal||0} авто`:'<span class="badge badge-gold">Не сдан</span>'}
-          ${t.openChecked?'<span class="badge badge-blue" style="margin-left:4px">✓ Открытые проверены</span>':''}
+  const allTests = load('tests')||[];
+  const students = (load('users')||[]).filter(u=>u.role==='student');
+  const sid = getSelectedStudent();
+
+  // Toggle button
+  const toggleBar = document.getElementById('tests-toggle-bar');
+  if(toggleBar) toggleBar.innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      <button class="btn ${!_testsShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_testsShowAll=false;renderTestsAdmin()">👤 Текущий ученик</button>
+      <button class="btn ${_testsShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_testsShowAll=true;renderTestsAdmin()">👥 Все ученики</button>
+    </div>`;
+
+  const el = document.getElementById('tests-admin-list');
+
+  if(_testsShowAll){
+    // Group by student
+    let html='';
+    students.forEach(s=>{
+      const stTests = allTests.filter(t=>t.studentId===s.id);
+      html+=`<div style="margin-bottom:20px">
+        <div style="font-weight:700;font-size:0.9rem;color:var(--green-deep);padding:8px 12px;background:var(--green-xpale);border-radius:10px;margin-bottom:8px">
+          👤 ${s.name} <span style="font-weight:400;color:var(--text3)">(${stTests.length} тестов · ${stTests.filter(t=>t.submitted).length} сдано)</span>
         </div>
+        ${stTests.length ? stTests.map(t=>testItemHTML(t)).join('') : '<div style="color:var(--text3);font-size:0.83rem;padding:6px 12px">Нет тестов</div>'}
+      </div>`;
+    });
+    el.innerHTML = html || emptyHTML();
+  } else {
+    const tests = allTests.filter(t=>t.studentId===sid);
+    el.innerHTML = tests.map(t=>testItemHTML(t)).join('') || emptyHTML();
+  }
+}
+function testItemHTML(t){
+  return `<div class="content-item">
+    <div class="content-icon">📋</div>
+    <div class="content-info">
+      <div class="content-name">${t.title}</div>
+      <div class="content-meta">${t.questions.length} вопросов · Создан: ${t.date}</div>
+      <div class="content-meta" style="margin-top:4px">
+        ${t.submitted?`<span class="badge badge-green">Сдан</span> Результат: ${t.autoScore||0}/${t.autoTotal||0} авто`:'<span class="badge badge-gold">Не сдан</span>'}
+        ${t.openChecked?'<span class="badge badge-blue" style="margin-left:4px">✓ Открытые проверены</span>':''}
       </div>
-      <div class="content-actions">
-        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
-        <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
-        <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
-      </div>
-    </div>`).join('') || emptyHTML();
+    </div>
+    <div class="content-actions">
+      <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
+      <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
+      <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
+    </div>
+  </div>`;
 }
 function renderOpenAnswers(){
   const sid=getSelectedStudent();
@@ -1712,27 +1744,56 @@ function confirmAssignStudents(){
 
 // ─── HW ADMIN ───
 let _tempHWQuestions=[];
+let _hwShowAll = false;
 function renderHWAdmin(){
   buildStudentSelector('hw-student-selector', ()=>{ renderHWAdmin(); renderHWOpenAnswers(); });
-  const sid=getSelectedStudent();
-  const hws=(load('hw')||[]).filter(h=>h.studentId===sid);
-  const el=document.getElementById('hw-admin-list');
-  el.innerHTML=hws.map(h=>`
-    <div class="content-item">
-      <div class="content-icon">✏️</div>
-      <div class="content-info">
-        <div class="content-name">${h.title}</div>
-        <div class="content-meta">${h.desc} · Срок: ${h.due||'—'}</div>
-        <div class="content-meta" style="margin-top:4px">
-          ${h.submitted?'<span class="badge badge-green">Сдано</span>':'<span class="badge badge-gold">Ожидается</span>'}
+  const allHWs = load('hw')||[];
+  const students = (load('users')||[]).filter(u=>u.role==='student');
+  const sid = getSelectedStudent();
+
+  const toggleBar = document.getElementById('hw-toggle-bar');
+  if(toggleBar) toggleBar.innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
+      <button class="btn ${!_hwShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_hwShowAll=false;renderHWAdmin()">👤 Текущий ученик</button>
+      <button class="btn ${_hwShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_hwShowAll=true;renderHWAdmin()">👥 Все ученики</button>
+    </div>`;
+
+  const el = document.getElementById('hw-admin-list');
+
+  if(_hwShowAll){
+    let html='';
+    students.forEach(s=>{
+      const stHWs = allHWs.filter(h=>h.studentId===s.id);
+      const done = stHWs.filter(h=>h.submitted).length;
+      html+=`<div style="margin-bottom:20px">
+        <div style="font-weight:700;font-size:0.9rem;color:var(--green-deep);padding:8px 12px;background:var(--green-xpale);border-radius:10px;margin-bottom:8px">
+          👤 ${s.name} <span style="font-weight:400;color:var(--text3)">(${stHWs.length} ДЗ · ${done} сдано)</span>
         </div>
+        ${stHWs.length ? stHWs.map(h=>hwItemHTML(h)).join('') : '<div style="color:var(--text3);font-size:0.83rem;padding:6px 12px">Нет ДЗ</div>'}
+      </div>`;
+    });
+    el.innerHTML = html || emptyHTML();
+  } else {
+    const hws = allHWs.filter(h=>h.studentId===sid);
+    el.innerHTML = hws.map(h=>hwItemHTML(h)).join('') || emptyHTML();
+  }
+}
+function hwItemHTML(h){
+  return `<div class="content-item">
+    <div class="content-icon">✏️</div>
+    <div class="content-info">
+      <div class="content-name">${h.title}</div>
+      <div class="content-meta">${h.desc||''} · Срок: ${h.due||'—'}</div>
+      <div class="content-meta" style="margin-top:4px">
+        ${h.submitted?'<span class="badge badge-green">Сдано</span>':'<span class="badge badge-gold">Ожидается</span>'}
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
-        <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
-        <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
-      </div>
-    </div>`).join('') || emptyHTML();
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
+      <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
+      <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
+    </div>
+  </div>`;
 }
 function renderHWOpenAnswers(){
   const sid=getSelectedStudent();
