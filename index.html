@@ -404,6 +404,18 @@ tr:hover td { background: var(--bg2); }
 .empty-state .big { font-size: 3rem; margin-bottom: 12px; }
 .empty-state p { font-size: 0.9rem; }
 
+/* ─── FILTER PILLS ─── */
+.filter-bar { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+.filter-pill {
+  padding: 7px 16px; border-radius: 20px; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; border: 1.5px solid var(--green-pale); background: var(--bg);
+  color: var(--text3); transition: all 0.15s; display: flex; align-items: center; gap: 5px;
+}
+.filter-pill:hover { border-color: var(--green-mid); color: var(--green-deep); background: var(--green-xpale); }
+.filter-pill.active { background: var(--green-deep); color: #fff; border-color: var(--green-deep); }
+.filter-pill.active-todo { background: #fef3cd; color: #856404; border-color: #fce98a; }
+.filter-pill.active-done { background: #e8f8f0; color: #27ae60; border-color: #a8e6c7; }
+
 .inline-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 
 /* Feedback box */
@@ -674,6 +686,11 @@ tr:hover td { background: var(--bg2); }
     <div class="page" id="page-student-materials">
       <div class="page-title">Учебные материалы</div>
       <div class="page-sub">Нажмите на урок, чтобы открыть видео, текст и файлы</div>
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setMaterialFilter('all',this)">📚 Все</div>
+        <div class="filter-pill" onclick="setMaterialFilter('new',this)">🔵 Не просмотрено</div>
+        <div class="filter-pill" onclick="setMaterialFilter('viewed',this)">✅ Просмотрено</div>
+      </div>
       <div id="s-list-theory-accordion"></div>
     </div>
 
@@ -681,6 +698,11 @@ tr:hover td { background: var(--bg2); }
     <div class="page" id="page-student-tests">
       <div class="page-title">Тесты</div>
       <div class="page-sub">Ваши тесты и результаты</div>
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setTestFilter('all',this)">📋 Все</div>
+        <div class="filter-pill" onclick="setTestFilter('pending',this)">⏳ Не сдано</div>
+        <div class="filter-pill" onclick="setTestFilter('done',this)">✅ Сдано</div>
+      </div>
       <div id="student-tests-list"></div>
     </div>
 
@@ -688,6 +710,11 @@ tr:hover td { background: var(--bg2); }
     <div class="page" id="page-student-hw">
       <div class="page-title">Домашние задания</div>
       <div class="page-sub">Выполняйте задания и следите за проверкой</div>
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setHWFilter('all',this)">📝 Все</div>
+        <div class="filter-pill" onclick="setHWFilter('pending',this)">⏳ Не сдано</div>
+        <div class="filter-pill" onclick="setHWFilter('done',this)">✅ Сдано</div>
+      </div>
       <div id="student-hw-list"></div>
     </div>
 
@@ -1337,7 +1364,7 @@ function renderContentAdmin(){
   el.innerHTML=content.map(c=>theoryAccordionHTML(c,true)).join('');
 }
 
-function theoryAccordionHTML(c, isAdmin){
+function theoryAccordionHTML(c, isAdmin, viewed){
   // c.videoUrl is the canonical field; c.files is the canonical files array
   // (legacyAsTheory already normalises old items before calling us)
   const videoUrl = c.videoUrl || '';
@@ -1353,6 +1380,14 @@ function theoryAccordionHTML(c, isAdmin){
     hasPdf   ? '<span class="accordion-badge has-pdf">📄 PDF</span>' : '',
     hasWord  ? '<span class="accordion-badge has-word">📋 Word</span>' : '',
   ].filter(Boolean).join('');
+
+  // Viewed badge (only for student view)
+  const viewedBadge = (!isAdmin)
+    ? (viewed
+        ? '<span class="accordion-badge" style="background:#e8f8f0;color:#27ae60">✅ Просмотрено</span>'
+        : '<span class="accordion-badge" style="background:#eff6ff;color:#1565c0">🔵 Новое</span>')
+    : '';
+
   const adminActions = isAdmin ? `
     <div style="display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--green-xpale)">
       <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openAssignStudents('content','${c.id}')">👤 Добавить ученика</button>
@@ -1407,12 +1442,12 @@ function theoryAccordionHTML(c, isAdmin){
       </div>
     </div>`;
   }
-  return `<div class="accordion-item" id="acc-${c.id}">
+  return `<div class="accordion-item" id="acc-${c.id}" data-content-id="${c.id}">
     <div class="accordion-header" onclick="toggleAccordion(this)">
       <div style="font-size:1.4rem">📖</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:0.97rem;color:var(--accent);margin-bottom:4px">${c.title}</div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}${viewedBadge?'&nbsp;'+viewedBadge:''}</div>
       </div>
       <div class="accordion-arrow">▼</div>
     </div>
@@ -1428,7 +1463,24 @@ function theoryAccordionHTML(c, isAdmin){
 
 function toggleAccordion(el){
   const item = el.closest ? el.closest('.accordion-item') : el.parentElement;
-  if(item) item.classList.toggle('open');
+  if(!item) return;
+  const wasOpen = item.classList.contains('open');
+  item.classList.toggle('open');
+  // Mark material as viewed when opened (student only)
+  if(!wasOpen && currentUser && currentUser.role==='student'){
+    const cid = item.getAttribute('data-content-id');
+    if(cid){
+      const key = 'biohim_viewed_'+currentUser.id;
+      const viewed = JSON.parse(localStorage.getItem(key)||'{}');
+      if(!viewed[cid]){
+        viewed[cid] = true;
+        localStorage.setItem(key, JSON.stringify(viewed));
+        // Update badge in place without full re-render
+        const badgeEl = item.querySelector('.accordion-header .accordion-badge[style*="1565c0"]');
+        if(badgeEl) badgeEl.outerHTML = '<span class="accordion-badge" style="background:#e8f8f0;color:#27ae60">✅ Просмотрено</span>';
+      }
+    }
+  }
 }
 function contentItemHTML(c, isAdmin){
   const icons={video:'🎬',theory:'📖',article:'📝',pdf:'📄',word:'📋'};
@@ -2374,6 +2426,29 @@ function renderStudentDashboard(){
   renderStudentTodoList('day');
 }
 
+let _materialFilter = 'all';
+let _testFilter = 'all';
+let _hwFilter = 'all';
+
+function setMaterialFilter(f, el){
+  _materialFilter = f;
+  document.querySelectorAll('#page-student-materials .filter-pill').forEach(p=>p.className='filter-pill');
+  el.className = 'filter-pill ' + (f==='all'?'active': f==='viewed'?'active-done':'active-todo');
+  renderStudentMaterials();
+}
+function setTestFilter(f, el){
+  _testFilter = f;
+  document.querySelectorAll('#page-student-tests .filter-pill').forEach(p=>p.className='filter-pill');
+  el.className = 'filter-pill ' + (f==='all'?'active': f==='done'?'active-done':'active-todo');
+  renderStudentTests();
+}
+function setHWFilter(f, el){
+  _hwFilter = f;
+  document.querySelectorAll('#page-student-hw .filter-pill').forEach(p=>p.className='filter-pill');
+  el.className = 'filter-pill ' + (f==='all'?'active': f==='done'?'active-done':'active-todo');
+  renderStudentHW();
+}
+
 function renderStudentMaterials(){
   const sid=currentUser.id;
   const content=(load('content')||[]).filter(c=>c.studentId===sid);
@@ -2382,15 +2457,25 @@ function renderStudentMaterials(){
   if(!content.length){ el.innerHTML=emptyHTML(); return; }
   const theories = content.filter(c=>c.type==='theory');
   const legacy   = content.filter(c=>c.type!=='theory');
-  // Wrap legacy video/pdf/word items as pseudo-theory accordions so they display uniformly
   const legacyAsTheory = legacy.map(c=>({
     ...c,
     type:'theory',
     videoUrl: c.type==='video' ? (c.url||'') : (c.videoUrl||''),
     files: c.type==='video' ? [] : (c.files || (c.attachmentUrl ? [{type:c.type==='word'?'word':'pdf', name:c.title, url:c.attachmentUrl||c.url||''}] : (c.url?[{type:c.type==='word'?'word':'pdf', name:c.title, url:c.url}]:[])))
   }));
-  const all = [...theories, ...legacyAsTheory];
-  el.innerHTML = all.length ? all.map(c=>theoryAccordionHTML(c,false)).join('') : emptyHTML();
+  let all = [...theories, ...legacyAsTheory];
+
+  // Apply filter — use c.viewed flag
+  const viewed = JSON.parse(localStorage.getItem('biohim_viewed_'+sid)||'{}');
+  if(_materialFilter==='viewed') all = all.filter(c=>viewed[c.id]);
+  if(_materialFilter==='new')    all = all.filter(c=>!viewed[c.id]);
+
+  if(!all.length){
+    const msgs = {viewed:'Просмотренных материалов пока нет', new:'Все материалы уже просмотрены!'};
+    el.innerHTML = `<div class="empty-state"><div class="big">📭</div><p>${msgs[_materialFilter]||'Нет материалов'}</p></div>`;
+    return;
+  }
+  el.innerHTML = all.map(c=>theoryAccordionHTML(c,false,viewed[c.id])).join('');
 }
 
 function viewArticle(id){ viewTheory(id); } // legacy alias
@@ -2398,14 +2483,23 @@ function viewArticle(id){ viewTheory(id); } // legacy alias
 // STUDENT TESTS
 function renderStudentTests(){
   const sid=currentUser.id;
-  const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
+  let tests=(load('tests')||[]).filter(t=>t.studentId===sid);
   const el=document.getElementById('student-tests-list');
   if(!tests.length){ el.innerHTML=emptyHTML(); return; }
+
+  if(_testFilter==='pending') tests=tests.filter(t=>!t.submitted);
+  if(_testFilter==='done')    tests=tests.filter(t=>t.submitted);
+
+  if(!tests.length){
+    const msgs={pending:'Все тесты уже сданы! 🎉',done:'Сданных тестов пока нет'};
+    el.innerHTML=`<div class="empty-state"><div class="big">${_testFilter==='pending'?'🎉':'📋'}</div><p>${msgs[_testFilter]}</p></div>`;
+    return;
+  }
   el.innerHTML=tests.map(t=>`
     <div class="card">
       <div class="card-title"><span class="dot"></span>${t.title}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        ${t.submitted?`<span class="badge badge-green">✅ Сдан</span>`:` <span class="badge badge-gold">⏳ Ожидает</span>`}
+        ${t.submitted?`<span class="badge badge-green">✅ Сдан</span>`:`<span class="badge badge-gold">⏳ Ожидает</span>`}
         ${t.submitted?`<span class="badge badge-blue">Авто: ${t.autoScore||0}/${t.autoTotal||0}</span>`:''}
         ${t.openChecked?`<span class="badge badge-green">📝 Открытые проверены</span>`:(t.submitted?`<span class="badge badge-gold">📝 Ожидает проверки</span>`:'')}
       </div>
@@ -2479,9 +2573,18 @@ function submitTest(){
 // STUDENT HW
 function renderStudentHW(){
   const sid=currentUser.id;
-  const hws=(load('hw')||[]).filter(h=>h.studentId===sid);
+  let hws=(load('hw')||[]).filter(h=>h.studentId===sid);
   const el=document.getElementById('student-hw-list');
   if(!hws.length){ el.innerHTML=emptyHTML(); return; }
+
+  if(_hwFilter==='pending') hws=hws.filter(h=>!h.submitted);
+  if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted);
+
+  if(!hws.length){
+    const msgs={pending:'Все ДЗ уже сданы! 🎉',done:'Сданных ДЗ пока нет'};
+    el.innerHTML=`<div class="empty-state"><div class="big">${_hwFilter==='pending'?'🎉':'✏️'}</div><p>${msgs[_hwFilter]}</p></div>`;
+    return;
+  }
   el.innerHTML=hws.map(h=>`
     <div class="card">
       <div class="card-title"><span class="dot"></span>${h.title}</div>
