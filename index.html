@@ -893,44 +893,138 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
-<script>
+<script type="module">
 // ══════════════════════════════════════════
-// DATA STORE (localStorage)
+// FIREBASE SETUP
 // ══════════════════════════════════════════
-function load(k){ try{ return JSON.parse(localStorage.getItem('biohim_'+k)||'null'); }catch(e){ return null; } }
-function save(k,v){ localStorage.setItem('biohim_'+k, JSON.stringify(v)); }
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot, writeBatch }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-function initData(){
-  if(!load('users')){
-    save('users',[
-      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
-      {id:'anna',  login:'anna',  password:'1234',     name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-      {id:'dima',  login:'dima',  password:'1234',     name:'Дмитрий Козлов',role:'student', subject:'Химия', active:true}
-    ]);
-  }
-  if(!load('content'))  save('content',[]);
-  if(!load('tests'))    save('tests',[]);
-  if(!load('hw'))       save('hw',[]);
-  if(!load('payments')) save('payments',[]);
-  if(!load('courses'))  save('courses',[
-    {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
-    {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
-    {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка" (биология + биохимия).'},
-  ]);
-  if(!load('slots'))    save('slots',[
-    {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
-    {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
-    {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
-    {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
-    {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
-  ]);
-  if(!load('bookings')) save('bookings',[]);
-  if(!load('notifs'))   save('notifs',[]);
+const firebaseConfig = {
+  apiKey: "AIzaSyAh_g-_X0bMd23YEh5r5dO3xLu4Awpb1ns",
+  authDomain: "biohim-a36ce.firebaseapp.com",
+  projectId: "biohim-a36ce",
+  storageBucket: "biohim-a36ce.firebasestorage.app",
+  messagingSenderId: "797458613466",
+  appId: "1:797458613466:web:f2e734a65e4e84b7ce51e3",
+  measurementId: "G-Y0HGMYX80R"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ── In-memory cache (replaces localStorage) ──
+const _cache = {};
+
+// ── Read one collection → returns array ──
+async function loadFromDB(k){
+  const snap = await getDocs(collection(db, k));
+  const arr  = snap.docs.map(d => ({...d.data(), _docId: d.id}));
+  _cache[k]  = arr;
+  return arr;
+}
+
+// ── Write array back to Firestore ──
+async function saveToDB(k, arr){
+  _cache[k] = arr;
+  // Use a batch for atomicity
+  const batch = writeBatch(db);
+  // 1. Delete existing docs in collection (simple approach: overwrite by id field)
+  const snap = await getDocs(collection(db, k));
+  snap.docs.forEach(d => batch.delete(d.ref));
+  // 2. Write new docs
+  arr.forEach(item => {
+    const id   = item.id || item._docId || ('doc_'+Math.random().toString(36).slice(2));
+    const ref  = doc(db, k, String(id));
+    const data = {...item}; delete data._docId;
+    batch.set(ref, data);
+  });
+  await batch.commit();
+}
+
+// ── Sync wrappers used throughout the app ──
+// Synchronous read from cache (populated on login)
+function load(k){ return _cache[k] ?? null; }
+
+// Async save + cache update
+function save(k, v){
+  _cache[k] = v;
+  saveToDB(k, v).catch(e => console.error('Firebase save error:', k, e));
+}
+
+// ── Preload all collections into cache on startup ──
+const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs'];
+
+async function preloadCache(){
+  await Promise.all(COLLECTIONS.map(k => loadFromDB(k)));
+}
+
+// ── Subscribe to real-time changes so all tabs/devices stay in sync ──
+function subscribeRealtime(){
+  COLLECTIONS.forEach(k => {
+    onSnapshot(collection(db, k), snap => {
+      _cache[k] = snap.docs.map(d => ({...d.data(), _docId: d.id}));
+      // Re-render current page if relevant collection changed
+      if(curPage) renderPage(curPage);
+    });
+  });
 }
 
 // ══════════════════════════════════════════
-// AUTH
+// DEFAULT DATA (written to Firestore once)
 // ══════════════════════════════════════════
+async function initData(){
+  const users = load('users') || [];
+  if(!users.length){
+    await saveToDB('users',[
+      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
+      {id:'anna',  login:'anna',  password:'1234',     name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
+      {id:'dima',  login:'dima',  password:'1234',     name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
+    ]);
+    await loadFromDB('users');
+  }
+  if(!(load('content')||[]).length) { /* leave empty */ }
+  if(!(load('courses')||[]).length){
+    await saveToDB('courses',[
+      {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
+      {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
+      {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
+    ]);
+    await loadFromDB('courses');
+  }
+  if(!(load('slots')||[]).length){
+    await saveToDB('slots',[
+      {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
+      {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
+      {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
+      {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
+      {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
+    ]);
+    await loadFromDB('slots');
+  }
+  if(!load('payments')) _cache['payments'] = [];
+  if(!load('tests'))    _cache['tests']    = [];
+  if(!load('hw'))       _cache['hw']       = [];
+  if(!load('bookings')) _cache['bookings'] = [];
+  if(!load('notifs'))   _cache['notifs']   = [];
+}
+
+// ══════════════════════════════════════════
+// RESET (admin only)
+// ══════════════════════════════════════════
+async function resetAllData(){
+  if(!confirm('Удалить ВСЕ данные платформы? Ученики, материалы, тесты, ДЗ — всё будет удалено безвозвратно.')) return;
+  await Promise.all(COLLECTIONS.map(async k => {
+    const snap = await getDocs(collection(db, k));
+    const batch = writeBatch(db);
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    _cache[k] = [];
+  }));
+  location.reload();
+}
+window.resetAllData = resetAllData;
 let currentUser = null;
 
 function doLogin(){
@@ -945,12 +1039,8 @@ function doLogin(){
   const resetBtn = document.getElementById('btn-reset-data');
   if(resetBtn) resetBtn.style.display = user.role==='admin' ? 'block' : 'none';
   buildNav();
+  subscribeRealtime();
   navigateTo(user.role==='admin'?'dashboard':'student-dashboard');
-}
-function resetAllData(){
-  if(!confirm('Удалить ВСЕ данные платформы? Ученики, материалы, тесты, ДЗ — всё будет удалено безвозвратно.')) return;
-  Object.keys(localStorage).filter(k=>k.startsWith('biohim_')).forEach(k=>localStorage.removeItem(k));
-  location.reload();
 }
 function doLogout(){
   currentUser=null;
@@ -2551,18 +2641,62 @@ function showNotif(msg){
 }
 
 // ═══════════════════════════════════════════
-// INIT
+// STARTUP — load from Firebase then show login
 // ═══════════════════════════════════════════
-initData();
+(async () => {
+  // Show a loading overlay while Firebase loads
+  const overlay = document.createElement('div');
+  overlay.id = 'loading-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
+  overlay.innerHTML = `
+    <div style="font-family:\'Playfair Display\',serif;font-size:2rem;color:var(--green-deep)">Био<span style="color:var(--chem)">Хим</span></div>
+    <div style="color:var(--text3);font-size:0.9rem">Загрузка данных…</div>
+    <div style="width:40px;height:40px;border:4px solid var(--green-pale);border-top-color:var(--green-mid);border-radius:50%;animation:spin 0.8s linear infinite"></div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+  document.body.appendChild(overlay);
 
-// Press Enter to login
-document.getElementById('login-password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
-document.getElementById('login-username').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+  try {
+    const timeout = new Promise((_,reject) => setTimeout(()=>reject(new Error('Превышено время ожидания (10 сек). Проверьте правила Firestore и интернет-соединение.')), 10000));
+    await Promise.race([
+      (async()=>{ await preloadCache(); await initData(); })(),
+      timeout
+    ]);
+  } catch(e) {
+    console.error('Firebase init error:', e);
+    overlay.innerHTML = `
+      <div style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--green-deep)">Био<span style="color:var(--chem)">Хим</span></div>
+      <div style="color:var(--red);font-size:0.9rem;max-width:340px;text-align:center">⚠️ Ошибка подключения:<br><b>${e.message||e}</b></div>
+      <div style="color:var(--text3);font-size:0.78rem;max-width:340px;text-align:center">Проверьте правила Firestore:<br>Firestore → Rules → allow read, write: if true</div>
+    `;
+    return;
+  }
 
-// Close modal on bg click
-document.querySelectorAll('.modal-bg').forEach(bg=>{
-  bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
-});
+  overlay.remove();
+
+  // Expose all functions globally (module scope requires explicit window assignment)
+  const fns = {
+    doLogin, doLogout, resetAllData, navigateTo, openModal, closeModal,
+    switchTab, showNotif, buildNav,
+    addStudent, saveStudent, deleteStudent, editStudent,
+    addContent, deleteContent, addTheory, addTheoryImage, renderTheoryImages, viewTheory, viewArticle,
+    saveTest, addTestQuestion, deleteTestQuestion,
+    saveHW, addHWQuestion, deleteHWQuestion, submitHW, checkHWOpenAnswer, checkOpenAnswer, submitCheck, submitTest,
+    addPayment, deletePayment, editPayment, saveEditPayment,
+    addCourse, deleteCourse, addSlot, deleteSlot, bookSlot, cancelBooking,
+    generateReport, downloadReport,
+    selectStudent, populateModalStudents, getCheckedModalStudents,
+  };
+  Object.entries(fns).forEach(([k,v]) => { try{ window[k]=v; }catch(e){} });
+
+  // Press Enter to login
+  document.getElementById('login-password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+  document.getElementById('login-username').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+
+  // Close modal on bg click
+  document.querySelectorAll('.modal-bg').forEach(bg=>{
+    bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
+  });
+})();
 </script>
 </body>
 </html>
