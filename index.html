@@ -568,14 +568,15 @@ tr:hover td { background: var(--bg2); }
     <div class="page" id="page-tests-admin">
       <div class="page-title">Тесты</div>
       <div class="page-sub">Создавайте тесты с автопроверкой и открытыми вопросами</div>
-      <div class="student-selector" id="tests-student-selector"></div>
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>Тесты для ученика</div>
-        <div id="tests-toggle-bar"></div>
-        <button class="btn btn-green btn-sm" onclick="openModal('modal-create-test')">＋ Создать тест</button>
-        <div id="tests-admin-list" style="margin-top:14px"></div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div class="card-title" style="margin:0"><span class="dot"></span>Ученики</div>
+          <button class="btn btn-green btn-sm" onclick="openModal('modal-create-test')">＋ Создать тест</button>
+        </div>
+        <div id="tests-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
-      <div class="card" id="card-check-open">
+      <div id="tests-admin-list"></div>
+      <div class="card" id="card-check-open" style="margin-top:16px">
         <div class="card-title"><span class="dot"></span>🔍 Проверка открытых ответов</div>
         <div id="open-answers-list"></div>
       </div>
@@ -585,14 +586,15 @@ tr:hover td { background: var(--bg2); }
     <div class="page" id="page-hw-admin">
       <div class="page-title">Домашние задания</div>
       <div class="page-sub">Назначайте и проверяйте домашние задания</div>
-      <div class="student-selector" id="hw-student-selector"></div>
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>ДЗ ученика</div>
-        <div id="hw-toggle-bar"></div>
-        <button class="btn btn-green btn-sm" onclick="openModal('modal-create-hw')">＋ Создать ДЗ</button>
-        <div id="hw-admin-list" style="margin-top:14px"></div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+          <div class="card-title" style="margin:0"><span class="dot"></span>Ученики</div>
+          <button class="btn btn-green btn-sm" onclick="openModal('modal-create-hw')">＋ Создать ДЗ</button>
+        </div>
+        <div id="hw-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
-      <div class="card">
+      <div id="hw-admin-list"></div>
+      <div class="card" style="margin-top:16px">
         <div class="card-title"><span class="dot"></span>🔍 Проверка открытых ответов ДЗ</div>
         <div id="hw-open-answers-list"></div>
       </div>
@@ -1300,8 +1302,8 @@ function renderPage(p){
   if(p==='dashboard') renderDashboard();
   else if(p==='students') renderStudents();
   else if(p==='content-admin'){ buildStudentSelector('content-student-selector', ()=>renderContentAdmin()); renderContentAdmin(); }
-  else if(p==='tests-admin'){ buildStudentSelector('tests-student-selector', ()=>{ renderTestsAdmin(); renderOpenAnswers(); }); renderTestsAdmin(); renderOpenAnswers(); }
-  else if(p==='hw-admin'){ buildStudentSelector('hw-student-selector', ()=>{ renderHWAdmin(); renderHWOpenAnswers(); }); renderHWAdmin(); renderHWOpenAnswers(); }
+  else if(p==='tests-admin'){ renderTestsAdmin(); renderOpenAnswers(); }
+  else if(p==='hw-admin'){ renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='payment-admin'){ buildStudentSelector('pay-student-selector', ()=>renderPaymentAdmin()); renderPaymentAdmin(); }
   else if(p==='schedule-admin') renderScheduleAdmin();
   else if(p==='reports-admin') renderReportsAdmin();
@@ -1756,40 +1758,47 @@ function deleteContent(id){
 
 // ─── TESTS ADMIN ───
 let _tempQuestions=[];
-let _testsShowAll = false;
+let _testsSelectedSid = 'all';
 function renderTestsAdmin(){
-  buildStudentSelector('tests-student-selector', ()=>{ renderTestsAdmin(); renderOpenAnswers(); });
-  const allTests = load('tests')||[];
   const students = (load('users')||[]).filter(u=>u.role==='student');
-  const sid = getSelectedStudent();
+  const allTests = (load('tests')||[]).slice().reverse(); // новые сверху
 
-  // Toggle button
-  const toggleBar = document.getElementById('tests-toggle-bar');
-  if(toggleBar) toggleBar.innerHTML=`
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
-      <button class="btn ${!_testsShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_testsShowAll=false;renderTestsAdmin()">👤 Текущий ученик</button>
-      <button class="btn ${_testsShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_testsShowAll=true;renderTestsAdmin()">👥 Все ученики</button>
-    </div>`;
+  // Build chip bar
+  const chipsEl = document.getElementById('tests-student-chips');
+  if(chipsEl){
+    chipsEl.innerHTML = [
+      `<div class="student-chip ${_testsSelectedSid==='all'?'active':''}" onclick="_testsSelectedSid='all';renderTestsAdmin()">👥 Все ученики</div>`,
+      ...students.map(s=>`<div class="student-chip ${_testsSelectedSid===s.id?'active':''}" onclick="_testsSelectedSid='${s.id}';renderTestsAdmin()">${s.name}</div>`)
+    ].join('');
+  }
 
   const el = document.getElementById('tests-admin-list');
+  if(!el) return;
 
-  if(_testsShowAll){
-    // Group by student
+  if(_testsSelectedSid === 'all'){
     let html='';
     students.forEach(s=>{
       const stTests = allTests.filter(t=>t.studentId===s.id);
-      html+=`<div style="margin-bottom:20px">
-        <div style="font-weight:700;font-size:0.9rem;color:var(--green-deep);padding:8px 12px;background:var(--green-xpale);border-radius:10px;margin-bottom:8px">
-          👤 ${s.name} <span style="font-weight:400;color:var(--text3)">(${stTests.length} тестов · ${stTests.filter(t=>t.submitted).length} сдано)</span>
+      html+=`<div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s.name}
+          <span style="font-weight:400;font-size:0.8rem;color:var(--text3);margin-left:8px">${stTests.length} тестов · ${stTests.filter(t=>t.submitted).length} сдано</span>
         </div>
-        ${stTests.length ? stTests.map(t=>testItemHTML(t)).join('') : '<div style="color:var(--text3);font-size:0.83rem;padding:6px 12px">Нет тестов</div>'}
+        ${stTests.length ? stTests.map(t=>testItemHTML(t)).join('') : '<div style="color:var(--text3);font-size:0.83rem;padding:4px 0">Нет тестов</div>'}
       </div>`;
     });
     el.innerHTML = html || emptyHTML();
   } else {
-    const tests = allTests.filter(t=>t.studentId===sid);
-    el.innerHTML = tests.map(t=>testItemHTML(t)).join('') || emptyHTML();
+    const tests = allTests.filter(t=>t.studentId===_testsSelectedSid);
+    const s = students.find(s=>s.id===_testsSelectedSid);
+    el.innerHTML = `<div class="card">
+      <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?s.name:'Ученик'}</div>
+      ${tests.length ? tests.map(t=>testItemHTML(t)).join('') : emptyHTML()}
+    </div>`;
   }
+
+  // Update open answers for selected student (use first student if "all")
+  _selectedStudent = _testsSelectedSid === 'all' ? (students[0]||{}).id : _testsSelectedSid;
+  renderOpenAnswers();
 }
 function testItemHTML(t){
   return `<div class="content-item">
@@ -1810,8 +1819,10 @@ function testItemHTML(t){
   </div>`;
 }
 function renderOpenAnswers(){
-  const sid=getSelectedStudent();
-  const tests=(load('tests')||[]).filter(t=>t.studentId===sid && t.submitted);
+  const students = (load('users')||[]).filter(u=>u.role==='student');
+  const sids = _testsSelectedSid === 'all' ? students.map(s=>s.id) : [_testsSelectedSid];
+  const allTests = load('tests')||[];
+  const tests = allTests.filter(t=>sids.includes(t.studentId) && t.submitted);
   const el=document.getElementById('open-answers-list');
   let html='';
   tests.forEach(t=>{
@@ -1976,39 +1987,46 @@ function confirmAssignStudents(){
 
 // ─── HW ADMIN ───
 let _tempHWQuestions=[];
-let _hwShowAll = false;
+let _hwSelectedSid = 'all';
 function renderHWAdmin(){
-  buildStudentSelector('hw-student-selector', ()=>{ renderHWAdmin(); renderHWOpenAnswers(); });
-  const allHWs = load('hw')||[];
   const students = (load('users')||[]).filter(u=>u.role==='student');
-  const sid = getSelectedStudent();
+  const allHWs = (load('hw')||[]).slice().reverse(); // новые сверху
 
-  const toggleBar = document.getElementById('hw-toggle-bar');
-  if(toggleBar) toggleBar.innerHTML=`
-    <div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">
-      <button class="btn ${!_hwShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_hwShowAll=false;renderHWAdmin()">👤 Текущий ученик</button>
-      <button class="btn ${_hwShowAll?'btn-green':'btn-outline'} btn-sm" onclick="_hwShowAll=true;renderHWAdmin()">👥 Все ученики</button>
-    </div>`;
+  // Build chip bar
+  const chipsEl = document.getElementById('hw-student-chips');
+  if(chipsEl){
+    chipsEl.innerHTML = [
+      `<div class="student-chip ${_hwSelectedSid==='all'?'active':''}" onclick="_hwSelectedSid='all';renderHWAdmin()">👥 Все ученики</div>`,
+      ...students.map(s=>`<div class="student-chip ${_hwSelectedSid===s.id?'active':''}" onclick="_hwSelectedSid='${s.id}';renderHWAdmin()">${s.name}</div>`)
+    ].join('');
+  }
 
   const el = document.getElementById('hw-admin-list');
+  if(!el) return;
 
-  if(_hwShowAll){
+  if(_hwSelectedSid === 'all'){
     let html='';
     students.forEach(s=>{
       const stHWs = allHWs.filter(h=>h.studentId===s.id);
-      const done = stHWs.filter(h=>h.submitted).length;
-      html+=`<div style="margin-bottom:20px">
-        <div style="font-weight:700;font-size:0.9rem;color:var(--green-deep);padding:8px 12px;background:var(--green-xpale);border-radius:10px;margin-bottom:8px">
-          👤 ${s.name} <span style="font-weight:400;color:var(--text3)">(${stHWs.length} ДЗ · ${done} сдано)</span>
+      html+=`<div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s.name}
+          <span style="font-weight:400;font-size:0.8rem;color:var(--text3);margin-left:8px">${stHWs.length} ДЗ · ${stHWs.filter(h=>h.submitted).length} сдано</span>
         </div>
-        ${stHWs.length ? stHWs.map(h=>hwItemHTML(h)).join('') : '<div style="color:var(--text3);font-size:0.83rem;padding:6px 12px">Нет ДЗ</div>'}
+        ${stHWs.length ? stHWs.map(h=>hwItemHTML(h)).join('') : '<div style="color:var(--text3);font-size:0.83rem;padding:4px 0">Нет ДЗ</div>'}
       </div>`;
     });
     el.innerHTML = html || emptyHTML();
   } else {
-    const hws = allHWs.filter(h=>h.studentId===sid);
-    el.innerHTML = hws.map(h=>hwItemHTML(h)).join('') || emptyHTML();
+    const hws = allHWs.filter(h=>h.studentId===_hwSelectedSid);
+    const s = students.find(s=>s.id===_hwSelectedSid);
+    el.innerHTML = `<div class="card">
+      <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?s.name:'Ученик'}</div>
+      ${hws.length ? hws.map(h=>hwItemHTML(h)).join('') : emptyHTML()}
+    </div>`;
   }
+
+  _selectedStudent = _hwSelectedSid === 'all' ? (students[0]||{}).id : _hwSelectedSid;
+  renderHWOpenAnswers();
 }
 function hwItemHTML(h){
   return `<div class="content-item">
@@ -2028,8 +2046,9 @@ function hwItemHTML(h){
   </div>`;
 }
 function renderHWOpenAnswers(){
-  const sid=getSelectedStudent();
-  const hws=(load('hw')||[]).filter(h=>h.studentId===sid && h.submitted);
+  const students = (load('users')||[]).filter(u=>u.role==='student');
+  const sids = _hwSelectedSid === 'all' ? students.map(s=>s.id) : [_hwSelectedSid];
+  const hws=(load('hw')||[]).filter(h=>sids.includes(h.studentId) && h.submitted);
   const el=document.getElementById('hw-open-answers-list');
   let html='';
   hws.forEach(h=>{
@@ -2801,6 +2820,7 @@ function renderStudentTests(){
 
   if(_testFilter==='pending') tests=tests.filter(t=>!t.submitted);
   if(_testFilter==='done')    tests=tests.filter(t=>t.submitted);
+  tests = tests.slice().reverse(); // новые сверху
 
   if(!tests.length){
     const msgs={pending:'Все тесты уже сданы! 🎉',done:'Сданных тестов пока нет'};
@@ -2891,6 +2911,7 @@ function renderStudentHW(){
 
   if(_hwFilter==='pending') hws=hws.filter(h=>!h.submitted);
   if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted);
+  hws = hws.slice().reverse(); // новые сверху
 
   if(!hws.length){
     const msgs={pending:'Все ДЗ уже сданы! 🎉',done:'Сданных ДЗ пока нет'};
