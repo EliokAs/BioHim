@@ -351,7 +351,9 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
     <button class="btn-main" onclick="doLogin()">Войти</button>
     <div id="login-err" class="login-err"></div>
     <div class="login-hint" style="margin-top:20px">
-  
+      <b>Администратор:</b> admin / admin123<br>
+      <b>Ученик 1:</b> anna / 1234<br>
+      <b>Ученик 2:</b> dima / 1234
     </div>
   </div>
 </div>
@@ -418,7 +420,7 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
       <div class="student-selector" id="content-student-selector"></div>
       <div class="tabs">
         <div class="tab active" onclick="switchTab('content',this,'ct-video')">🎬 Видео</div>
-        <div class="tab" onclick="switchTab('content',this,'ct-article')">📝 Статьи</div>
+        <div class="tab" onclick="switchTab('content',this,'ct-theory')">📖 Теория</div>
         <div class="tab" onclick="switchTab('content',this,'ct-pdf')">📄 PDF</div>
         <div class="tab" onclick="switchTab('content',this,'ct-word')">📋 Word</div>
       </div>
@@ -429,11 +431,11 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
           <div id="list-video" style="margin-top:14px"></div>
         </div>
       </div>
-      <div id="ct-article" class="ct-tab" style="display:none">
+      <div id="ct-theory" class="ct-tab" style="display:none">
         <div class="card">
-          <div class="card-title"><span class="dot"></span>Статьи и тексты</div>
-          <button class="btn btn-green btn-sm" onclick="openModal('modal-add-article')">＋ Написать статью</button>
-          <div id="list-article" style="margin-top:14px"></div>
+          <div class="card-title"><span class="dot"></span>Теоретические уроки</div>
+          <button class="btn btn-green btn-sm" onclick="openModal('modal-add-theory')">＋ Создать теоретический урок</button>
+          <div id="list-theory" style="margin-top:14px"></div>
         </div>
       </div>
       <div id="ct-pdf" class="ct-tab" style="display:none">
@@ -518,6 +520,20 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
       </div>
     </div>
 
+    <!-- Reports Admin -->
+    <div class="page" id="page-reports-admin">
+      <div class="page-title">📊 Отчёты по ученикам</div>
+      <div class="page-sub">Анализ успеваемости, усвоения тем и выполнения заданий</div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>Выберите ученика</div>
+        <div class="form-group" style="max-width:340px">
+          <label>Ученик</label>
+          <select id="report-student-select" onchange="generateReport()"></select>
+        </div>
+      </div>
+      <div id="report-output"></div>
+    </div>
+
     <!-- ── STUDENT PAGES ── -->
 
     <!-- Student Dashboard -->
@@ -541,12 +557,12 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
       <div class="page-sub">Все материалы, добавленные вашим преподавателем</div>
       <div class="tabs">
         <div class="tab active" onclick="switchTab('smaterial',this,'sm-video')">🎬 Видео</div>
-        <div class="tab" onclick="switchTab('smaterial',this,'sm-article')">📝 Статьи</div>
+        <div class="tab" onclick="switchTab('smaterial',this,'sm-theory')">📖 Теория</div>
         <div class="tab" onclick="switchTab('smaterial',this,'sm-pdf')">📄 PDF</div>
         <div class="tab" onclick="switchTab('smaterial',this,'sm-word')">📋 Word</div>
       </div>
       <div id="sm-video" class="sm-tab"><div id="s-list-video"></div></div>
-      <div id="sm-article" class="sm-tab" style="display:none"><div id="s-list-article"></div></div>
+      <div id="sm-theory" class="sm-tab" style="display:none"><div id="s-list-theory"></div></div>
       <div id="sm-pdf" class="sm-tab" style="display:none"><div id="s-list-pdf"></div></div>
       <div id="sm-word" class="sm-tab" style="display:none"><div id="s-list-word"></div></div>
     </div>
@@ -623,17 +639,38 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
     <div class="form-group"><label>Название</label><input id="nv-title" placeholder="Урок 1: Клетка"></div>
     <div class="form-group"><label>Ссылка (YouTube/VK)</label><input id="nv-url" placeholder="https://youtube.com/..."></div>
     <div class="form-group"><label>Описание</label><textarea id="nv-desc" rows="3" placeholder="Краткое описание..."></textarea></div>
+    <div class="form-group">
+      <label>Отправить ученикам</label>
+      <div id="modal-video-students" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+    </div>
     <button class="btn btn-green" onclick="addContent('video')">Сохранить</button>
   </div>
 </div>
 
-<div class="modal-bg" id="modal-add-article">
-  <div class="modal">
-    <div class="modal-title">📝 Новая статья</div>
-    <span class="modal-close" onclick="closeModal('modal-add-article')">✕</span>
-    <div class="form-group"><label>Заголовок</label><input id="na-title" placeholder="Тема урока..."></div>
-    <div class="form-group"><label>Текст статьи</label><textarea id="na-body" rows="8" placeholder="Введите текст..."></textarea></div>
-    <button class="btn btn-green" onclick="addContent('article')">Сохранить</button>
+<div class="modal-bg" id="modal-add-theory">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-title">📖 Теоретический урок</div>
+    <span class="modal-close" onclick="closeModal('modal-add-theory')">✕</span>
+    <div class="form-group"><label>Заголовок урока</label><input id="nth-title" placeholder="Тема: Строение клетки"></div>
+    <div class="form-group"><label>Содержание (текст урока)</label><textarea id="nth-body" rows="8" placeholder="Введите теоретический материал..."></textarea></div>
+    <div class="form-group">
+      <label>Изображения (ссылки на картинки)</label>
+      <div id="nth-images-list"></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addTheoryImage()">＋ Добавить изображение</button>
+    </div>
+    <div class="form-group">
+      <label>Прикрепить файл (PDF или Word)</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="file" id="nth-file" accept=".pdf,.doc,.docx" style="font-size:0.85rem;padding:8px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--bg);width:100%">
+      </div>
+      <div style="font-size:0.77rem;color:var(--text3);margin-top:4px">Или укажите ссылку на файл:</div>
+      <input id="nth-fileurl" placeholder="https://..." style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);background:var(--bg);font-family:Nunito,sans-serif;font-size:0.93rem;margin-top:6px;outline:none">
+    </div>
+    <div class="form-group">
+      <label>Отправить ученикам</label>
+      <div id="modal-theory-students" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+    </div>
+    <button class="btn btn-green" onclick="addTheory()">Сохранить урок</button>
   </div>
 </div>
 
@@ -642,8 +679,17 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
     <div class="modal-title" id="modal-file-title">📄 Добавить файл</div>
     <span class="modal-close" onclick="closeModal('modal-add-file')">✕</span>
     <div class="form-group"><label>Название файла</label><input id="nf-title" placeholder="Название..."></div>
+    <div class="form-group">
+      <label>Загрузить файл</label>
+      <input type="file" id="nf-upload" accept=".pdf,.doc,.docx" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--bg);font-size:0.85rem">
+      <div style="font-size:0.77rem;color:var(--text3);margin-top:6px">Или вставьте ссылку:</div>
+    </div>
     <div class="form-group"><label>Ссылка на файл (URL или Google Drive)</label><input id="nf-url" placeholder="https://..."></div>
     <div class="form-group"><label>Описание</label><input id="nf-desc" placeholder="Краткое описание..."></div>
+    <div class="form-group">
+      <label>Отправить ученикам</label>
+      <div id="modal-file-students" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+    </div>
     <input type="hidden" id="nf-type">
     <button class="btn btn-green" onclick="addContent(_fileType)">Сохранить</button>
   </div>
@@ -662,18 +708,28 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
         <button class="btn btn-outline btn-sm" onclick="addTestQuestion('open')">➕ Открытый вопрос</button>
       </div>
     </div>
+    <div class="form-group" style="margin-top:16px">
+      <label>Отправить ученикам</label>
+      <div id="modal-test-students" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+    </div>
     <hr class="divider">
     <button class="btn btn-green" onclick="saveTest()">Создать тест</button>
   </div>
 </div>
 
 <div class="modal-bg" id="modal-create-hw">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-title">📚 Создать ДЗ</div>
     <span class="modal-close" onclick="closeModal('modal-create-hw')">✕</span>
     <div class="form-group"><label>Тема ДЗ</label><input id="nhw-title" placeholder="ДЗ: Строение клетки"></div>
     <div class="form-group"><label>Описание / задание</label><textarea id="nhw-desc" rows="4" placeholder="Опишите задание..."></textarea></div>
     <div class="form-group"><label>Срок сдачи</label><input id="nhw-due" type="date"></div>
+    <div class="form-group">
+      <label>Прикрепить файл к ДЗ (PDF / Word)</label>
+      <input type="file" id="nhw-file" accept=".pdf,.doc,.docx" style="width:100%;padding:8px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--bg);font-size:0.85rem">
+      <div style="font-size:0.77rem;color:var(--text3);margin-top:4px">Или укажите ссылку:</div>
+      <input id="nhw-fileurl" placeholder="https://..." style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);background:var(--bg);font-family:Nunito,sans-serif;font-size:0.93rem;margin-top:6px;outline:none">
+    </div>
     <div id="hw-questions-builder">
       <div class="card-title" style="margin-top:8px"><span class="dot"></span>Вопросы (опционально)</div>
       <div id="nhw-questions-list"></div>
@@ -681,6 +737,10 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
         <button class="btn btn-outline btn-sm" onclick="addHWQuestion('auto')">➕ Авто-вопрос</button>
         <button class="btn btn-outline btn-sm" onclick="addHWQuestion('open')">➕ Открытый вопрос</button>
       </div>
+    </div>
+    <div class="form-group" style="margin-top:16px">
+      <label>Отправить ученикам</label>
+      <div id="modal-hw-students" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
     </div>
     <hr class="divider">
     <button class="btn btn-green" onclick="saveHW()">Создать ДЗ</button>
@@ -834,6 +894,7 @@ const adminNav=[
   {section:'Управление'},
   {id:'payment-admin',  icon:'💳',label:'Оплата'},
   {id:'schedule-admin', icon:'🗓',label:'Расписание'},
+  {id:'reports-admin',  icon:'📊',label:'Отчёты по ученикам'},
 ];
 const studentNav=[
   {section:'Кабинет'},
@@ -884,6 +945,7 @@ function renderPage(p){
   else if(p==='hw-admin'){ buildStudentSelector('hw-student-selector', ()=>{ renderHWAdmin(); renderHWOpenAnswers(); }); renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='payment-admin'){ buildStudentSelector('pay-student-selector', ()=>renderPaymentAdmin()); renderPaymentAdmin(); }
   else if(p==='schedule-admin') renderScheduleAdmin();
+  else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
   else if(p==='student-materials') renderStudentMaterials();
   else if(p==='student-tests') renderStudentTests();
@@ -985,7 +1047,7 @@ function deleteStudent(id){
 function renderContentAdmin(){
   const sid=getSelectedStudent();
   const content=(load('content')||[]).filter(c=>c.studentId===sid);
-  ['video','article','pdf','word'].forEach(type=>{
+  ['video','theory','pdf','word'].forEach(type=>{
     const el=document.getElementById('list-'+type);
     if(!el) return;
     const items=content.filter(c=>c.type===type);
@@ -993,17 +1055,19 @@ function renderContentAdmin(){
   });
 }
 function contentItemHTML(c, isAdmin){
-  const icons={video:'🎬',article:'📝',pdf:'📄',word:'📋'};
+  const icons={video:'🎬',theory:'📖',article:'📝',pdf:'📄',word:'📋'};
   const actions = isAdmin
     ? `<button class="btn btn-red btn-sm" onclick="deleteContent('${c.id}')">🗑</button>`
-    : (c.type==='article'
-        ? `<button class="btn btn-outline btn-sm" onclick="viewArticle('${c.id}')">👁 Читать</button>`
+    : (c.type==='theory'||c.type==='article'
+        ? `<button class="btn btn-outline btn-sm" onclick="viewTheory('${c.id}')">👁 Читать</button>`
         : `<a href="${c.url||'#'}" target="_blank" class="btn btn-outline btn-sm">⬇ Открыть</a>`);
   return `<div class="content-item">
     <div class="content-icon">${icons[c.type]||'📎'}</div>
     <div class="content-info">
       <div class="content-name">${c.title}</div>
       <div class="content-meta">${c.desc||c.url||''}</div>
+      ${c.images&&c.images.length?`<div class="content-meta">🖼 ${c.images.length} изображ.</div>`:''}
+      ${c.attachmentUrl?`<div class="content-meta">📎 Файл прикреплён</div>`:''}
     </div>
     <div class="content-actions">${actions}</div>
   </div>`;
@@ -1016,32 +1080,114 @@ function openModal(id, extra){
     document.getElementById('modal-file-title').textContent=extra==='pdf'?'📄 Добавить PDF':'📋 Добавить Word';
   }
   document.getElementById(id).classList.add('open');
+  // Populate student checkboxes inside modal if present
+  const containerId = {
+    'modal-add-video':'modal-video-students',
+    'modal-add-theory':'modal-theory-students',
+    'modal-add-file':'modal-file-students',
+    'modal-create-test':'modal-test-students',
+    'modal-create-hw':'modal-hw-students'
+  }[id];
+  if(containerId) populateModalStudents(containerId);
+}
+function populateModalStudents(containerId){
+  const el=document.getElementById(containerId);
+  if(!el) return;
+  const students=(load('users')||[]).filter(u=>u.role==='student');
+  if(!students.length){ el.innerHTML='<span style="font-size:0.82rem;color:var(--text3)">Нет учеников</span>'; return; }
+  const cur=_selectedStudent||(students[0]||{}).id;
+  el.innerHTML=students.map(s=>`
+    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap;box-sizing:border-box;line-height:1.3">
+      <input type="checkbox" value="${s.id}" ${s.id===cur?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px">${s.name}
+    </label>`).join('');
+}
+function getCheckedModalStudents(containerId){
+  const el=document.getElementById(containerId);
+  if(!el) return [getSelectedStudent()];
+  const checked=[...el.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
+  return checked.length?checked:[getSelectedStudent()];
 }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
 function addContent(type){
-  const sid=getSelectedStudent();
-  if(!sid){ showNotif('Сначала выберите ученика'); return; }
-  let title,url,desc,body;
+  let title,url,desc,studentContainerId;
   if(type==='video'){
     title=document.getElementById('nv-title').value.trim();
     url=document.getElementById('nv-url').value.trim();
     desc=document.getElementById('nv-desc').value.trim();
-  } else if(type==='article'){
-    title=document.getElementById('na-title').value.trim();
-    body=document.getElementById('na-body').value.trim();
+    studentContainerId='modal-video-students';
   } else {
     title=document.getElementById('nf-title').value.trim();
     url=document.getElementById('nf-url').value.trim();
     desc=document.getElementById('nf-desc').value.trim();
+    studentContainerId='modal-file-students';
   }
   if(!title){ showNotif('Введите название'); return; }
+  const sids=getCheckedModalStudents(studentContainerId);
+  if(!sids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
   const content=load('content')||[];
-  content.push({id:'ct_'+Date.now(), studentId:sid, type, title, url:url||'', desc:desc||'', body:body||'', date:new Date().toLocaleDateString('ru')});
+  sids.forEach(sid=>{
+    content.push({id:'ct_'+Date.now()+'_'+sid, studentId:sid, type, title, url:url||'', desc:desc||'', date:new Date().toLocaleDateString('ru')});
+  });
   save('content',content);
-  closeModal('modal-add-video'); closeModal('modal-add-article'); closeModal('modal-add-file');
+  closeModal('modal-add-video'); closeModal('modal-add-file');
   renderContentAdmin();
-  showNotif('✅ Материал добавлен');
+  showNotif(`✅ Отправлено ${sids.length > 1 ? sids.length+' ученикам' : '1 ученику'}`);
+}
+
+// Theory (replaces article)
+let _theoryImages=[];
+function addTheoryImage(){
+  _theoryImages.push('');
+  renderTheoryImages();
+}
+function renderTheoryImages(){
+  const el=document.getElementById('nth-images-list');
+  el.innerHTML=_theoryImages.map((img,i)=>`
+    <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+      <input style="flex:1;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--white)"
+        placeholder="https://example.com/image.jpg" value="${img}" onchange="_theoryImages[${i}]=this.value">
+      <button class="btn btn-red btn-sm" onclick="_theoryImages.splice(${i},1);renderTheoryImages()">✕</button>
+    </div>`).join('');
+}
+function addTheory(){
+  const title=document.getElementById('nth-title').value.trim();
+  const body=document.getElementById('nth-body').value.trim();
+  const fileUrl=document.getElementById('nth-fileurl').value.trim();
+  if(!title){ showNotif('Введите заголовок урока'); return; }
+  const sids=getCheckedModalStudents('modal-theory-students');
+  if(!sids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
+  const content=load('content')||[];
+  sids.forEach(sid=>{
+    content.push({id:'ct_'+Date.now()+'_'+sid, studentId:sid, type:'theory', title, body, images:[..._theoryImages], attachmentUrl:fileUrl, date:new Date().toLocaleDateString('ru')});
+  });
+  save('content',content);
+  _theoryImages=[];
+  document.getElementById('nth-title').value='';
+  document.getElementById('nth-body').value='';
+  document.getElementById('nth-fileurl').value='';
+  document.getElementById('nth-images-list').innerHTML='';
+  closeModal('modal-add-theory');
+  renderContentAdmin();
+  showNotif(`✅ Урок отправлен ${sids.length > 1 ? sids.length+' ученикам' : '1 ученику'}`);
+}
+function viewTheory(id){
+  const c=(load('content')||[]).find(c=>c.id===id);
+  if(!c) return;
+  document.getElementById('view-article-title').textContent=c.title;
+  let html=`<div style="line-height:1.75;color:var(--text2);font-size:0.93rem;white-space:pre-wrap">${c.body||''}</div>`;
+  if(c.images&&c.images.filter(Boolean).length){
+    html+=`<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:10px">`;
+    c.images.filter(Boolean).forEach(img=>{
+      html+=`<img src="${img}" alt="Изображение" style="max-width:100%;border-radius:10px;border:1px solid var(--green-pale);max-height:300px;object-fit:contain">`;
+    });
+    html+=`</div>`;
+  }
+  if(c.attachmentUrl){
+    html+=`<div style="margin-top:16px"><a href="${c.attachmentUrl}" target="_blank" class="btn btn-outline">📎 Открыть прикреплённый файл</a></div>`;
+  }
+  document.getElementById('view-article-body').innerHTML=html;
+  openModal('modal-view-article');
 }
 function deleteContent(id){
   save('content',(load('content')||[]).filter(c=>c.id!==id));
@@ -1108,10 +1254,13 @@ function checkOpenAnswer(testId,qId){
 function submitCheck(itemId,qId,itemType){
   const comment=document.getElementById('ca-comment').value;
   const grade=document.getElementById('ca-grade').value;
+  const examGradeEl=document.getElementById('ca-exam-grade');
+  const examGrade=examGradeEl?examGradeEl.value:'';
   const items=load(itemType==='test'?'tests':'hw')||[];
   const item=items.find(t=>t.id===itemId);
   const q=item.questions.find(q=>q.id===qId);
   q.checked=true; q.grade=grade; q.comment=comment;
+  if(examGrade!=='') q.examGrade=examGrade;
   item.openChecked=true;
   save(itemType==='test'?'tests':'hw',items);
   // Add notification
@@ -1148,18 +1297,21 @@ function renderTestBuilder(){
 function removeQ(i){ _tempQuestions.splice(i,1); renderTestBuilder(); }
 function saveTest(){
   const title=document.getElementById('nt-title').value.trim();
-  const sid=getSelectedStudent();
   if(!title){ showNotif('Введите название теста'); return; }
   if(!_tempQuestions.length){ showNotif('Добавьте хотя бы один вопрос'); return; }
+  const sids=getCheckedModalStudents('modal-test-students');
+  if(!sids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
   const tests=load('tests')||[];
-  tests.push({id:'t'+Date.now(),studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:_tempQuestions.filter(q=>q.type==='auto').length});
+  sids.forEach(sid=>{
+    tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:_tempQuestions.filter(q=>q.type==='auto').length});
+  });
   save('tests',tests);
   _tempQuestions=[];
   document.getElementById('nt-questions-list').innerHTML='';
   document.getElementById('nt-title').value='';
   closeModal('modal-create-test');
   renderTestsAdmin();
-  showNotif('✅ Тест создан');
+  showNotif(`✅ Тест отправлен ${sids.length > 1 ? sids.length+' ученикам' : '1 ученику'}`);
 }
 function deleteTest(id){ save('tests',(load('tests')||[]).filter(t=>t.id!==id)); renderTestsAdmin(); }
 
@@ -1208,8 +1360,16 @@ function checkHWOpenAnswer(hwId,qId){
     <div class="form-group"><label>Вопрос</label><div class="feedback-box">${q.text}</div></div>
     <div class="form-group"><label>Ответ ученика</label><div class="feedback-box">${h.answers[q.id]||'—'}</div></div>
     <div class="form-group"><label>Ваш комментарий</label><textarea id="ca-comment" rows="3" placeholder="Обратная связь..."></textarea></div>
-    <div class="form-group"><label>Оценка</label>
+    <div class="form-group"><label>Оценка (5-балльная)</label>
       <select id="ca-grade"><option value="5">5 — Отлично</option><option value="4">4 — Хорошо</option><option value="3">3 — Удовлетворительно</option><option value="2">2 — Неудовлетворительно</option></select></div>
+    <div class="form-group"><label>Экзаменационная оценка (0–3 балла)</label>
+      <select id="ca-exam-grade">
+        <option value="">— не указывать —</option>
+        <option value="0">0 — Не выполнено</option>
+        <option value="1">1 — Частично (слабо)</option>
+        <option value="2">2 — Частично (хорошо)</option>
+        <option value="3">3 — Полностью верно</option>
+      </select></div>
     <button class="btn btn-green" onclick="submitCheck('${hwId}','${qId}','hw')">Сохранить</button>
   `;
   openModal('modal-check-answer');
@@ -1242,18 +1402,23 @@ function saveHW(){
   const title=document.getElementById('nhw-title').value.trim();
   const desc=document.getElementById('nhw-desc').value.trim();
   const due=document.getElementById('nhw-due').value;
-  const sid=getSelectedStudent();
+  const fileUrl=document.getElementById('nhw-fileurl').value.trim();
   if(!title){ showNotif('Введите тему ДЗ'); return; }
+  const sids=getCheckedModalStudents('modal-hw-students');
+  if(!sids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
   const hws=load('hw')||[];
-  hws.push({id:'hw'+Date.now(),studentId:sid,title,desc,due,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru')});
+  sids.forEach(sid=>{
+    hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru')});
+  });
   save('hw',hws);
   _tempHWQuestions=[];
   document.getElementById('nhw-questions-list').innerHTML='';
   document.getElementById('nhw-title').value='';
   document.getElementById('nhw-desc').value='';
+  document.getElementById('nhw-fileurl').value='';
   closeModal('modal-create-hw');
   renderHWAdmin();
-  showNotif('✅ ДЗ создано');
+  showNotif(`✅ ДЗ отправлено ${sids.length > 1 ? sids.length+' ученикам' : '1 ученику'}`);
 }
 function deleteHW(id){ save('hw',(load('hw')||[]).filter(h=>h.id!==id)); renderHWAdmin(); }
 
@@ -1409,21 +1574,15 @@ function renderStudentDashboard(){
 function renderStudentMaterials(){
   const sid=currentUser.id;
   const content=(load('content')||[]).filter(c=>c.studentId===sid);
-  ['video','article','pdf','word'].forEach(type=>{
+  ['video','theory','pdf','word'].forEach(type=>{
     const el=document.getElementById('s-list-'+type);
     if(!el) return;
     const items=content.filter(c=>c.type===type);
-    el.innerHTML=`<div class="card"><div class="card-title"><span class="dot"></span>${{video:'🎬 Видео',article:'📝 Статьи',pdf:'📄 PDF',word:'📋 Word'}[type]}</div>${items.map(c=>contentItemHTML(c,false)).join('')||emptyHTML()}</div>`;
+    el.innerHTML=`<div class="card"><div class="card-title"><span class="dot"></span>${{video:'🎬 Видео',theory:'📖 Теория',pdf:'📄 PDF',word:'📋 Word'}[type]}</div>${items.map(c=>contentItemHTML(c,false)).join('')||emptyHTML()}</div>`;
   });
 }
 
-function viewArticle(id){
-  const c=(load('content')||[]).find(c=>c.id===id);
-  if(!c) return;
-  document.getElementById('view-article-title').textContent=c.title;
-  document.getElementById('view-article-body').textContent=c.body;
-  openModal('modal-view-article');
-}
+function viewArticle(id){ viewTheory(id); } // legacy alias
 
 // STUDENT TESTS
 function renderStudentTests(){
@@ -1678,8 +1837,224 @@ function bookSlot(slotId){
 }
 
 // ═══════════════════════════════════════════
-// TABS
+// MULTI-SEND
 // ═══════════════════════════════════════════
+let _multiSendMode=false;
+let _multiSendTestsMode=false;
+let _multiSendHWMode=false;
+
+function toggleMultiSend(on){
+  _multiSendMode=on;
+  const bar=document.getElementById('multi-send-bar');
+  bar.style.display=on?'block':'none';
+  if(on) buildMultiStudentCheckboxes('multi-student-checkboxes');
+}
+function toggleMultiSendTests(on){
+  _multiSendTestsMode=on;
+  const bar=document.getElementById('multi-send-bar-tests');
+  bar.style.display=on?'block':'none';
+  if(on) buildMultiStudentCheckboxes('multi-student-tests-checkboxes');
+}
+function toggleMultiSendHW(on){
+  _multiSendHWMode=on;
+  const bar=document.getElementById('multi-send-bar-hw');
+  bar.style.display=on?'block':'none';
+  if(on) buildMultiStudentCheckboxes('multi-student-hw-checkboxes');
+}
+function buildMultiStudentCheckboxes(containerId){
+  const students=getStudents();
+  const el=document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML=students.map(s=>`
+    <label style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep)"> ${s.name}
+    </label>`).join('');
+}
+function getCheckedStudents(containerId){
+  return [...document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)].map(cb=>cb.value);
+}
+function sendToMultiple(){
+  const ids=getCheckedStudents('multi-student-checkboxes');
+  if(!ids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
+  // Copy all content of current selected student to chosen students
+  const sid=getSelectedStudent();
+  const content=load('content')||[];
+  const toCopy=content.filter(c=>c.studentId===sid);
+  if(!toCopy.length){ showNotif('Нет материалов для отправки'); return; }
+  ids.forEach(targetId=>{
+    if(targetId===sid) return;
+    toCopy.forEach(c=>{
+      content.push({...c, id:'ct_'+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId});
+    });
+  });
+  save('content',content);
+  toggleMultiSend(false);
+  showNotif(`✅ Материалы отправлены ${ids.length} ученикам`);
+}
+function sendTestToMultiple(){
+  const ids=getCheckedStudents('multi-student-tests-checkboxes');
+  if(!ids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
+  const sid=getSelectedStudent();
+  const tests=load('tests')||[];
+  const toCopy=tests.filter(t=>t.studentId===sid);
+  if(!toCopy.length){ showNotif('Нет тестов для отправки'); return; }
+  ids.forEach(targetId=>{
+    if(targetId===sid) return;
+    toCopy.forEach(t=>{
+      tests.push({...t, id:'t'+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId, submitted:false, answers:{}, autoScore:0});
+    });
+  });
+  save('tests',tests);
+  toggleMultiSendTests(false);
+  showNotif(`✅ Тесты отправлены ${ids.length} ученикам`);
+}
+function sendHWToMultiple(){
+  const ids=getCheckedStudents('multi-student-hw-checkboxes');
+  if(!ids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
+  const sid=getSelectedStudent();
+  const hws=load('hw')||[];
+  const toCopy=hws.filter(h=>h.studentId===sid);
+  if(!toCopy.length){ showNotif('Нет ДЗ для отправки'); return; }
+  ids.forEach(targetId=>{
+    if(targetId===sid) return;
+    toCopy.forEach(h=>{
+      hws.push({...h, id:'hw'+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId, submitted:false, answers:{}});
+    });
+  });
+  save('hw',hws);
+  toggleMultiSendHW(false);
+  showNotif(`✅ ДЗ отправлены ${ids.length} ученикам`);
+}
+
+// ═══════════════════════════════════════════
+// REPORTS
+// ═══════════════════════════════════════════
+function renderReportsAdmin(){
+  const students=getStudents();
+  const sel=document.getElementById('report-student-select');
+  sel.innerHTML=students.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  generateReport();
+}
+function generateReport(){
+  const sid=document.getElementById('report-student-select').value;
+  if(!sid) return;
+  const students=getStudents();
+  const student=students.find(s=>s.id===sid);
+  const content=(load('content')||[]).filter(c=>c.studentId===sid);
+  const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
+  const hws=(load('hw')||[]).filter(h=>h.studentId===sid);
+
+  const theoryCount=content.filter(c=>c.type==='theory').length;
+  const testsTotal=tests.length;
+  const testsSubmitted=tests.filter(t=>t.submitted).length;
+  const hwTotal=hws.length;
+  const hwSubmitted=hws.filter(h=>h.submitted).length;
+  const hwPct=hwTotal?Math.round(hwSubmitted/hwTotal*100):0;
+
+  // Auto-score analysis
+  let totalAuto=0, correctAuto=0;
+  tests.filter(t=>t.submitted).forEach(t=>{
+    totalAuto+=(t.autoTotal||0);
+    correctAuto+=(t.autoScore||0);
+  });
+  const autoAccuracy=totalAuto?Math.round(correctAuto/totalAuto*100):null;
+
+  // Exam grades analysis for HW
+  let examGrades=[];
+  hws.forEach(h=>{
+    (h.questions||[]).forEach(q=>{
+      if(q.examGrade!==undefined && q.examGrade!=='') examGrades.push(Number(q.examGrade));
+    });
+  });
+  const avgExam=examGrades.length?( examGrades.reduce((a,b)=>a+b,0)/examGrades.length).toFixed(2):null;
+
+  // 5-grade analysis
+  let grades5=[];
+  tests.concat(hws).forEach(item=>{
+    (item.questions||[]).forEach(q=>{
+      if(q.grade) grades5.push(Number(q.grade));
+    });
+  });
+  const avgGrade5=grades5.length?(grades5.reduce((a,b)=>a+b,0)/grades5.length).toFixed(2):null;
+
+  const bar=(pct,color='var(--green-mid)')=>`<div style="background:var(--green-xpale);border-radius:100px;height:10px;overflow:hidden;margin-top:6px"><div style="width:${pct}%;background:${color};height:100%;border-radius:100px;transition:width 0.6s"></div></div>`;
+
+  document.getElementById('report-output').innerHTML=`
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📊 Отчёт: ${student.name} — ${new Date().toLocaleDateString('ru')}</div>
+      <div class="grid-3" style="margin-bottom:20px">
+        <div class="stat-card"><div class="stat-icon">📖</div><div class="stat-num">${theoryCount}</div><div class="stat-label">Теор. уроков</div></div>
+        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${testsSubmitted}/${testsTotal}</div><div class="stat-label">Тестов сдано</div></div>
+        <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hwSubmitted}/${hwTotal}</div><div class="stat-label">ДЗ выполнено</div></div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Выполнение ДЗ</div>
+        ${bar(hwPct)}
+        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${hwPct}% заданий сдано</div>
+      </div>
+      ${autoAccuracy!==null?`<div style="margin-bottom:18px">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Точность в авто-тестах</div>
+        ${bar(autoAccuracy, autoAccuracy>=70?'var(--green-mid)':'#e07b00')}
+        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${autoAccuracy}% правильных ответов (${correctAuto} из ${totalAuto})</div>
+      </div>`:''}
+      ${avgGrade5?`<div style="margin-bottom:18px">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Средняя оценка (5-балльная)</div>
+        ${bar(Number(avgGrade5)/5*100)}
+        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${avgGrade5} / 5.0</div>
+      </div>`:''}
+      ${avgExam?`<div style="margin-bottom:18px">
+        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Средний балл (экзам. 0–3)</div>
+        ${bar(Number(avgExam)/3*100, Number(avgExam)>=2?'var(--green-mid)':'#c0392b')}
+        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${avgExam} / 3.0 (${examGrades.length} оценок)</div>
+      </div>`:''}
+      <hr class="divider">
+      <div style="font-weight:700;margin-bottom:10px;color:var(--accent)">🔍 Анализ по тестам</div>
+      ${tests.filter(t=>t.submitted).map(t=>{
+        const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null;
+        return `<div style="margin-bottom:10px">
+          <div style="font-size:0.88rem;font-weight:600">${t.title}</div>
+          ${pct!==null?`${bar(pct, pct>=70?'var(--green-mid)':'#e07b00')}<div style="font-size:0.77rem;color:var(--text3);margin-top:3px">${pct}% авто (${t.autoScore||0}/${t.autoTotal})</div>`:'<div style="font-size:0.77rem;color:var(--text3)">Только открытые вопросы</div>'}
+        </div>`;
+      }).join('')||'<div style="color:var(--text3);font-size:0.85rem">Нет сданных тестов</div>'}
+      <hr class="divider">
+      <div style="font-weight:700;margin-bottom:10px;color:var(--accent)">📝 Домашние задания</div>
+      ${hws.map(h=>{
+        const examQs=(h.questions||[]).filter(q=>q.examGrade!==undefined&&q.examGrade!=='');
+        const avgEG=examQs.length?(examQs.reduce((a,q)=>a+Number(q.examGrade),0)/examQs.length).toFixed(1):null;
+        return `<div class="hw-item">
+          <div class="hw-status-dot ${h.submitted?'done':'pending'}"></div>
+          <div>
+            <div class="content-name" style="font-size:0.85rem">${h.title}</div>
+            <div class="content-meta">Срок: ${h.due||'—'} · ${h.submitted?'✅ Сдано':'⏳ Не сдано'}</div>
+            ${avgEG?`<div class="content-meta">Экзам. балл: ${avgEG}/3</div>`:''}
+          </div>
+        </div>`;
+      }).join('')||'<div style="color:var(--text3);font-size:0.85rem">Нет ДЗ</div>'}
+      <hr class="divider">
+      <button class="btn btn-green" onclick="downloadReport('${sid}')">⬇ Скачать отчёт (txt)</button>
+    </div>`;
+}
+function downloadReport(sid){
+  const students=getStudents();
+  const s=students.find(s=>s.id===sid);
+  const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
+  const hws=(load('hw')||[]).filter(h=>h.studentId===sid);
+  let txt=`ОТЧЁТ ПО УЧЕНИКУ: ${s.name}\nДата: ${new Date().toLocaleDateString('ru')}\n${'='.repeat(40)}\n\n`;
+  txt+=`ТЕСТЫ (${tests.filter(t=>t.submitted).length} из ${tests.length} сдано):\n`;
+  tests.forEach(t=>{ txt+=`  • ${t.title}: ${t.submitted?`Авто ${t.autoScore||0}/${t.autoTotal||0}`:'Не сдан'}\n`; });
+  txt+=`\nДОМАШНИЕ ЗАДАНИЯ (${hws.filter(h=>h.submitted).length} из ${hws.length} сдано):\n`;
+  hws.forEach(h=>{
+    txt+=`  • ${h.title}: ${h.submitted?'Сдано':'Не сдано'}`;
+    const examQs=(h.questions||[]).filter(q=>q.examGrade!==undefined&&q.examGrade!=='');
+    if(examQs.length) txt+=` | Экзам: ${(examQs.reduce((a,q)=>a+Number(q.examGrade),0)/examQs.length).toFixed(1)}/3`;
+    txt+='\n';
+  });
+  const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`Отчёт_${s.name.replace(/ /g,'_')}.txt`;
+  a.click();
+}
 function switchTab(group, tabEl, targetId){
   const allTabs=tabEl.closest('.tabs').querySelectorAll('.tab');
   allTabs.forEach(t=>t.classList.remove('active'));
