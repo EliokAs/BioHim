@@ -370,7 +370,17 @@ tr:hover td { background: var(--bg2); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--green-pale); border-radius: 10px; }
 
-/* ─── ACCORDION ─── */
+.todo-item.clickable-todo:hover { filter: brightness(0.96); transform: translateX(2px); transition: all 0.15s; }
+.cal-popup-item.clickable-todo:hover { filter: brightness(0.96); transform: translateX(2px); transition: all 0.15s; }
+
+
+.nav-item .rep-badge {
+  margin-left:auto; background:#e74c3c; color:#fff;
+  border-radius:10px; font-size:0.68rem; font-weight:700;
+  padding:2px 7px; line-height:1.4;
+}
+
+
 .accordion-item {
   background: var(--card); border-radius: var(--radius); border: 1px solid var(--green-xpale);
   margin-bottom: 12px; box-shadow: var(--shadow); overflow: hidden;
@@ -692,6 +702,49 @@ tr:hover td { background: var(--bg2); }
         <div class="filter-pill" onclick="setMaterialFilter('viewed',this)">✅ Просмотрено</div>
       </div>
       <div id="s-list-theory-accordion"></div>
+    </div>
+
+    <!-- Student Spaced Repetition -->
+    <div class="page" id="page-student-repeat">
+      <div class="page-title">🧠 Умное повторение</div>
+      <div class="page-sub">Повторяйте материалы по методу интервальных повторений — в нужный момент</div>
+      <div id="repeat-due-banner" style="display:none;margin-bottom:18px"></div>
+      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="stat-icon">🔥</div><div class="stat-num" id="rep-due-count">0</div><div class="stat-label">Нужно повторить</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="stat-icon">✅</div><div class="stat-num" id="rep-done-count">0</div><div class="stat-label">Повторено сегодня</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="stat-icon">📚</div><div class="stat-num" id="rep-total-count">0</div><div class="stat-label">Всего уроков</div></div>
+      </div>
+      <div id="repeat-session" style="display:none">
+        <div class="card" id="repeat-card-wrap" style="margin-bottom:18px">
+          <div style="font-size:0.75rem;color:var(--text3);margin-bottom:10px" id="repeat-progress-label"></div>
+          <div style="font-weight:700;font-size:1.1rem;color:var(--accent);margin-bottom:16px" id="repeat-card-title"></div>
+          <div id="repeat-card-body" style="line-height:1.8;color:var(--text2);font-size:0.92rem;white-space:pre-wrap;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale);max-height:260px;overflow-y:auto"></div>
+          <div id="repeat-card-video" style="display:none;margin-top:14px;border-radius:12px;overflow:hidden;background:#000;position:relative;width:100%;height:260px">
+            <iframe id="repeat-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe>
+          </div>
+          <div id="repeat-card-files" style="margin-top:12px"></div>
+        </div>
+        <div class="card" style="margin-bottom:18px">
+          <div style="font-weight:600;margin-bottom:12px;color:var(--accent)">Как хорошо вы помните этот материал?</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn" style="flex:1;background:#fdecea;color:#c0392b;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(1)">😟 Плохо<br><span style="font-size:0.72rem;font-weight:400">повтор завтра</span></button>
+            <button class="btn" style="flex:1;background:#fff8e1;color:#b8860b;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(2)">😐 Средне<br><span style="font-size:0.72rem;font-weight:400">через 3 дня</span></button>
+            <button class="btn" style="flex:1;background:#e8f8f0;color:#27ae60;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(4)">😊 Хорошо<br><span style="font-size:0.72rem;font-weight:400">через 7 дней</span></button>
+            <button class="btn" style="flex:1;background:#e8f4fd;color:#1565c0;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(5)">🤩 Отлично<br><span style="font-size:0.72rem;font-weight:400">через 14 дней</span></button>
+          </div>
+        </div>
+      </div>
+      <div id="repeat-all-done" style="display:none">
+        <div class="empty-state" style="padding:48px 20px">
+          <div style="font-size:3rem;margin-bottom:12px">🎉</div>
+          <p style="font-weight:700;font-size:1.1rem;color:var(--accent)">Отлично! Все повторения на сегодня выполнены</p>
+          <p style="margin-top:8px;color:var(--text3)">Возвращайтесь завтра — система напомнит, что повторить</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>📋 Все уроки для повторения</div>
+        <div id="repeat-all-list" style="margin-top:12px"></div>
+      </div>
     </div>
 
     <!-- Student Tests -->
@@ -1206,6 +1259,7 @@ const studentNav=[
   {section:'Кабинет'},
   {id:'student-dashboard', icon:'🏠',label:'Главная'},
   {id:'student-materials', icon:'📚',label:'Материалы'},
+  {id:'student-repeat',    icon:'🧠',label:'Умное повторение'},
   {id:'student-tests',     icon:'📋',label:'Тесты'},
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
   {section:'Прочее'},
@@ -1253,6 +1307,7 @@ function renderPage(p){
   else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
   else if(p==='student-materials') renderStudentMaterials();
+  else if(p==='student-repeat') renderRepeatPage();
   else if(p==='student-tests') renderStudentTests();
   else if(p==='student-hw') renderStudentHW();
   else if(p==='student-payment') renderStudentPayment();
@@ -1645,8 +1700,9 @@ function addTheory(){
   const sids=getCheckedModalStudents('modal-theory-students');
   if(!sids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
   const content=load('content')||[];
+  const newItems=[];
   sids.forEach(sid=>{
-    content.push({
+    const item={
       id:'ct_'+Date.now()+'_'+sid,
       studentId:sid, type:'theory', title, body,
       videoUrl: videoUrl||'',
@@ -1654,9 +1710,13 @@ function addTheory(){
       files: _theoryFiles.filter(f=>f.url||f.name).map(f=>({...f})),
       attachmentUrl:'',
       date:new Date().toLocaleDateString('ru')
-    });
+    };
+    content.push(item);
+    newItems.push(item);
   });
   save('content',content);
+  // Schedule for spaced repetition
+  newItems.forEach(item=>srScheduleItem(item.studentId, item.id));
   _theoryImages=[];
   _theoryFiles=[];
   document.getElementById('nth-title').value='';
@@ -2401,23 +2461,275 @@ function rejectBooking(id){
 // ═══════════════════════════════════════════
 // STUDENT PAGES
 // ═══════════════════════════════════════════
+// ══════════════════════════════════════════
+// УМНОЕ ПОВТОРЕНИЕ (SM-2)
+// ══════════════════════════════════════════
+
+// intervals in days by rating: 1=tomorrow, 2=3d, 4=7d, 5=14d
+const SR_INTERVALS = {1:1, 2:3, 3:5, 4:7, 5:14};
+
+function srKey(sid){ return 'sr_'+sid; }
+
+function getSRData(sid){
+  const raw = localStorage.getItem('biohim_'+srKey(sid));
+  return raw ? JSON.parse(raw) : {};
+}
+function saveSRData(sid, data){
+  localStorage.setItem('biohim_'+srKey(sid), JSON.stringify(data));
+}
+
+// Returns today as YYYY-MM-DD string
+function todayStr(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+// Schedule a content item for spaced repetition (called when new theory is saved)
+function srScheduleItem(sid, contentId){
+  const data = getSRData(sid);
+  if(!data[contentId]){
+    // First time: due tomorrow
+    const due = new Date(); due.setDate(due.getDate()+1);
+    data[contentId] = {
+      nextDue: due.toISOString().slice(0,10),
+      interval: 1,
+      repetitions: 0,
+      ef: 2.5 // easiness factor
+    };
+    saveSRData(sid, data);
+    // Create notification
+    addSRNotification(sid, contentId, due);
+  }
+}
+
+function addSRNotification(sid, contentId, dueDate){
+  const content=(load('content')||[]).find(c=>c.id===contentId);
+  const title = content ? content.title : 'материал';
+  const dateStr = dueDate.toLocaleDateString('ru');
+  const notifs = load('notifs')||[];
+  notifs.push({
+    id:'sr_'+Date.now()+'_'+contentId,
+    studentId:sid,
+    type:'repeat',
+    contentId,
+    text:`🧠 Пора повторить: «${title}» — ${dateStr}`,
+    date: dateStr,
+    read:false
+  });
+  save('notifs', notifs);
+}
+
+// After rating a card, compute next due date (simplified SM-2)
+function srRateItem(sid, contentId, rating){
+  const data = getSRData(sid);
+  const item = data[contentId] || {interval:1, repetitions:0, ef:2.5};
+  const interval = SR_INTERVALS[rating] || 1;
+  item.repetitions = (item.repetitions||0)+1;
+  item.interval = interval;
+  const due = new Date();
+  due.setDate(due.getDate()+interval);
+  item.nextDue = due.toISOString().slice(0,10);
+  item.lastRated = todayStr();
+  item.ratedToday = true;
+  data[contentId] = item;
+  saveSRData(sid, data);
+  // Schedule next notification
+  if(rating >= 3) addSRNotification(sid, contentId, due);
+}
+
+function getDueItems(sid){
+  const data = getSRData(sid);
+  const today = todayStr();
+  const content = (load('content')||[]).filter(c=>c.studentId===sid && c.type==='theory');
+  // Items due today or overdue
+  return content.filter(c=>{
+    const item = data[c.id];
+    if(!item) return false; // not scheduled yet
+    return item.nextDue <= today;
+  });
+}
+
+function getDoneTodayItems(sid){
+  const data = getSRData(sid);
+  const today = todayStr();
+  return Object.values(data).filter(v=>v.lastRated===today).length;
+}
+
+// Session state
+let _repQueue = [];
+let _repIndex = 0;
+
+function renderRepeatPage(){
+  const sid = currentUser.id;
+  const data = getSRData(sid);
+  const today = todayStr();
+  const allContent = (load('content')||[]).filter(c=>c.studentId===sid && c.type==='theory');
+
+  // Auto-schedule items that were never scheduled
+  let changed = false;
+  allContent.forEach(c=>{
+    if(!data[c.id]){
+      data[c.id] = {nextDue: today, interval:1, repetitions:0, ef:2.5};
+      changed = true;
+    }
+  });
+  if(changed) saveSRData(sid, data);
+
+  const dueItems = getDueItems(sid);
+  const doneToday = getDoneTodayItems(sid);
+
+  document.getElementById('rep-due-count').textContent = dueItems.length;
+  document.getElementById('rep-done-count').textContent = doneToday;
+  document.getElementById('rep-total-count').textContent = allContent.length;
+
+  // Update nav badge
+  updateRepeatBadge(dueItems.length);
+
+  // Banner
+  const banner = document.getElementById('repeat-due-banner');
+  if(dueItems.length > 0){
+    banner.style.display='block';
+    banner.innerHTML=`<div style="background:linear-gradient(135deg,#fff3cd,#ffe08a);border:1.5px solid #d4a017;border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:14px">
+      <div style="font-size:2rem">🔥</div>
+      <div>
+        <div style="font-weight:700;color:#7d5a00">Есть ${dueItems.length} ${dueItems.length===1?'урок':'урока'} для повторения!</div>
+        <div style="font-size:0.85rem;color:#9a7200;margin-top:3px">Нажмите кнопку ниже, чтобы начать сессию</div>
+      </div>
+      <button class="btn btn-green" style="margin-left:auto;white-space:nowrap" onclick="startRepeatSession()">▶ Начать</button>
+    </div>`;
+  } else {
+    banner.style.display='none';
+  }
+
+  // All list
+  const listEl = document.getElementById('repeat-all-list');
+  if(!allContent.length){
+    listEl.innerHTML=emptyHTML();
+  } else {
+    listEl.innerHTML = allContent.map(c=>{
+      const sr = data[c.id]||{};
+      const isDue = sr.nextDue && sr.nextDue <= today;
+      const nextDate = sr.nextDue ? new Date(sr.nextDue).toLocaleDateString('ru') : '—';
+      const reps = sr.repetitions||0;
+      return `<div class="hw-item" style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="font-size:1.3rem">${isDue?'🔥':'📖'}</div>
+        <div style="flex:1">
+          <div class="content-name">${c.title}</div>
+          <div class="content-meta">Повторений: ${reps} · Следующее: ${nextDate}</div>
+        </div>
+        ${isDue?`<span class="accordion-badge has-video" style="background:#fff3cd;color:#b8860b">Нужно повторить</span>`
+                :`<span class="accordion-badge has-text">✓ Готово</span>`}
+      </div>`;
+    }).join('');
+  }
+
+  // Show/hide session
+  document.getElementById('repeat-session').style.display='none';
+  document.getElementById('repeat-all-done').style.display='none';
+}
+
+function startRepeatSession(){
+  const sid = currentUser.id;
+  _repQueue = getDueItems(sid);
+  _repIndex = 0;
+  if(!_repQueue.length){
+    document.getElementById('repeat-session').style.display='none';
+    document.getElementById('repeat-all-done').style.display='block';
+    return;
+  }
+  document.getElementById('repeat-due-banner').style.display='none';
+  showRepeatCard();
+}
+
+function showRepeatCard(){
+  if(_repIndex >= _repQueue.length){
+    document.getElementById('repeat-session').style.display='none';
+    document.getElementById('repeat-all-done').style.display='block';
+    renderRepeatPage();
+    return;
+  }
+  const c = _repQueue[_repIndex];
+  document.getElementById('repeat-session').style.display='block';
+  document.getElementById('repeat-all-done').style.display='none';
+  document.getElementById('repeat-progress-label').textContent=`Карточка ${_repIndex+1} из ${_repQueue.length}`;
+  document.getElementById('repeat-card-title').textContent=c.title;
+  // Body
+  const bodyEl=document.getElementById('repeat-card-body');
+  bodyEl.style.display=c.body?'block':'none';
+  bodyEl.textContent=c.body||'';
+  // Video
+  const videoUrl=c.videoUrl||'';
+  const embedUrl=videoUrl?getVideoEmbedUrl(videoUrl):'';
+  const videoWrap=document.getElementById('repeat-card-video');
+  if(embedUrl){
+    document.getElementById('repeat-iframe').src=embedUrl;
+    videoWrap.style.display='block';
+  } else {
+    document.getElementById('repeat-iframe').src='';
+    videoWrap.style.display='none';
+  }
+  // Files
+  const filesEl=document.getElementById('repeat-card-files');
+  const files=c.files||[];
+  filesEl.innerHTML=files.length?`<div style="display:flex;flex-direction:column;gap:6px">${files.map(f=>`
+    <a href="${f.url||'#'}" target="_blank" class="content-item" style="text-decoration:none;color:inherit">
+      <div class="content-icon">${f.type==='pdf'?'📄':'📋'}</div>
+      <div class="content-info"><div class="content-name">${f.name||'Файл'}</div></div>
+      <div style="color:var(--green-mid);font-size:0.85rem">⬇ Открыть</div>
+    </a>`).join('')}</div>`:'';
+}
+
+function rateCard(rating){
+  if(_repIndex >= _repQueue.length) return;
+  const c = _repQueue[_repIndex];
+  srRateItem(currentUser.id, c.id, rating);
+  _repIndex++;
+  showRepeatCard();
+}
+
+function updateRepeatBadge(count){
+  document.querySelectorAll('#nav-student-repeat').forEach(el=>{
+    const existing = el.querySelector('.rep-badge');
+    if(existing) existing.remove();
+    if(count>0){
+      el.insertAdjacentHTML('beforeend',`<span class="rep-badge">${count}</span>`);
+    }
+  });
+}
+
+
 function renderStudentDashboard(){
   document.getElementById('student-wb-title').textContent=`Добро пожаловать, ${currentUser.name}! 👋`;
   const sid=currentUser.id;
   const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
   const hw=(load('hw')||[]).filter(h=>h.studentId===sid);
   const content=(load('content')||[]).filter(c=>c.studentId===sid);
+
+  // Auto-schedule all theory items for SR
+  const srData = getSRData(sid);
+  let srChanged=false;
+  content.filter(c=>c.type==='theory').forEach(c=>{
+    if(!srData[c.id]){ srData[c.id]={nextDue:todayStr(),interval:1,repetitions:0,ef:2.5}; srChanged=true; }
+  });
+  if(srChanged) saveSRData(sid, srData);
+
+  const dueCount = getDueItems(sid).length;
+  updateRepeatBadge(dueCount);
+
   document.getElementById('student-stats-grid').innerHTML=`
     <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-num">${content.length}</div><div class="stat-label">Материалов</div></div>
-    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${tests.filter(t=>!t.submitted).length}</div><div class="stat-label">Тестов ждут</div></div>
+    <div class="stat-card"><div class="stat-icon">🧠</div><div class="stat-num" style="${dueCount>0?'color:#c0392b':''}">${dueCount}</div><div class="stat-label">Нужно повторить</div></div>
     <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hw.filter(h=>!h.submitted).length}</div><div class="stat-label">ДЗ не сдано</div></div>
   `;
   const notifs=(load('notifs')||[]).filter(n=>n.studentId===sid);
-  document.getElementById('student-notifs-list').innerHTML=notifs.slice().reverse().map(n=>`
-    <div class="hw-item">
-      <div class="hw-status-dot new"></div>
+  document.getElementById('student-notifs-list').innerHTML=notifs.slice().reverse().map(n=>{
+    const isRepeat = n.type==='repeat';
+    return `<div class="hw-item" style="cursor:${isRepeat?'pointer':'default'}" onclick="${isRepeat?'navigateTo(\'student-repeat\')':''}">
+      <div class="hw-status-dot ${isRepeat?'':'new'}"></div>
       <div><div class="content-name" style="font-size:0.85rem">${n.text}</div><div class="content-meta">${n.date}</div></div>
-    </div>`).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
+      ${isRepeat?'<span style="font-size:0.75rem;color:var(--green-mid);margin-left:auto">→ Повторить</span>':''}
+    </div>`;
+  }).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
 
   // Render student calendar & todo
   _sCalYear = new Date().getFullYear();
@@ -2496,7 +2808,7 @@ function renderStudentTests(){
     return;
   }
   el.innerHTML=tests.map(t=>`
-    <div class="card">
+    <div class="card" data-item-id="${t.id}">
       <div class="card-title"><span class="dot"></span>${t.title}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         ${t.submitted?`<span class="badge badge-green">✅ Сдан</span>`:`<span class="badge badge-gold">⏳ Ожидает</span>`}
@@ -2586,7 +2898,7 @@ function renderStudentHW(){
     return;
   }
   el.innerHTML=hws.map(h=>`
-    <div class="card">
+    <div class="card" data-item-id="${h.id}">
       <div class="card-title"><span class="dot"></span>${h.title}</div>
       <div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${h.desc}</div>
       ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
@@ -3229,6 +3541,36 @@ function closeCalPopup(){
 
 // ── STUDENT CALENDAR ──
 // Get events filtered for the current student
+function navigateToEvent(nav, itemId){
+  closeCalPopup();
+  navigateTo(nav);
+  if(itemId){
+    // Highlight the target item after page renders
+    setTimeout(()=>{
+      // For tests: open the test directly
+      if(nav==='student-tests'){
+        const el = document.querySelector(`[data-item-id="${itemId}"]`);
+        if(el){
+          el.scrollIntoView({behavior:'smooth', block:'center'});
+          el.style.transition='box-shadow 0.3s';
+          el.style.boxShadow='0 0 0 3px var(--green-mid)';
+          setTimeout(()=>el.style.boxShadow='', 2000);
+        }
+      }
+      // For HW: same highlight
+      if(nav==='student-hw'){
+        const el = document.querySelector(`[data-item-id="${itemId}"]`);
+        if(el){
+          el.scrollIntoView({behavior:'smooth', block:'center'});
+          el.style.transition='box-shadow 0.3s';
+          el.style.boxShadow='0 0 0 3px #ef4444';
+          setTimeout(()=>el.style.boxShadow='', 2000);
+        }
+      }
+    }, 80);
+  }
+}
+
 function getCalEventsForStudent(){
   const events = [];
   const sid = currentUser ? currentUser.id : null;
@@ -3245,7 +3587,7 @@ function getCalEventsForStudent(){
       base.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
       base.setHours(0,0,0,0);
       if(base >= today || w===0){
-        events.push({ date: base, type: 'blue', label: s.time + ' — занятие', who: '' });
+        events.push({ date: base, type: 'blue', label: s.time + ' — занятие', who: '', itemId: s.id, nav: 'student-schedule' });
       }
     }
   });
@@ -3254,7 +3596,7 @@ function getCalEventsForStudent(){
   const hws = load('hw')||[];
   hws.filter(h=>h.studentId===sid && h.due && !h.submitted).forEach(h=>{
     const d = new Date(h.due); d.setHours(0,0,0,0);
-    events.push({ date: d, type: 'red', label: 'ДЗ: ' + h.title, who: '' });
+    events.push({ date: d, type: 'red', label: 'ДЗ: ' + h.title, who: '', itemId: h.id, nav: 'student-hw' });
   });
 
   // YELLOW — срок тестов этого ученика
@@ -3267,7 +3609,7 @@ function getCalEventsForStudent(){
       if(parts.length===3){ d = new Date(+parts[2],+parts[1]-1,+parts[0]); d.setDate(d.getDate()+7); d.setHours(0,0,0,0); }
     }
     if(!d || isNaN(d)) return;
-    events.push({ date: d, type: 'yellow', label: 'Тест: ' + t.title, who: '' });
+    events.push({ date: d, type: 'yellow', label: 'Тест: ' + t.title, who: '', itemId: t.id, nav: 'student-tests' });
   });
 
   return events;
@@ -3330,15 +3672,20 @@ function openSCalDay(key, dayNum){
   const dateObj = new Date(y,m-1,d);
   const dateStr = dateObj.toLocaleDateString('ru',{weekday:'long',day:'numeric',month:'long'});
   document.getElementById('cal-popup-title').textContent = '\uD83D\uDCC5 ' + dateStr.charAt(0).toUpperCase()+dateStr.slice(1);
-  const typeLabels = {blue:'\uD83D\uDCC5 Занятие', red:'\uD83D\uDCDD Сдача ДЗ', yellow:'\uD83D\uDCCB Тест'};
+  const typeLabels = {blue:'📅 Занятие', red:'📝 Сдача ДЗ', yellow:'📋 Тест'};
+  const typeArrow  = {yellow:'→ К тесту', red:'→ К ДЗ', blue:''};
   const typePrio = {blue:0,yellow:1,red:2};
   dayEvs.sort((a,b)=>typePrio[a.type]-typePrio[b.type]);
-  document.getElementById('cal-popup-body').innerHTML = dayEvs.map(ev=>
-    '<div class="cal-popup-item '+ev.type+'">'+
-    '<div class="todo-dot '+ev.type+'" style="margin-top:3px"></div>'+
-    '<div><div class="todo-title">'+ev.label+'</div>'+
-    '<div class="todo-meta">'+typeLabels[ev.type]+'</div></div></div>'
-  ).join('');
+  document.getElementById('cal-popup-body').innerHTML = dayEvs.map(ev=>{
+    const clickable = ev.nav && ev.nav !== 'student-schedule';
+    return '<div class="cal-popup-item '+ev.type+(clickable?' clickable-todo':'')+'"'
+      +(clickable?` onclick="navigateToEvent('${ev.nav}','${ev.itemId||''}')" style="cursor:pointer"`:'')+'>'
+      +'<div class="todo-dot '+ev.type+'" style="margin-top:3px;flex-shrink:0"></div>'
+      +'<div style="flex:1"><div class="todo-title">'+ev.label+'</div>'
+      +'<div class="todo-meta">'+typeLabels[ev.type]+'</div></div>'
+      +(clickable?'<span style="font-size:0.78rem;color:var(--green-mid);font-weight:600;white-space:nowrap">'+typeArrow[ev.type]+'</span>':'')
+      +'</div>';
+  }).join('');
   document.getElementById('cal-popup-bg').classList.add('open');
 }
 
@@ -3371,15 +3718,20 @@ function renderStudentTodoList(mode){
     return;
   }
 
-  const typeLabels = {blue:'\uD83D\uDCC5 Занятие', red:'\uD83D\uDCDD Сдача ДЗ', yellow:'\uD83D\uDCCB Тест'};
+  const typeLabels = {blue:'📅 Занятие', red:'📝 Сдача ДЗ', yellow:'📋 Тест'};
+  const typeArrow  = {blue:'', red:'→ К ДЗ', yellow:'→ К тесту'};
 
   if(mode==='day'){
-    el.innerHTML = filtered.map(ev=>
-      '<div class="todo-item '+ev.type+'">'+
-      '<div class="todo-dot '+ev.type+'"></div>'+
-      '<div><div class="todo-title">'+ev.label+'</div>'+
-      '<div class="todo-meta">'+typeLabels[ev.type]+'</div></div></div>'
-    ).join('');
+    el.innerHTML = filtered.map(ev=>{
+      const clickable = ev.nav && ev.nav !== 'student-schedule';
+      return '<div class="todo-item '+ev.type+(clickable?' clickable-todo':'')+'"'
+        +(clickable?` onclick="navigateToEvent('${ev.nav}','${ev.itemId||''}')" style="cursor:pointer"`:'')+'>'
+        +'<div class="todo-dot '+ev.type+'"></div>'
+        +'<div style="flex:1"><div class="todo-title">'+ev.label+'</div>'
+        +'<div class="todo-meta">'+typeLabels[ev.type]+'</div></div>'
+        +(clickable?'<span style="font-size:0.75rem;color:var(--green-mid);font-weight:600">'+typeArrow[ev.type]+'</span>':'')
+        +'</div>';
+    }).join('');
   } else {
     const groups = {};
     filtered.forEach(ev=>{
@@ -3395,18 +3747,20 @@ function renderStudentTodoList(mode){
       if(isToday) lbl = 'Сегодня';
       if(isTomorrow) lbl = 'Завтра';
       html += '<div class="todo-date-group">'+lbl+'</div>';
-      html += g.items.map(ev=>
-        '<div class="todo-item '+ev.type+'">'+
-        '<div class="todo-dot '+ev.type+'"></div>'+
-        '<div><div class="todo-title">'+ev.label+'</div>'+
-        '<div class="todo-meta">'+typeLabels[ev.type]+'</div></div></div>'
-      ).join('');
+      html += g.items.map(ev=>{
+        const clickable = ev.nav && ev.nav !== 'student-schedule';
+        return '<div class="todo-item '+ev.type+(clickable?' clickable-todo':'')+'"'
+          +(clickable?` onclick="navigateToEvent('${ev.nav}','${ev.itemId||''}')" style="cursor:pointer"`:'')+'>'
+          +'<div class="todo-dot '+ev.type+'"></div>'
+          +'<div style="flex:1"><div class="todo-title">'+ev.label+'</div>'
+          +'<div class="todo-meta">'+typeLabels[ev.type]+'</div></div>'
+          +(clickable?'<span style="font-size:0.75rem;color:var(--green-mid);font-weight:600">'+typeArrow[ev.type]+'</span>':'')
+          +'</div>';
+      }).join('');
     });
     el.innerHTML = html;
   }
 }
-
-// ── TODO LIST ──
 function switchTodoTab(mode, el){
   _todoMode = mode;
   document.querySelectorAll('.todo-tab').forEach(t=>t.classList.remove('active'));
