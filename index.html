@@ -893,86 +893,78 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
-<script type="module">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
 // ══════════════════════════════════════════
-// FIREBASE SETUP
+// FIREBASE REALTIME DATABASE SETUP
 // ══════════════════════════════════════════
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot, writeBatch }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 const firebaseConfig = {
   apiKey: "AIzaSyAh_g-_X0bMd23YEh5r5dO3xLu4Awpb1ns",
   authDomain: "biohim-a36ce.firebaseapp.com",
+  databaseURL: "https://biohim-a36ce-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "biohim-a36ce",
   storageBucket: "biohim-a36ce.firebasestorage.app",
   messagingSenderId: "797458613466",
-  appId: "1:797458613466:web:f2e734a65e4e84b7ce51e3",
-  measurementId: "G-Y0HGMYX80R"
+  appId: "1:797458613466:web:f2e734a65e4e84b7ce51e3"
 };
 
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-// ── In-memory cache (replaces localStorage) ──
+// ── In-memory cache ──
 const _cache = {};
 
-// ── Read one collection → returns array ──
+// ── Read one key → returns array ──
 async function loadFromDB(k){
-  const snap = await getDocs(collection(db, k));
-  const arr  = snap.docs.map(d => ({...d.data(), _docId: d.id}));
+  const snap = await db.ref(k).get();
+  const val  = snap.val();
+  // Realtime DB stores objects keyed by id — convert to array
+  const arr  = val ? Object.values(val) : [];
   _cache[k]  = arr;
   return arr;
 }
 
-// ── Write array back to Firestore ──
+// ── Write array to Realtime DB ──
 async function saveToDB(k, arr){
   _cache[k] = arr;
-  // Use a batch for atomicity
-  const batch = writeBatch(db);
-  // 1. Delete existing docs in collection (simple approach: overwrite by id field)
-  const snap = await getDocs(collection(db, k));
-  snap.docs.forEach(d => batch.delete(d.ref));
-  // 2. Write new docs
+  // Convert array to object keyed by id
+  const obj = {};
   arr.forEach(item => {
-    const id   = item.id || item._docId || ('doc_'+Math.random().toString(36).slice(2));
-    const ref  = doc(db, k, String(id));
-    const data = {...item}; delete data._docId;
-    batch.set(ref, data);
+    const id = String(item.id || ('doc_'+Math.random().toString(36).slice(2)));
+    obj[id] = {...item};
   });
-  await batch.commit();
+  await db.ref(k).set(obj);
 }
 
-// ── Sync wrappers used throughout the app ──
-// Synchronous read from cache (populated on login)
+// ── Sync wrappers ──
 function load(k){ return _cache[k] ?? null; }
 
-// Async save + cache update
 function save(k, v){
   _cache[k] = v;
   saveToDB(k, v).catch(e => console.error('Firebase save error:', k, e));
 }
 
-// ── Preload all collections into cache on startup ──
+// ── Preload all keys ──
 const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs'];
 
 async function preloadCache(){
   await Promise.all(COLLECTIONS.map(k => loadFromDB(k)));
 }
 
-// ── Subscribe to real-time changes so all tabs/devices stay in sync ──
+// ── Realtime sync ──
 function subscribeRealtime(){
   COLLECTIONS.forEach(k => {
-    onSnapshot(collection(db, k), snap => {
-      _cache[k] = snap.docs.map(d => ({...d.data(), _docId: d.id}));
-      // Re-render current page if relevant collection changed
-      if(curPage) renderPage(curPage);
+    db.ref(k).on('value', snap => {
+      const val = snap.val();
+      _cache[k] = val ? Object.values(val) : [];
+      if(typeof curPage !== 'undefined' && curPage) renderPage(curPage);
     });
   });
 }
 
 // ══════════════════════════════════════════
-// DEFAULT DATA (written to Firestore once)
+// DEFAULT DATA (written to DB once)
 // ══════════════════════════════════════════
 async function initData(){
   const users = load('users') || [];
@@ -984,7 +976,6 @@ async function initData(){
     ]);
     await loadFromDB('users');
   }
-  if(!(load('content')||[]).length) { /* leave empty */ }
   if(!(load('courses')||[]).length){
     await saveToDB('courses',[
       {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
@@ -1006,6 +997,7 @@ async function initData(){
   if(!load('payments')) _cache['payments'] = [];
   if(!load('tests'))    _cache['tests']    = [];
   if(!load('hw'))       _cache['hw']       = [];
+  if(!load('content'))  _cache['content']  = [];
   if(!load('bookings')) _cache['bookings'] = [];
   if(!load('notifs'))   _cache['notifs']   = [];
 }
@@ -1015,16 +1007,11 @@ async function initData(){
 // ══════════════════════════════════════════
 async function resetAllData(){
   if(!confirm('Удалить ВСЕ данные платформы? Ученики, материалы, тесты, ДЗ — всё будет удалено безвозвратно.')) return;
-  await Promise.all(COLLECTIONS.map(async k => {
-    const snap = await getDocs(collection(db, k));
-    const batch = writeBatch(db);
-    snap.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-    _cache[k] = [];
-  }));
+  await Promise.all(COLLECTIONS.map(k => db.ref(k).remove()));
+  COLLECTIONS.forEach(k => _cache[k] = []);
   location.reload();
 }
-window.resetAllData = resetAllData;
+
 let currentUser = null;
 
 function doLogin(){
@@ -2672,21 +2659,6 @@ function showNotif(msg){
   }
 
   overlay.remove();
-
-  // Expose all functions globally (module scope requires explicit window assignment)
-  const fns = {
-    doLogin, doLogout, resetAllData, navigateTo, openModal, closeModal,
-    switchTab, showNotif, buildNav,
-    addStudent, saveStudent, deleteStudent, editStudent,
-    addContent, deleteContent, addTheory, addTheoryImage, renderTheoryImages, viewTheory, viewArticle,
-    saveTest, addTestQuestion, deleteTestQuestion,
-    saveHW, addHWQuestion, deleteHWQuestion, submitHW, checkHWOpenAnswer, checkOpenAnswer, submitCheck, submitTest,
-    addPayment, deletePayment, editPayment, saveEditPayment,
-    addCourse, deleteCourse, addSlot, deleteSlot, bookSlot, cancelBooking,
-    generateReport, downloadReport,
-    selectStudent, populateModalStudents, getCheckedModalStudents,
-  };
-  Object.entries(fns).forEach(([k,v]) => { try{ window[k]=v; }catch(e){} });
 
   // Press Enter to login
   document.getElementById('login-password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
