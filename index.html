@@ -633,11 +633,25 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
 </div>
 
 <div class="modal-bg" id="modal-add-video">
-  <div class="modal">
+  <div class="modal" style="max-width:620px">
     <div class="modal-title">🎬 Добавить видео</div>
     <span class="modal-close" onclick="closeModal('modal-add-video')">✕</span>
     <div class="form-group"><label>Название</label><input id="nv-title" placeholder="Урок 1: Клетка"></div>
-    <div class="form-group"><label>Ссылка (YouTube/VK)</label><input id="nv-url" placeholder="https://youtube.com/..."></div>
+    <div class="form-group">
+      <label>Ссылка на видео</label>
+      <div style="display:flex;gap:8px">
+        <input id="nv-url" placeholder="YouTube, VK Видео, Google Drive..." style="flex:1">
+        <button class="btn btn-outline btn-sm" onclick="previewVideo()" style="white-space:nowrap">▶ Предпросмотр</button>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text3);margin-top:6px;line-height:1.6">
+        🎬 <b>YouTube:</b> youtube.com/watch?v=… или youtu.be/…<br>
+        📹 <b>VK Видео:</b> vk.com/video… или vkvideo.ru/video…<br>
+        ☁️ <b>Google Drive:</b> drive.google.com/file/d/… (доступ «все по ссылке»)
+      </div>
+    </div>
+    <div id="nv-preview" style="display:none;margin-bottom:16px;border-radius:12px;overflow:hidden;background:#000;position:relative;width:100%;height:300px">
+      <iframe id="nv-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"></iframe>
+    </div>
     <div class="form-group"><label>Описание</label><textarea id="nv-desc" rows="3" placeholder="Краткое описание..."></textarea></div>
     <div class="form-group">
       <label>Отправить ученикам</label>
@@ -816,6 +830,102 @@ hr.divider { border: none; border-top: 1.5px solid var(--green-xpale); margin: 2
     <div class="modal-title">📅 Запись на занятие</div>
     <span class="modal-close" onclick="closeModal('modal-book-slot')">✕</span>
     <div id="book-slot-body"></div>
+  </div>
+</div>
+
+<!-- EDIT STUDENT -->
+<div class="modal-bg" id="modal-edit-student">
+  <div class="modal">
+    <div class="modal-title">✏️ Редактировать ученика</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-student')">✕</span>
+    <input type="hidden" id="es-id">
+    <div class="form-group"><label>Имя</label><input id="es-name" placeholder="Анна Петрова"></div>
+    <div class="form-group"><label>Логин</label><input id="es-login" placeholder="anna" readonly style="opacity:0.6;cursor:not-allowed"></div>
+    <div class="form-group"><label>Новый пароль <span style="font-size:0.75rem;color:var(--text3)">(оставьте пустым чтобы не менять)</span></label><input id="es-pass" type="password" placeholder="••••••"></div>
+    <div class="form-group"><label>Предмет</label>
+      <select id="es-subject"><option>Биология</option><option>Химия</option><option>Биология + Химия</option></select></div>
+    <div class="form-group"><label>Статус</label>
+      <select id="es-active"><option value="true">Активен</option><option value="false">Неактивен</option></select></div>
+    <button class="btn btn-green" onclick="saveEditStudent()">Сохранить</button>
+  </div>
+</div>
+
+<!-- EDIT CONTENT -->
+<div class="modal-bg" id="modal-edit-content">
+  <div class="modal" style="max-width:660px">
+    <div class="modal-title" id="edit-content-title">✏️ Редактировать материал</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-content')">✕</span>
+    <input type="hidden" id="ec-id">
+    <input type="hidden" id="ec-type">
+    <div class="form-group"><label>Название</label><input id="ec-title"></div>
+    <div id="ec-url-group" class="form-group"><label>Ссылка</label>
+      <div style="display:flex;gap:8px">
+        <input id="ec-url" style="flex:1">
+        <button class="btn btn-outline btn-sm" id="ec-preview-btn" onclick="previewEditVideo()" style="white-space:nowrap;display:none">▶ Предпросмотр</button>
+      </div>
+    </div>
+    <div id="ec-video-preview" style="display:none;margin-bottom:16px;border-radius:12px;overflow:hidden;background:#000;position:relative;width:100%;height:280px">
+      <iframe id="ec-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"></iframe>
+    </div>
+    <div class="form-group"><label>Описание</label><textarea id="ec-desc" rows="2"></textarea></div>
+    <!-- Theory-only fields -->
+    <div id="ec-theory-fields" style="display:none">
+      <div class="form-group"><label>Содержание урока</label><textarea id="ec-body" rows="8" placeholder="Текст урока..."></textarea></div>
+      <div class="form-group">
+        <label>Изображения</label>
+        <div id="ec-images-list"></div>
+        <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="addEditTheoryImage()">＋ Добавить изображение</button>
+      </div>
+      <div class="form-group"><label>Ссылка на прикреплённый файл</label><input id="ec-attachmenturl" placeholder="https://..."></div>
+    </div>
+    <button class="btn btn-green" onclick="saveEditContent()">Сохранить</button>
+  </div>
+</div>
+
+<!-- EDIT TEST -->
+<div class="modal-bg" id="modal-edit-test">
+  <div class="modal" style="max-width:660px">
+    <div class="modal-title">✏️ Редактировать тест</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-test')">✕</span>
+    <input type="hidden" id="et-id">
+    <div class="form-group"><label>Название теста</label><input id="et-title" placeholder="Контрольная по клетке"></div>
+    <div class="card-title" style="margin-top:16px;margin-bottom:12px"><span class="dot"></span>Вопросы</div>
+    <div id="et-questions-list"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:16px">
+      <button class="btn btn-outline btn-sm" onclick="addEditTestQuestion('auto')">➕ Авто-вопрос</button>
+      <button class="btn btn-outline btn-sm" onclick="addEditTestQuestion('open')">➕ Открытый вопрос</button>
+    </div>
+    <hr class="divider">
+    <button class="btn btn-green" onclick="saveEditTest()">Сохранить тест</button>
+  </div>
+</div>
+
+<!-- EDIT HW -->
+<div class="modal-bg" id="modal-edit-hw">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-title">✏️ Редактировать ДЗ</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-hw')">✕</span>
+    <input type="hidden" id="ehw-id">
+    <div class="form-group"><label>Тема ДЗ</label><input id="ehw-title"></div>
+    <div class="form-group"><label>Описание / задание</label><textarea id="ehw-desc" rows="4"></textarea></div>
+    <div class="form-group"><label>Срок сдачи</label><input id="ehw-due" type="date"></div>
+    <div class="form-group"><label>Ссылка на файл</label><input id="ehw-fileurl" placeholder="https://..."></div>
+    <button class="btn btn-green" onclick="saveEditHW()">Сохранить</button>
+  </div>
+</div>
+
+<!-- EDIT PAYMENT -->
+<div class="modal-bg" id="modal-edit-payment">
+  <div class="modal">
+    <div class="modal-title">✏️ Редактировать оплату</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-payment')">✕</span>
+    <input type="hidden" id="ep-id">
+    <div class="form-group"><label>Период</label><input id="ep-period" placeholder="Май 2025"></div>
+    <div class="form-group"><label>Сумма (₽)</label><input id="ep-amount" type="number"></div>
+    <div class="form-group"><label>Статус</label>
+      <select id="ep-status"><option value="paid">Оплачено ✅</option><option value="unpaid">Не оплачено ❌</option><option value="partial">Частично ⚠️</option></select></div>
+    <div class="form-group"><label>Комментарий</label><input id="ep-note" placeholder="Необязательно..."></div>
+    <button class="btn btn-green" onclick="saveEditPayment()">Сохранить</button>
   </div>
 </div>
 
@@ -1011,7 +1121,8 @@ function renderStudents(){
       <td>${s.subject||'—'}</td>
       <td><span class="badge ${s.active?'badge-green':'badge-red'}">${s.active?'Активен':'Неактивен'}</span></td>
       <td>${getPaymentStatusBadge(s.id)}</td>
-      <td><button class="btn btn-red btn-sm" onclick="deleteStudent('${s.id}')">🗑 Удалить</button></td>
+      <td><button class="btn btn-red btn-sm" onclick="deleteStudent('${s.id}')">🗑 Удалить</button>
+          <button class="btn btn-outline btn-sm" onclick="openEditStudent('${s.id}')">✏️ Изменить</button></td>
     </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Нет учеников</td></tr>`;
 }
 function getPaymentStatusBadge(sid){
@@ -1056,8 +1167,24 @@ function renderContentAdmin(){
 }
 function contentItemHTML(c, isAdmin){
   const icons={video:'🎬',theory:'📖',article:'📝',pdf:'📄',word:'📋'};
+  if(!isAdmin && c.type==='video'){
+    const embedUrl=getVideoEmbedUrl(c.url||'');
+    const playerHtml=embedUrl
+      ? `<div style="margin-top:10px;border-radius:10px;overflow:hidden;background:#000;position:relative;width:100%;height:260px"><iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe></div>`
+      : `<a href="${c.url||'#'}" target="_blank" class="btn btn-outline btn-sm" style="margin-top:8px">⬇ Открыть</a>`;
+    return `<div class="content-item" style="flex-direction:column;align-items:flex-start">
+      <div style="display:flex;align-items:center;gap:14px;width:100%">
+        <div class="content-icon">${icons[c.type]||'📎'}</div>
+        <div class="content-info">
+          <div class="content-name">${c.title}</div>
+          <div class="content-meta">${c.desc||''}</div>
+        </div>
+      </div>
+      ${playerHtml}
+    </div>`;
+  }
   const actions = isAdmin
-    ? `<button class="btn btn-red btn-sm" onclick="deleteContent('${c.id}')">🗑</button>`
+    ? `<div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="openEditContent('${c.id}')">✏️</button><button class="btn btn-red btn-sm" onclick="deleteContent('${c.id}')">🗑</button></div>`
     : (c.type==='theory'||c.type==='article'
         ? `<button class="btn btn-outline btn-sm" onclick="viewTheory('${c.id}')">👁 Читать</button>`
         : `<a href="${c.url||'#'}" target="_blank" class="btn btn-outline btn-sm">⬇ Открыть</a>`);
@@ -1107,8 +1234,58 @@ function getCheckedModalStudents(containerId){
   const checked=[...el.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
   return checked.length?checked:[getSelectedStudent()];
 }
-function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+function closeModal(id){
+  document.getElementById(id).classList.remove('open');
+  if(id==='modal-add-video'){
+    document.getElementById('nv-iframe').src='';
+    document.getElementById('nv-preview').style.display='none';
+  }
+}
 
+function previewVideo(){
+  const url=document.getElementById('nv-url').value.trim();
+  if(!url){ showNotif('Введите ссылку на видео'); return; }
+  const embedUrl=getVideoEmbedUrl(url);
+  if(!embedUrl){ showNotif('Поддерживаются: YouTube, VK Видео, Google Drive'); return; }
+  document.getElementById('nv-iframe').src=embedUrl;
+  document.getElementById('nv-preview').style.display='block';
+}
+function getVideoEmbedUrl(url){
+  if(!url) return null;
+  url = url.trim();
+
+  // ── YouTube ──
+  let m = url.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if(m) return 'https://www.youtube.com/embed/'+m[1];
+  m = url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+  if(m) return 'https://www.youtube.com/embed/'+m[1];
+  if(url.includes('youtube.com/embed/')) return url;
+
+  // ── VK Видео (vk.com/video и vkvideo.ru) ──
+  // vk.com/video-123456_789 or vk.com/video123456_789
+  m = url.match(/vk\.com\/video(-?\d+)_(\d+)/);
+  if(m) return 'https://vk.com/video_ext.php?oid='+m[1]+'&id='+m[2]+'&hd=2';
+  // vkvideo.ru/video-123456_789
+  m = url.match(/vkvideo\.ru\/video(-?\d+)_(\d+)/);
+  if(m) return 'https://vk.com/video_ext.php?oid='+m[1]+'&id='+m[2]+'&hd=2';
+  // already an embed url
+  if(url.includes('vk.com/video_ext')) return url;
+
+  // ── Google Drive ──
+  // Share link: drive.google.com/file/d/FILE_ID/view
+  m = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(m) return 'https://drive.google.com/file/d/'+m[1]+'/preview';
+  // Open link: drive.google.com/open?id=FILE_ID
+  m = url.match(/drive\.google\.com\/open\?(?:.*&)?id=([a-zA-Z0-9_-]+)/);
+  if(m) return 'https://drive.google.com/file/d/'+m[1]+'/preview';
+  // uc?id= link
+  m = url.match(/drive\.google\.com\/uc\?(?:.*&)?id=([a-zA-Z0-9_-]+)/);
+  if(m) return 'https://drive.google.com/file/d/'+m[1]+'/preview';
+  // already a preview embed
+  if(url.includes('drive.google.com') && url.includes('/preview')) return url;
+
+  return null;
+}
 function addContent(type){
   let title,url,desc,studentContainerId;
   if(type==='video'){
@@ -1212,6 +1389,7 @@ function renderTestsAdmin(){
         </div>
       </div>
       <div class="content-actions">
+        <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
       </div>
     </div>`).join('') || emptyHTML();
@@ -1331,7 +1509,10 @@ function renderHWAdmin(){
           ${h.submitted?'<span class="badge badge-green">Сдано</span>':'<span class="badge badge-gold">Ожидается</span>'}
         </div>
       </div>
-      <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
+      </div>
     </div>`).join('') || emptyHTML();
 }
 function renderHWOpenAnswers(){
@@ -1388,12 +1569,12 @@ function renderHWBuilder(){
         <button class="btn btn-red btn-sm" onclick="removeHWQ(${i})">✕</button>
       </div>
       <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
-        placeholder="Текст вопроса..." onchange="_tempHWQuestions[${i}].text=this.value">
+        placeholder="Текст вопроса..." oninput="_tempHWQuestions[${i}].text=this.value" value="${q.text.replace(/"/g,'&quot;')}">
       ${q.type==='auto'?`
         <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--white)"
-          placeholder="Варианты через запятую" onchange="_tempHWQuestions[${i}].options=this.value.split(',').map(s=>s.trim())">
+          placeholder="Варианты через запятую" oninput="_tempHWQuestions[${i}].options=this.value.split(',').map(s=>s.trim())" value="${q.options.join(',').replace(/"/g,'&quot;')}">
         <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;background:var(--white)"
-          placeholder="Правильный ответ" onchange="_tempHWQuestions[${i}].correct=this.value">
+          placeholder="Правильный ответ" oninput="_tempHWQuestions[${i}].correct=this.value" value="${q.correct.replace(/"/g,'&quot;')}">
       `:''}
     </div>`).join('');
 }
@@ -1435,6 +1616,7 @@ function renderPaymentAdmin(){
       <div style="display:flex;align-items:center;gap:12px">
         <span style="font-weight:700;font-size:1.05rem">${p.amount}₽</span>
         <span class="badge ${cls==='paid'?'badge-green':cls==='unpaid'?'badge-red':'badge-gold'}">${icon} ${p.status==='paid'?'Оплачено':p.status==='unpaid'?'Не оплачено':'Частично'}</span>
+        <button class="btn btn-outline btn-sm" onclick="openEditPayment('${p.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deletePayment('${p.id}')">🗑</button>
       </div>
     </div>`;
@@ -1455,6 +1637,213 @@ function savePayment(){
   showNotif('✅ Запись сохранена');
 }
 function deletePayment(id){ save('payments',(load('payments')||[]).filter(p=>p.id!==id)); renderPaymentAdmin(); }
+
+// ─── EDIT FUNCTIONS ───
+function openEditStudent(id){
+  const u=(load('users')||[]).find(u=>u.id===id);
+  if(!u) return;
+  document.getElementById('es-id').value=u.id;
+  document.getElementById('es-name').value=u.name;
+  document.getElementById('es-login').value=u.login;
+  document.getElementById('es-pass').value='';
+  document.getElementById('es-subject').value=u.subject||'Биология';
+  document.getElementById('es-active').value=String(u.active!==false);
+  document.getElementById('modal-edit-student').classList.add('open');
+}
+function saveEditStudent(){
+  const id=document.getElementById('es-id').value;
+  const name=document.getElementById('es-name').value.trim();
+  const pass=document.getElementById('es-pass').value;
+  const subject=document.getElementById('es-subject').value;
+  const active=document.getElementById('es-active').value==='true';
+  if(!name){ showNotif('Введите имя'); return; }
+  const users=load('users')||[];
+  const u=users.find(u=>u.id===id);
+  if(!u) return;
+  u.name=name; u.subject=subject; u.active=active;
+  if(pass) u.password=pass;
+  save('users',users);
+  closeModal('modal-edit-student');
+  renderStudents();
+  showNotif('✅ Данные ученика обновлены');
+}
+
+function openEditContent(id){
+  const c=(load('content')||[]).find(c=>c.id===id);
+  if(!c) return;
+  document.getElementById('ec-id').value=c.id;
+  document.getElementById('ec-type').value=c.type;
+  const icons={video:'🎬',theory:'📖',pdf:'📄',word:'📋'};
+  document.getElementById('edit-content-title').textContent=(icons[c.type]||'✏️')+' Редактировать материал';
+  document.getElementById('ec-title').value=c.title||'';
+  document.getElementById('ec-url').value=c.url||'';
+  document.getElementById('ec-desc').value=c.desc||'';
+  const isVideo=c.type==='video';
+  const isTheory=c.type==='theory';
+  document.getElementById('ec-url-group').style.display=isTheory?'none':'block';
+  document.getElementById('ec-preview-btn').style.display=isVideo?'inline-flex':'none';
+  document.getElementById('ec-video-preview').style.display='none';
+  document.getElementById('ec-iframe').src='';
+  // Theory fields
+  const theoryFields=document.getElementById('ec-theory-fields');
+  if(isTheory){
+    theoryFields.style.display='block';
+    document.getElementById('ec-body').value=c.body||'';
+    document.getElementById('ec-attachmenturl').value=c.attachmentUrl||'';
+    _editTheoryImages=[...(c.images||[])];
+    renderEditTheoryImages();
+  } else {
+    theoryFields.style.display='none';
+    _editTheoryImages=[];
+  }
+  document.getElementById('modal-edit-content').classList.add('open');
+}
+function previewEditVideo(){
+  const url=document.getElementById('ec-url').value.trim();
+  const embedUrl=getVideoEmbedUrl(url);
+  if(!embedUrl){ showNotif('Поддерживаются: YouTube, VK Видео, Google Drive'); return; }
+  document.getElementById('ec-iframe').src=embedUrl;
+  document.getElementById('ec-video-preview').style.display='block';
+}
+function saveEditContent(){
+  const id=document.getElementById('ec-id').value;
+  const title=document.getElementById('ec-title').value.trim();
+  const url=document.getElementById('ec-url').value.trim();
+  const desc=document.getElementById('ec-desc').value.trim();
+  if(!title){ showNotif('Введите название'); return; }
+  const content=load('content')||[];
+  const c=content.find(c=>c.id===id);
+  if(!c) return;
+  c.title=title; c.url=url; c.desc=desc;
+  if(c.type==='theory'){
+    c.body=document.getElementById('ec-body').value.trim();
+    c.attachmentUrl=document.getElementById('ec-attachmenturl').value.trim();
+    c.images=[..._editTheoryImages];
+  }
+  save('content',content);
+  closeModal('modal-edit-content');
+  renderContentAdmin();
+  showNotif('✅ Материал обновлён');
+}
+
+// Theory image editing
+let _editTheoryImages=[];
+function renderEditTheoryImages(){
+  const el=document.getElementById('ec-images-list');
+  if(!el) return;
+  el.innerHTML=_editTheoryImages.map((img,i)=>`
+    <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+      <input style="flex:1;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--white)"
+        placeholder="https://example.com/image.jpg" value="${img.replace(/"/g,'&quot;')}" oninput="_editTheoryImages[${i}]=this.value">
+      <button class="btn btn-red btn-sm" onclick="_editTheoryImages.splice(${i},1);renderEditTheoryImages()">✕</button>
+    </div>`).join('');
+}
+function addEditTheoryImage(){ _editTheoryImages.push(''); renderEditTheoryImages(); }
+
+// ─── TEST EDITOR ───
+let _editTestId='';
+let _editTestQuestions=[];
+function openEditTest(id){
+  const t=(load('tests')||[]).find(t=>t.id===id);
+  if(!t) return;
+  _editTestId=id;
+  _editTestQuestions=JSON.parse(JSON.stringify(t.questions||[]));
+  document.getElementById('et-id').value=id;
+  document.getElementById('et-title').value=t.title||'';
+  renderEditTestBuilder();
+  document.getElementById('modal-edit-test').classList.add('open');
+}
+function renderEditTestBuilder(){
+  const el=document.getElementById('et-questions-list');
+  el.innerHTML=_editTestQuestions.map((q,i)=>`
+    <div class="question-block" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="question-num">${q.type==='open'?'📝 Открытый':'⚡ Авто'} вопрос #${i+1}</div>
+        <button class="btn btn-red btn-sm" onclick="removeEditQ(${i})">✕</button>
+      </div>
+      <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
+        placeholder="Текст вопроса..." oninput="_editTestQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">
+      ${q.type==='auto'?`
+        <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--white)"
+          placeholder="Варианты через запятую: А,Б,В,Г" oninput="_editTestQuestions[${i}].options=this.value.split(',').map(s=>s.trim())" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}">
+        <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;background:var(--white)"
+          placeholder="Правильный ответ (точно как в вариантах)" oninput="_editTestQuestions[${i}].correct=this.value" value="${(q.correct||'').replace(/"/g,'&quot;')}">
+      `:''}
+    </div>`).join('');
+}
+function addEditTestQuestion(type){
+  _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',open:type==='open'});
+  renderEditTestBuilder();
+}
+function removeEditQ(i){ _editTestQuestions.splice(i,1); renderEditTestBuilder(); }
+function saveEditTest(){
+  const title=document.getElementById('et-title').value.trim();
+  if(!title){ showNotif('Введите название теста'); return; }
+  if(!_editTestQuestions.length){ showNotif('Добавьте хотя бы один вопрос'); return; }
+  const tests=load('tests')||[];
+  const t=tests.find(t=>t.id===_editTestId);
+  if(!t) return;
+  t.title=title;
+  t.questions=_editTestQuestions;
+  t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').length;
+  save('tests',tests);
+  closeModal('modal-edit-test');
+  renderTestsAdmin();
+  showNotif('✅ Тест обновлён');
+}
+function openEditHW(id){
+  const h=(load('hw')||[]).find(h=>h.id===id);
+  if(!h) return;
+  document.getElementById('ehw-id').value=h.id;
+  document.getElementById('ehw-title').value=h.title||'';
+  document.getElementById('ehw-desc').value=h.desc||'';
+  document.getElementById('ehw-due').value=h.due||'';
+  document.getElementById('ehw-fileurl').value=h.fileUrl||'';
+  document.getElementById('modal-edit-hw').classList.add('open');
+}
+function saveEditHW(){
+  const id=document.getElementById('ehw-id').value;
+  const title=document.getElementById('ehw-title').value.trim();
+  const desc=document.getElementById('ehw-desc').value.trim();
+  const due=document.getElementById('ehw-due').value;
+  const fileUrl=document.getElementById('ehw-fileurl').value.trim();
+  if(!title){ showNotif('Введите тему'); return; }
+  const hws=load('hw')||[];
+  const h=hws.find(h=>h.id===id);
+  if(!h) return;
+  h.title=title; h.desc=desc; h.due=due; h.fileUrl=fileUrl;
+  save('hw',hws);
+  closeModal('modal-edit-hw');
+  renderHWAdmin();
+  showNotif('✅ ДЗ обновлено');
+}
+
+function openEditPayment(id){
+  const p=(load('payments')||[]).find(p=>p.id===id);
+  if(!p) return;
+  document.getElementById('ep-id').value=p.id;
+  document.getElementById('ep-period').value=p.period||'';
+  document.getElementById('ep-amount').value=p.amount||'';
+  document.getElementById('ep-status').value=p.status||'paid';
+  document.getElementById('ep-note').value=p.note||'';
+  document.getElementById('modal-edit-payment').classList.add('open');
+}
+function saveEditPayment(){
+  const id=document.getElementById('ep-id').value;
+  const period=document.getElementById('ep-period').value;
+  const amount=document.getElementById('ep-amount').value;
+  const status=document.getElementById('ep-status').value;
+  const note=document.getElementById('ep-note').value;
+  if(!period||!amount){ showNotif('Заполните период и сумму'); return; }
+  const payments=load('payments')||[];
+  const p=payments.find(p=>p.id===id);
+  if(!p) return;
+  p.period=period; p.amount=amount; p.status=status; p.note=note;
+  save('payments',payments);
+  closeModal('modal-edit-payment');
+  renderPaymentAdmin();
+  showNotif('✅ Оплата обновлена');
+}
 
 // ─── SCHEDULE ADMIN ───
 function renderScheduleAdmin(){
