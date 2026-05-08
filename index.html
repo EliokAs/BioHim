@@ -1082,6 +1082,60 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
+<!-- EDIT TRIAL -->
+<div class="modal-bg" id="modal-edit-trial">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-title">✏️ Редактировать пробник</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-trial')">✕</span>
+    <input type="hidden" id="etr-id">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin:0"><label>Название пробника</label><input id="etr-title" placeholder="Пробник ЕГЭ Биология"></div>
+      <div class="form-group" style="margin:0"><label>Предмет / тема</label><input id="etr-subject" placeholder="Биология..."></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+      <div class="form-group" style="margin:0">
+        <label>⏱ Время (минут)</label>
+        <input id="etr-time" type="number" min="1" max="360" placeholder="180">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Порог сдачи (%)</label>
+        <input id="etr-pass" type="number" min="0" max="100" placeholder="55">
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:14px">
+      <label>Максимум баллов
+        <span style="font-size:0.72rem;color:var(--text3);font-weight:400;margin-left:6px" id="etr-maxpts-hint">(считается автоматически из вопросов)</span>
+      </label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="etr-maxpts" type="number" min="1" readonly
+          style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)">
+        <button class="btn btn-outline btn-sm" id="etr-maxpts-btn" onclick="toggleEditTrialMaxPts()" style="white-space:nowrap;flex-shrink:0">✏️ Изменить</button>
+      </div>
+    </div>
+    <div class="form-group"><label>Инструкция для ученика</label>
+      <textarea id="etr-instruction" rows="2" placeholder="Необязательно..."></textarea>
+    </div>
+    <hr class="divider">
+    <div class="card-title" style="margin-bottom:8px"><span class="dot"></span>🎓 Шкала оценок</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«5» — от %</label>
+        <input type="number" id="etr-g5" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«4» — от %</label>
+        <input type="number" id="etr-g4" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«3» — от %</label>
+        <input type="number" id="etr-g3" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«2» — от %</label>
+        <input type="number" value="0" readonly style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)"></div>
+    </div>
+    <hr class="divider">
+    <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>Разделы и вопросы</div>
+    <div id="etr-sections-list"></div>
+    <button class="btn btn-outline btn-sm" onclick="addEditTrialSection()" style="margin-bottom:16px">＋ Добавить раздел</button>
+    <hr class="divider">
+    <button class="btn btn-green" onclick="saveEditTrial()">💾 Сохранить пробник</button>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-create-test">
   <div class="modal" style="max-width:680px">
     <div class="modal-title">📋 Создать тест</div>
@@ -1281,33 +1335,85 @@ tr:hover td { background: var(--bg2); }
 
 <!-- EDIT TEST -->
 <div class="modal-bg" id="modal-edit-test">
-  <div class="modal" style="max-width:660px">
+  <div class="modal" style="max-width:720px">
     <div class="modal-title">✏️ Редактировать тест</div>
     <span class="modal-close" onclick="closeModal('modal-edit-test')">✕</span>
     <input type="hidden" id="et-id">
+
     <div class="form-group"><label>Название теста</label><input id="et-title" placeholder="Контрольная по клетке"></div>
-    <div class="card-title" style="margin-top:16px;margin-bottom:12px"><span class="dot"></span>Вопросы</div>
-    <div id="et-questions-list"></div>
-    <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:16px">
-      <button class="btn btn-outline btn-sm" onclick="addEditTestQuestion('auto')">➕ Авто-вопрос</button>
-      <button class="btn btn-outline btn-sm" onclick="addEditTestQuestion('open')">➕ Открытый вопрос</button>
+    <div class="form-group"><label>Описание / инструкция</label><textarea id="et-desc" rows="2" placeholder="Необязательно..."></textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="form-group" style="margin:0"><label>Срок сдачи</label><input id="et-due" type="date"></div>
+      <div class="form-group" style="margin:0"><label>Порог сдачи (%)</label><input id="et-pass" type="number" min="0" max="100" placeholder="55"></div>
     </div>
+
     <hr class="divider">
-    <button class="btn btn-green" onclick="saveEditTest()">Сохранить тест</button>
+    <div class="card-title" style="margin-bottom:8px"><span class="dot"></span>🎓 Шкала оценок (% от максимума)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«5» — от %</label>
+        <input type="number" id="et-g5" placeholder="85" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«4» — от %</label>
+        <input type="number" id="et-g4" placeholder="67" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«3» — от %</label>
+        <input type="number" id="et-g3" placeholder="45" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«2» — от %</label>
+        <input type="number" value="0" readonly style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)"></div>
+    </div>
+
+    <hr class="divider">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div class="card-title" style="margin:0"><span class="dot"></span>Вопросы <span id="et-total-hint" style="font-size:0.78rem;font-weight:400;color:var(--text3)"></span></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="addEditTestQuestion('auto')">➕ Авто</button>
+        <button class="btn btn-outline btn-sm" onclick="addEditTestQuestion('open')">➕ Открытый</button>
+      </div>
+    </div>
+    <div id="et-questions-list"></div>
+
+    <hr class="divider">
+    <button class="btn btn-green" onclick="saveEditTest()">💾 Сохранить тест</button>
   </div>
 </div>
 
 <!-- EDIT HW -->
 <div class="modal-bg" id="modal-edit-hw">
-  <div class="modal" style="max-width:640px">
+  <div class="modal" style="max-width:720px">
     <div class="modal-title">✏️ Редактировать ДЗ</div>
     <span class="modal-close" onclick="closeModal('modal-edit-hw')">✕</span>
     <input type="hidden" id="ehw-id">
+
     <div class="form-group"><label>Тема ДЗ</label><input id="ehw-title"></div>
-    <div class="form-group"><label>Описание / задание</label><textarea id="ehw-desc" rows="4"></textarea></div>
-    <div class="form-group"><label>Срок сдачи</label><input id="ehw-due" type="date"></div>
-    <div class="form-group"><label>Ссылка на файл</label><input id="ehw-fileurl" placeholder="https://..."></div>
-    <button class="btn btn-green" onclick="saveEditHW()">Сохранить</button>
+    <div class="form-group"><label>Описание / задание</label><textarea id="ehw-desc" rows="3"></textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="form-group" style="margin:0"><label>Срок сдачи</label><input id="ehw-due" type="date"></div>
+      <div class="form-group" style="margin:0"><label>Ссылка на файл</label><input id="ehw-fileurl" placeholder="https://..."></div>
+    </div>
+
+    <hr class="divider">
+    <div class="card-title" style="margin-bottom:8px"><span class="dot"></span>🎓 Шкала оценок (% от максимума)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«5» — от %</label>
+        <input type="number" id="ehw-g5" placeholder="85" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«4» — от %</label>
+        <input type="number" id="ehw-g4" placeholder="67" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«3» — от %</label>
+        <input type="number" id="ehw-g3" placeholder="45" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center"></div>
+      <div><label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">«2» — от %</label>
+        <input type="number" value="0" readonly style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)"></div>
+    </div>
+
+    <hr class="divider">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <div class="card-title" style="margin:0"><span class="dot"></span>Вопросы <span id="ehw-total-hint" style="font-size:0.78rem;font-weight:400;color:var(--text3)"></span></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="addEditHWQuestion('auto')">➕ Авто</button>
+        <button class="btn btn-outline btn-sm" onclick="addEditHWQuestion('open')">➕ Открытый</button>
+      </div>
+    </div>
+    <div id="ehw-questions-list"></div>
+
+    <hr class="divider">
+    <button class="btn btn-green" onclick="saveEditHW()">💾 Сохранить ДЗ</button>
   </div>
 </div>
 
@@ -2582,6 +2688,7 @@ function renderEditTheoryFiles(){
 // ─── TEST EDITOR ───
 let _editTestId='';
 let _editTestQuestions=[];
+// ── EDIT TEST ──
 function openEditTest(id){
   const t=(load('tests')||[]).find(t=>t.id===id);
   if(!t) return;
@@ -2589,16 +2696,32 @@ function openEditTest(id){
   _editTestQuestions=JSON.parse(JSON.stringify(t.questions||[]));
   document.getElementById('et-id').value=id;
   document.getElementById('et-title').value=t.title||'';
+  document.getElementById('et-desc').value=t.desc||'';
+  document.getElementById('et-due').value=t.due||'';
+  document.getElementById('et-pass').value=t.passThresh||'';
+  const gc=t.gradeConfig||{};
+  document.getElementById('et-g5').value=gc[5]??85;
+  document.getElementById('et-g4').value=gc[4]??67;
+  document.getElementById('et-g3').value=gc[3]??45;
   renderEditTestBuilder();
   document.getElementById('modal-edit-test').classList.add('open');
 }
 function renderEditTestBuilder(){
   const el=document.getElementById('et-questions-list');
+  const totalPts=_editTestQuestions.reduce((s,q)=>s+(+q.points||1),0);
+  const hint=document.getElementById('et-total-hint');
+  if(hint) hint.textContent=_editTestQuestions.length?`· ${_editTestQuestions.length} вопросов · итого ${totalPts} б.`:'';
   el.innerHTML=_editTestQuestions.map((q,i)=>`
     <div class="question-block" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
         <div class="question-num">${q.type==='open'?'📝 Открытый':'⚡ Авто'} вопрос #${i+1}</div>
-        <button class="btn btn-red btn-sm" onclick="removeEditQ(${i})">✕</button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
+          <input type="number" min="0.5" step="0.5" value="${+q.points||1}"
+            style="width:65px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem"
+            oninput="_editTestQuestions[${i}].points=+this.value||1;renderEditTestBuilder()">
+          <button class="btn btn-red btn-sm" onclick="removeEditQ(${i})">✕</button>
+        </div>
       </div>
       <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
         placeholder="Текст вопроса..." oninput="_editTestQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">
@@ -2606,12 +2729,12 @@ function renderEditTestBuilder(){
         <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--white)"
           placeholder="Варианты через запятую: А,Б,В,Г" oninput="_editTestQuestions[${i}].options=this.value.split(',').map(s=>s.trim())" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}">
         <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;background:var(--white)"
-          placeholder="Правильный ответ (точно как в вариантах)" oninput="_editTestQuestions[${i}].correct=this.value" value="${(q.correct||'').replace(/"/g,'&quot;')}">
+          placeholder="Правильный ответ" oninput="_editTestQuestions[${i}].correct=this.value" value="${(q.correct||'').replace(/"/g,'&quot;')}">
       `:''}
     </div>`).join('');
 }
 function addEditTestQuestion(type){
-  _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',open:type==='open'});
+  _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1});
   renderEditTestBuilder();
 }
 function removeEditQ(i){ _editTestQuestions.splice(i,1); renderEditTestBuilder(); }
@@ -2623,34 +2746,83 @@ function saveEditTest(){
   const t=tests.find(t=>t.id===_editTestId);
   if(!t) return;
   t.title=title;
+  t.desc=document.getElementById('et-desc').value.trim();
+  t.due=document.getElementById('et-due').value;
+  t.passThresh=+document.getElementById('et-pass').value||55;
+  t.gradeConfig={5:+document.getElementById('et-g5').value||85, 4:+document.getElementById('et-g4').value||67, 3:+document.getElementById('et-g3').value||45, 2:0};
   t.questions=_editTestQuestions;
-  t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').length;
+  t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('tests',tests);
   closeModal('modal-edit-test');
   renderTestsAdmin();
   showNotif('✅ Тест обновлён');
 }
+
+// ── EDIT HW ──
+let _editHWQuestions=[];
 function openEditHW(id){
   const h=(load('hw')||[]).find(h=>h.id===id);
   if(!h) return;
+  _editHWQuestions=JSON.parse(JSON.stringify(h.questions||[]));
   document.getElementById('ehw-id').value=h.id;
   document.getElementById('ehw-title').value=h.title||'';
   document.getElementById('ehw-desc').value=h.desc||'';
   document.getElementById('ehw-due').value=h.due||'';
   document.getElementById('ehw-fileurl').value=h.fileUrl||'';
+  const gc=h.gradeConfig||{};
+  document.getElementById('ehw-g5').value=gc[5]??85;
+  document.getElementById('ehw-g4').value=gc[4]??67;
+  document.getElementById('ehw-g3').value=gc[3]??45;
+  renderEditHWBuilder();
   document.getElementById('modal-edit-hw').classList.add('open');
 }
+function renderEditHWBuilder(){
+  const el=document.getElementById('ehw-questions-list');
+  if(!el) return;
+  const totalPts=_editHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
+  const hint=document.getElementById('ehw-total-hint');
+  if(hint) hint.textContent=_editHWQuestions.length?`· ${_editHWQuestions.length} вопросов · итого ${totalPts} б.`:'';
+  el.innerHTML=_editHWQuestions.map((q,i)=>`
+    <div class="question-block" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <div class="question-num">${q.type==='open'?'📝 Открытый':'⚡ Авто'} вопрос #${i+1}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
+          <input type="number" min="0.5" step="0.5" value="${+q.points||1}"
+            style="width:65px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem"
+            oninput="_editHWQuestions[${i}].points=+this.value||1;renderEditHWBuilder()">
+          <button class="btn btn-red btn-sm" onclick="removeEditHWQ(${i})">✕</button>
+        </div>
+      </div>
+      <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
+        placeholder="Текст вопроса..." oninput="_editHWQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">
+      ${q.type==='auto'?`
+        <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--white)"
+          placeholder="Варианты через запятую: А,Б,В,Г" oninput="_editHWQuestions[${i}].options=this.value.split(',').map(s=>s.trim())" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}">
+        <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;background:var(--white)"
+          placeholder="Правильный ответ" oninput="_editHWQuestions[${i}].correct=this.value" value="${(q.correct||'').replace(/"/g,'&quot;')}">
+      `:''}
+    </div>`).join('');
+}
+function addEditHWQuestion(type){
+  _editHWQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1});
+  renderEditHWBuilder();
+}
+function removeEditHWQ(i){ _editHWQuestions.splice(i,1); renderEditHWBuilder(); }
 function saveEditHW(){
   const id=document.getElementById('ehw-id').value;
   const title=document.getElementById('ehw-title').value.trim();
-  const desc=document.getElementById('ehw-desc').value.trim();
-  const due=document.getElementById('ehw-due').value;
-  const fileUrl=document.getElementById('ehw-fileurl').value.trim();
   if(!title){ showNotif('Введите тему'); return; }
   const hws=load('hw')||[];
   const h=hws.find(h=>h.id===id);
   if(!h) return;
-  h.title=title; h.desc=desc; h.due=due; h.fileUrl=fileUrl;
+  h.title=title;
+  h.desc=document.getElementById('ehw-desc').value.trim();
+  h.due=document.getElementById('ehw-due').value;
+  h.fileUrl=document.getElementById('ehw-fileurl').value.trim();
+  h.gradeConfig={5:+document.getElementById('ehw-g5').value||85, 4:+document.getElementById('ehw-g4').value||67, 3:+document.getElementById('ehw-g3').value||45, 2:0};
+  h.questions=_editHWQuestions;
+  h.autoTotal=_editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('hw',hws);
   closeModal('modal-edit-hw');
   renderHWAdmin();
@@ -3231,11 +3403,194 @@ function trialAdminItemHTML(t){
     </div>
     <div style="display:flex;gap:6px">
       ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
+      <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
       <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
     </div>
   </div>`;
 }
 function deleteTrial(id){ save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
+
+// ── EDIT TRIAL ──
+let _editTrialSections = [];
+let _editTrialId = null;
+let _editTrialMaxPtsManual = false;
+
+function openEditTrial(id){
+  const t=(load('trials')||[]).find(t=>t.id===id);
+  if(!t) return;
+  _editTrialId = id;
+  _editTrialMaxPtsManual = false;
+  _editTrialSections = JSON.parse(JSON.stringify(t.sections||[]));
+
+  document.getElementById('etr-id').value = id;
+  document.getElementById('etr-title').value = t.title||'';
+  document.getElementById('etr-subject').value = t.subject||'';
+  document.getElementById('etr-time').value = t.timeMins||180;
+  document.getElementById('etr-pass').value = t.passThresh||55;
+  document.getElementById('etr-instruction').value = t.instruction||'';
+  const gc = t.gradeConfig||{};
+  document.getElementById('etr-g5').value = gc[5]??85;
+  document.getElementById('etr-g4').value = gc[4]??67;
+  document.getElementById('etr-g3').value = gc[3]??45;
+
+  // Reset maxpts to readonly auto mode
+  const maxEl = document.getElementById('etr-maxpts');
+  const btn   = document.getElementById('etr-maxpts-btn');
+  const hint  = document.getElementById('etr-maxpts-hint');
+  maxEl.setAttribute('readonly','');
+  maxEl.style.background='var(--bg)'; maxEl.style.color='var(--text3)';
+  if(btn)  btn.textContent='✏️ Изменить';
+  if(hint) hint.textContent='(считается автоматически из вопросов)';
+
+  renderEditTrialBuilder();
+  document.getElementById('modal-edit-trial').classList.add('open');
+}
+
+function toggleEditTrialMaxPts(){
+  _editTrialMaxPtsManual = !_editTrialMaxPtsManual;
+  const input = document.getElementById('etr-maxpts');
+  const btn   = document.getElementById('etr-maxpts-btn');
+  const hint  = document.getElementById('etr-maxpts-hint');
+  if(_editTrialMaxPtsManual){
+    input.removeAttribute('readonly');
+    input.style.background='var(--white)'; input.style.color='var(--accent)';
+    input.focus();
+    btn.textContent='🔄 Авто';
+    hint.textContent='(задан вручную)';
+  } else {
+    input.setAttribute('readonly','');
+    input.style.background='var(--bg)'; input.style.color='var(--text3)';
+    btn.textContent='✏️ Изменить';
+    hint.textContent='(считается автоматически из вопросов)';
+    renderEditTrialBuilder();
+  }
+}
+
+function addEditTrialSection(){
+  _editTrialSections.push({id:'ts_'+Date.now(), title:'Часть '+(+_editTrialSections.length+1), questions:[]});
+  renderEditTrialBuilder();
+}
+function removeEditTrialSection(idx){
+  _editTrialSections.splice(idx,1);
+  renderEditTrialBuilder();
+}
+function addEditTrialQuestion(sIdx, type){
+  _editTrialSections[sIdx].questions.push({id:'tq_'+Date.now(), type, text:'', options:[], correct:'', points:1, imageUrl:''});
+  renderEditTrialBuilder();
+}
+function removeEditTrialQuestion(sIdx, qIdx){
+  _editTrialSections[sIdx].questions.splice(qIdx,1);
+  renderEditTrialBuilder();
+}
+
+function renderEditTrialBuilder(){
+  const el = document.getElementById('etr-sections-list');
+  if(!el) return;
+  let totalPts = 0;
+  _editTrialSections.forEach(s=>s.questions.forEach(q=>totalPts+=(+q.points||1)));
+  if(!_editTrialMaxPtsManual){
+    const maxEl = document.getElementById('etr-maxpts');
+    if(maxEl) maxEl.value = totalPts||0;
+  }
+  el.innerHTML = _editTrialSections.map((sec,si)=>{
+    const secPts = sec.questions.reduce((a,q)=>a+(+q.points||1),0);
+    return `<div class="trial-section-builder">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <input style="flex:1;min-width:160px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-weight:700;font-size:0.9rem;background:var(--white)"
+          placeholder="Название раздела" value="${(sec.title||'').replace(/"/g,'&quot;')}"
+          oninput="_editTrialSections[${si}].title=this.value">
+        <span class="trial-pts-badge">⭐ ${secPts} б.</span>
+        <button class="btn btn-red btn-sm" onclick="removeEditTrialSection(${si})">🗑</button>
+      </div>
+      ${sec.questions.map((q,qi)=>editTrialQuestionHTML(si,qi,q)).join('')}
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-outline btn-sm" onclick="addEditTrialQuestion(${si},'auto')">➕ Авто</button>
+        <button class="btn btn-outline btn-sm" onclick="addEditTrialQuestion(${si},'open')">➕ Открытый</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function editTrialQuestionHTML(si, qi, q){
+  const imgTabId  = `etr-img-${si}-${qi}`;
+  const imgUrlId  = `${imgTabId}-url-input`;
+  const imgFileId = `${imgTabId}-file-input`;
+  const imgPreId  = `${imgTabId}-preview`;
+  const isDataUrl = q.imageUrl && q.imageUrl.startsWith('data:');
+  return `<div style="background:var(--white);border:1px solid var(--green-xpale);border-radius:10px;padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:0.75rem;font-weight:700;color:var(--text3);text-transform:uppercase">${q.type==='auto'?'⚡ Авто':'📝 Открытый'}</span>
+      <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+        <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
+        <input class="trial-q-pts" type="number" min="0.5" step="0.5" value="${+q.points||1}"
+          oninput="_editTrialSections[${si}].questions[${qi}].points=+this.value||1;renderEditTrialBuilder()">
+        <button class="btn btn-red btn-sm" onclick="removeEditTrialQuestion(${si},${qi})">✕</button>
+      </div>
+    </div>
+    <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--bg)"
+      placeholder="Текст вопроса..." value="${(q.text||'').replace(/"/g,'&quot;')}"
+      oninput="_editTrialSections[${si}].questions[${qi}].text=this.value">
+    ${q.type==='auto'?`
+      <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--bg)"
+        placeholder="Варианты через запятую: А,Б,В,Г" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}"
+        oninput="_editTrialSections[${si}].questions[${qi}].options=this.value.split(',').map(s=>s.trim())">
+      <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--bg)"
+        placeholder="Правильный ответ" value="${(q.correct||'').replace(/"/g,'&quot;')}"
+        oninput="_editTrialSections[${si}].questions[${qi}].correct=this.value">
+    `:''}
+    <div class="q-img-row">
+      <label>🖼 Картинка к вопросу (необязательно)</label>
+      <div class="q-img-tabs">
+        <div class="q-img-tab ${!isDataUrl?'active':''}" onclick="switchImgTab('${imgTabId}','url')">Ссылка</div>
+        <div class="q-img-tab ${isDataUrl?'active':''}" onclick="switchImgTab('${imgTabId}','file')">Загрузить</div>
+      </div>
+      <div id="${imgTabId}-url" style="${isDataUrl?'display:none':''}">
+        <input id="${imgUrlId}" style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--white)"
+          placeholder="https://example.com/image.jpg" value="${isDataUrl?'':(q.imageUrl||'').replace(/"/g,'&quot;')}"
+          oninput="_editTrialSections[${si}].questions[${qi}].imageUrl=this.value;updateQImgPreview('${imgPreId}',this.value)">
+      </div>
+      <div id="${imgTabId}-file" style="${isDataUrl?'':'display:none'}">
+        <input type="file" id="${imgFileId}" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
+          onchange="handleEditTrialQImgUpload(this,${si},${qi},'${imgPreId}')">
+      </div>
+      ${q.imageUrl?`<img id="${imgPreId}" class="q-img-preview" src="${q.imageUrl}" alt="">`
+                  :`<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`}
+    </div>
+  </div>`;
+}
+
+function handleEditTrialQImgUpload(input, si, qi, previewId){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{ _editTrialSections[si].questions[qi].imageUrl=e.target.result; updateQImgPreview(previewId,e.target.result); };
+  reader.readAsDataURL(file);
+}
+
+function saveEditTrial(){
+  const title=document.getElementById('etr-title').value.trim();
+  if(!title){ showNotif('Введите название'); return; }
+  if(!_editTrialSections.some(s=>s.questions.length)){ showNotif('Добавьте хотя бы один вопрос'); return; }
+  const trials=load('trials')||[];
+  const t=trials.find(t=>t.id===_editTrialId);
+  if(!t) return;
+  t.title=title;
+  t.subject=document.getElementById('etr-subject').value.trim();
+  t.timeMins=+(document.getElementById('etr-time').value)||180;
+  t.passThresh=+(document.getElementById('etr-pass').value)||55;
+  t.instruction=document.getElementById('etr-instruction').value.trim();
+  t.gradeConfig={5:+(document.getElementById('etr-g5').value)||85, 4:+(document.getElementById('etr-g4').value)||67, 3:+(document.getElementById('etr-g3').value)||45, 2:0};
+  t.sections=JSON.parse(JSON.stringify(_editTrialSections));
+  const allQ=_editTrialSections.flatMap(s=>s.questions);
+  const autoPts=_editTrialMaxPtsManual
+    ? +(document.getElementById('etr-maxpts').value)||t.maxPts
+    : allQ.reduce((a,q)=>a+(+q.points||1),0);
+  t.maxPts=autoPts;
+  t.autoTotal=allQ.filter(q=>q.type==='auto').reduce((a,q)=>a+(+q.points||1),0)||autoPts;
+  save('trials',trials);
+  closeModal('modal-edit-trial');
+  renderTrialAdmin();
+  showNotif('✅ Пробник обновлён');
+}
 
 function renderTrialOpenAnswers(){
   const students=(load('users')||[]).filter(u=>u.role==='student');
