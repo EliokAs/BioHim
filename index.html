@@ -5223,38 +5223,53 @@ function saveComments(type, itemId, arr){
 }
 
 function renderCommentThread(type, itemId, containerEl){
+  // Students cannot comment on trials
+  if(currentUser.role === 'student' && type === 'trial') return;
+  // Prevent duplicate threads
+  if(containerEl.querySelector('.comment-thread')) return;
+
   const comments = loadComments(type, itemId);
-  const isAdmin = currentUser.role === 'admin';
-  const myName = currentUser.name;
-  const html = `
-    <div class="comment-thread">
-      <div style="font-size:0.78rem;font-weight:700;color:var(--text3);margin-bottom:8px">💬 Комментарии</div>
-      <div id="comments-${type}-${itemId}">
-        ${comments.length ? comments.map(c=>{
-          const initials = c.author.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-          return `<div class="comment-item">
-            <div class="comment-avatar" style="${c.role==='admin'?'':'background:linear-gradient(135deg,#1565c0,#42a5f5)'}">${initials}</div>
-            <div class="comment-body">
-              <div class="comment-author">${c.author} ${c.role==='admin'?'· Преподаватель':''}</div>
-              <div class="comment-text">${escHtml(c.text)}</div>
-              <div class="comment-time">${c.date} ${c.time}</div>
-            </div>
-          </div>`;
-        }).join('') : '<div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Комментариев пока нет</div>'}
-      </div>
-      <div class="comment-input-row">
-        <input id="ci-${type}-${itemId}" placeholder="Написать комментарий..." onkeydown="if(event.key==='Enter'){addComment('${type}','${itemId}')}" />
-        <button class="btn btn-green btn-sm" onclick="addComment('${type}','${itemId}')">Отправить</button>
+
+  const commentsHTML = comments.length ? comments.map(c=>{
+    const initials = c.author.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    return `<div class="comment-item">
+      <div class="comment-avatar" style="${c.role==='admin'?'':'background:linear-gradient(135deg,#1565c0,#42a5f5)'}">${initials}</div>
+      <div class="comment-body">
+        <div class="comment-author">${c.author}${c.role==='admin'?' · Преподаватель':''}</div>
+        <div class="comment-text">${escHtml(c.text)}</div>
+        <div class="comment-time">${c.date} ${c.time}</div>
       </div>
     </div>`;
-  containerEl.insertAdjacentHTML('beforeend', html);
+  }).join('') : '<div class="no-comments-msg" style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Комментариев пока нет</div>';
+
+  const div = document.createElement('div');
+  div.className = 'comment-thread';
+  div.dataset.type = type;
+  div.dataset.itemId = itemId;
+  div.innerHTML = `
+    <div style="font-size:0.78rem;font-weight:700;color:var(--text3);margin-bottom:8px">💬 Комментарии</div>
+    <div class="comment-list">${commentsHTML}</div>
+    <div class="comment-input-row">
+      <input class="comment-input" placeholder="Написать комментарий..." />
+      <button class="btn btn-green btn-sm comment-send-btn">Отправить</button>
+    </div>`;
+
+  // Bind events directly on DOM elements — no id, no onclick string
+  const input = div.querySelector('.comment-input');
+  const btn   = div.querySelector('.comment-send-btn');
+  const sendFn = () => addComment(type, itemId, div);
+  btn.addEventListener('click', sendFn);
+  input.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendFn(); }});
+
+  containerEl.appendChild(div);
 }
 
-function addComment(type, itemId){
-  const inp = document.getElementById(`ci-${type}-${itemId}`);
-  if(!inp) return;
-  const text = inp.value.trim();
+function addComment(type, itemId, threadEl){
+  const input = threadEl.querySelector('.comment-input');
+  if(!input) return;
+  const text = input.value.trim();
   if(!text) return;
+
   const comments = loadComments(type, itemId);
   const now = new Date();
   const c = {
@@ -5267,9 +5282,9 @@ function addComment(type, itemId){
   };
   comments.push(c);
   saveComments(type, itemId, comments);
-  inp.value = '';
+  input.value = '';
 
-  // Determine who to notify
+  // Notifications
   let item = null;
   if(type==='test') item = (load('tests')||[]).find(t=>t.id===itemId);
   else if(type==='hw') item = (load('hw')||[]).find(h=>h.id===itemId);
@@ -5279,27 +5294,29 @@ function addComment(type, itemId){
   const typeLabel = {test:'тест',hw:'ДЗ',trial:'пробник'}[type]||type;
 
   if(currentUser.role==='admin' && item){
-    // notify student
     addNotif(item.studentId, {type:'comment', text:`💬 Преподаватель прокомментировал ${typeLabel} «${itemTitle}»`, nav: type==='hw'?'student-hw':type==='test'?'student-tests':'student-trial'});
   } else if(currentUser.role==='student' && item){
-    // notify admin — use same save() so Firebase syncs it
     const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
     adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'comment', text:`💬 ${currentUser.name} прокомментировал(а) ${typeLabel} «${itemTitle}»`, date:now.toLocaleDateString('ru'), read:false});
     localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
   }
 
-  // Re-render only the comment list
-  const listEl = document.getElementById(`comments-${type}-${itemId}`);
+  // Append new comment into this thread's list
+  const listEl = threadEl.querySelector('.comment-list');
   if(listEl){
+    const noMsg = listEl.querySelector('.no-comments-msg');
+    if(noMsg) noMsg.remove();
     const initials = c.author.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-    listEl.insertAdjacentHTML('beforeend', `<div class="comment-item">
+    const item2 = document.createElement('div');
+    item2.className = 'comment-item';
+    item2.innerHTML = `
       <div class="comment-avatar" style="${c.role==='admin'?'':'background:linear-gradient(135deg,#1565c0,#42a5f5)'}">${initials}</div>
       <div class="comment-body">
-        <div class="comment-author">${c.author} ${c.role==='admin'?'· Преподаватель':''}</div>
+        <div class="comment-author">${c.author}${c.role==='admin'?' · Преподаватель':''}</div>
         <div class="comment-text">${escHtml(c.text)}</div>
         <div class="comment-time">${c.date} ${c.time}</div>
-      </div>
-    </div>`);
+      </div>`;
+    listEl.appendChild(item2);
   }
 }
 
