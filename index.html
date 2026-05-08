@@ -313,7 +313,51 @@ tr:hover td { background: var(--bg2); }
 .welcome-title { font-family: 'Playfair Display', serif; font-size: 1.7rem; margin-bottom: 6px; }
 .welcome-sub { font-size: 0.88rem; opacity: 0.75; }
 
-/* ─── MOLECULE DECORATION ─── */
+/* ─── CHAT ─── */
+.chat-layout { display: grid; grid-template-columns: 260px 1fr; gap: 0; height: calc(100vh - 130px); min-height: 400px; background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--green-xpale); overflow: hidden; }
+.chat-sidebar { border-right: 1px solid var(--green-xpale); overflow-y: auto; background: var(--bg); }
+.chat-sidebar-header { padding: 16px; font-weight: 700; font-size: 0.85rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--green-xpale); }
+.chat-contact { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid var(--green-xpale); position: relative; }
+.chat-contact:hover { background: var(--green-xpale); }
+.chat-contact.active { background: var(--green-xpale); border-left: 3px solid var(--green-mid); }
+.chat-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg,var(--green-deep),var(--green-mid)); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 0.95rem; flex-shrink: 0; }
+.chat-contact-name { font-weight: 600; font-size: 0.88rem; color: var(--text); }
+.chat-contact-last { font-size: 0.75rem; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.chat-unread { position: absolute; right: 12px; top: 12px; background: var(--green-mid); color: #fff; border-radius: 50%; width: 18px; height: 18px; font-size: 0.65rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.chat-main { display: flex; flex-direction: column; }
+.chat-header { padding: 14px 20px; border-bottom: 1px solid var(--green-xpale); display: flex; align-items: center; gap: 12px; background: var(--white); }
+.chat-header-name { font-weight: 700; font-size: 1rem; color: var(--accent); }
+.chat-header-sub { font-size: 0.78rem; color: var(--text3); }
+.chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; background: var(--bg); }
+.chat-msg { display: flex; flex-direction: column; max-width: 72%; }
+.chat-msg.mine { align-self: flex-end; align-items: flex-end; }
+.chat-msg.theirs { align-self: flex-start; align-items: flex-start; }
+.chat-bubble { padding: 10px 14px; border-radius: 16px; font-size: 0.88rem; line-height: 1.5; word-break: break-word; }
+.chat-msg.mine .chat-bubble { background: linear-gradient(135deg, var(--green-deep), var(--green-mid)); color: #fff; border-bottom-right-radius: 4px; }
+.chat-msg.theirs .chat-bubble { background: var(--white); color: var(--text); border: 1px solid var(--green-xpale); border-bottom-left-radius: 4px; box-shadow: 0 2px 8px rgba(45,106,79,0.07); }
+.chat-bubble-ref { font-size: 0.75rem; opacity: 0.75; margin-bottom: 4px; padding: 4px 8px; background: rgba(255,255,255,0.18); border-radius: 8px; border-left: 2px solid rgba(255,255,255,0.5); }
+.chat-msg.theirs .chat-bubble-ref { background: var(--green-xpale); border-left-color: var(--green-mid); color: var(--text3); }
+.chat-time { font-size: 0.7rem; color: var(--text3); margin-top: 3px; padding: 0 4px; }
+.chat-input-bar { padding: 12px 16px; border-top: 1px solid var(--green-xpale); background: var(--white); display: flex; gap: 8px; align-items: flex-end; }
+.chat-input-bar textarea { flex: 1; padding: 10px 14px; border-radius: 12px; border: 1.5px solid var(--green-pale); font-family: 'Nunito', sans-serif; font-size: 0.9rem; resize: none; outline: none; max-height: 100px; transition: border 0.2s; background: var(--bg); }
+.chat-input-bar textarea:focus { border-color: var(--green-mid); }
+.chat-send-btn { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--green-deep), var(--green-mid)); border: none; color: #fff; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.15s; }
+.chat-send-btn:hover { transform: scale(1.08); }
+.chat-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text3); gap: 10px; }
+.chat-date-divider { text-align: center; font-size: 0.72rem; color: var(--text3); margin: 4px 0; }
+/* Comment thread under item */
+.comment-thread { margin-top: 12px; border-top: 1px solid var(--green-xpale); padding-top: 10px; }
+.comment-item { display: flex; gap: 8px; margin-bottom: 8px; }
+.comment-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg,var(--green-deep),var(--green-mid)); display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.72rem;font-weight:700;flex-shrink:0; }
+.comment-body { background: var(--bg); border-radius: 10px; padding: 7px 11px; font-size: 0.83rem; flex: 1; border: 1px solid var(--green-xpale); }
+.comment-author { font-weight: 700; font-size: 0.75rem; color: var(--green-deep); margin-bottom: 2px; }
+.comment-text { color: var(--text2); line-height: 1.4; }
+.comment-time { font-size: 0.68rem; color: var(--text3); margin-top: 2px; }
+.comment-input-row { display: flex; gap: 6px; margin-top: 8px; }
+.comment-input-row input { flex: 1; padding: 7px 12px; border-radius: 10px; border: 1.5px solid var(--green-pale); font-family: Nunito, sans-serif; font-size: 0.83rem; outline: none; background: var(--white); }
+.comment-input-row input:focus { border-color: var(--green-mid); }
+.notif-chat { background: linear-gradient(135deg,#e8f4fd,#dbeeff); border-left: 3px solid #1565c0; }
+.notif-comment { background: linear-gradient(135deg,#fff3cd,#fef0b0); border-left: 3px solid var(--gold); }
 .mol-decor {
   position: fixed; right: -40px; bottom: -40px; opacity: 0.04; z-index: 0; pointer-events: none;
   font-size: 18rem;
@@ -814,7 +858,8 @@ tr:hover td { background: var(--bg2); }
       <div class="filter-bar">
         <div class="filter-pill active" onclick="setTestFilter('all',this)">📋 Все</div>
         <div class="filter-pill" onclick="setTestFilter('pending',this)">⏳ Не сдано</div>
-        <div class="filter-pill" onclick="setTestFilter('done',this)">✅ Отправлено на проверку</div>
+        <div class="filter-pill" onclick="setTestFilter('done',this)">📝 На проверке</div>
+        <div class="filter-pill" onclick="setTestFilter('checked',this)">✔️ Проверено</div>
       </div>
       <div id="student-tests-list"></div>
     </div>
@@ -826,7 +871,8 @@ tr:hover td { background: var(--bg2); }
       <div class="filter-bar">
         <div class="filter-pill active" onclick="setHWFilter('all',this)">📝 Все</div>
         <div class="filter-pill" onclick="setHWFilter('pending',this)">⏳ Не сдано</div>
-        <div class="filter-pill" onclick="setHWFilter('done',this)">✅ Отправлено на проверку</div>
+        <div class="filter-pill" onclick="setHWFilter('done',this)">📝 На проверке</div>
+        <div class="filter-pill" onclick="setHWFilter('checked',this)">✔️ Проверено</div>
       </div>
       <div id="student-hw-list"></div>
     </div>
@@ -860,6 +906,40 @@ tr:hover td { background: var(--bg2); }
         <div class="card">
           <div class="card-title"><span class="dot"></span>Мои записи</div>
           <div id="my-bookings-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Admin -->
+    <div class="page" id="page-chat-admin">
+      <div class="page-title">💬 Чат с учениками</div>
+      <div class="page-sub">Общайтесь с учениками в режиме реального времени</div>
+      <div class="chat-layout">
+        <div class="chat-sidebar">
+          <div class="chat-sidebar-header">Ученики</div>
+          <div id="chat-admin-contacts"></div>
+        </div>
+        <div class="chat-main" id="chat-admin-main">
+          <div class="chat-empty"><div style="font-size:2.5rem">💬</div><div>Выберите ученика для начала чата</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Student -->
+    <div class="page" id="page-student-chat">
+      <div class="page-title">💬 Чат с преподавателем</div>
+      <div class="page-sub">Задавайте вопросы и получайте обратную связь</div>
+      <div class="chat-layout" style="grid-template-columns:1fr">
+        <div class="chat-main" id="chat-student-main" style="display:flex;flex-direction:column">
+          <div class="chat-header">
+            <div class="chat-avatar">П</div>
+            <div><div class="chat-header-name">Преподаватель</div><div class="chat-header-sub">BioХим</div></div>
+          </div>
+          <div class="chat-messages" id="chat-student-messages"></div>
+          <div class="chat-input-bar">
+            <textarea id="chat-student-input" placeholder="Написать сообщение..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStudentMsg()}"></textarea>
+            <button class="chat-send-btn" onclick="sendStudentMsg()">➤</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1246,113 +1326,60 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script>
 // ══════════════════════════════════════════
-// FIREBASE REALTIME DATABASE SETUP
+// LOCAL STORAGE — замена Firebase
 // ══════════════════════════════════════════
-const firebaseConfig = {
-  apiKey: "AIzaSyAh_g-_X0bMd23YEh5r5dO3xLu4Awpb1ns",
-  authDomain: "biohim-a36ce.firebaseapp.com",
-  databaseURL: "https://biohim-a36ce-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "biohim-a36ce",
-  storageBucket: "biohim-a36ce.firebasestorage.app",
-  messagingSenderId: "797458613466",
-  appId: "1:797458613466:web:f2e734a65e4e84b7ce51e3"
-};
-
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-// ── In-memory cache ──
-const _cache = {};
-
-// ── Read one key → returns array ──
-async function loadFromDB(k){
-  const snap = await db.ref(k).get();
-  const val  = snap.val();
-  // Realtime DB stores objects keyed by id — convert to array
-  const arr  = val ? Object.values(val) : [];
-  _cache[k]  = arr;
-  return arr;
-}
-
-// ── Write array to Realtime DB ──
-async function saveToDB(k, arr){
-  _cache[k] = arr;
-  // Convert array to object keyed by id
-  const obj = {};
-  arr.forEach(item => {
-    const id = String(item.id || ('doc_'+Math.random().toString(36).slice(2)));
-    obj[id] = {...item};
-  });
-  await db.ref(k).set(obj);
-}
-
-// ── Sync wrappers ──
-function load(k){ return _cache[k] ?? null; }
-
-function save(k, v){
-  _cache[k] = v;
-  saveToDB(k, v).catch(e => console.error('Firebase save error:', k, e));
-}
-
-// ── Preload all keys ──
+const LS_PREFIX = 'biohim_db_';
 const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs'];
 
-async function preloadCache(){
-  await Promise.all(COLLECTIONS.map(k => loadFromDB(k)));
+function load(k){
+  const raw = localStorage.getItem(LS_PREFIX + k);
+  if(raw == null) return null;
+  try { return JSON.parse(raw); } catch(e){ return null; }
 }
 
-// ── Realtime sync ──
-function subscribeRealtime(){
-  COLLECTIONS.forEach(k => {
-    db.ref(k).on('value', snap => {
-      const val = snap.val();
-      _cache[k] = val ? Object.values(val) : [];
-      if(typeof curPage !== 'undefined' && curPage) renderPage(curPage);
-    });
-  });
+function save(k, v){
+  localStorage.setItem(LS_PREFIX + k, JSON.stringify(v));
 }
+
+async function preloadCache(){ /* данные уже в localStorage */ }
+
+function subscribeRealtime(){ /* не нужен polling для localStorage */ }
 
 // ══════════════════════════════════════════
-// DEFAULT DATA (written to DB once)
+// DEFAULT DATA (записываются один раз)
 // ══════════════════════════════════════════
 async function initData(){
-  const users = load('users') || [];
-  if(!users.length){
-    await saveToDB('users',[
+  if(!(load('users')||[]).length){
+    save('users',[
       {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
       {id:'anna',  login:'anna',  password:'1234',     name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
       {id:'dima',  login:'dima',  password:'1234',     name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
     ]);
-    await loadFromDB('users');
   }
   if(!(load('courses')||[]).length){
-    await saveToDB('courses',[
+    save('courses',[
       {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
       {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
       {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
     ]);
-    await loadFromDB('courses');
   }
   if(!(load('slots')||[]).length){
-    await saveToDB('slots',[
+    save('slots',[
       {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
       {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
       {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
       {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
       {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
     ]);
-    await loadFromDB('slots');
   }
-  if(!load('payments')) _cache['payments'] = [];
-  if(!load('tests'))    _cache['tests']    = [];
-  if(!load('hw'))       _cache['hw']       = [];
-  if(!load('content'))  _cache['content']  = [];
-  if(!load('bookings')) _cache['bookings'] = [];
-  if(!load('notifs'))   _cache['notifs']   = [];
+  if(!load('payments')) save('payments',[]);
+  if(!load('tests'))    save('tests',[]);
+  if(!load('hw'))       save('hw',[]);
+  if(!load('content'))  save('content',[]);
+  if(!load('bookings')) save('bookings',[]);
+  if(!load('notifs'))   save('notifs',[]);
 }
 
 // ══════════════════════════════════════════
@@ -1360,8 +1387,9 @@ async function initData(){
 // ══════════════════════════════════════════
 async function resetAllData(){
   if(!confirm('Удалить ВСЕ данные платформы? Ученики, материалы, тесты, ДЗ — всё будет удалено безвозвратно.')) return;
-  await Promise.all(COLLECTIONS.map(k => db.ref(k).remove()));
-  COLLECTIONS.forEach(k => _cache[k] = []);
+  COLLECTIONS.forEach(k => localStorage.removeItem(LS_PREFIX + k));
+  localStorage.removeItem('biohim_session');
+  localStorage.removeItem('biohim_admin_notifs');
   location.reload();
 }
 
@@ -1406,6 +1434,7 @@ const adminNav=[
   {id:'hw-admin',     icon:'✏️', label:'Домашние задания'},
   {id:'trial-admin',  icon:'🎯', label:'Пробник'},
   {section:'Управление'},
+  {id:'chat-admin',   icon:'💬', label:'Чат с учениками'},
   {id:'payment-admin',  icon:'💳',label:'Оплата'},
   {id:'schedule-admin', icon:'🗓',label:'Расписание'},
   {id:'reports-admin',  icon:'📊',label:'Отчёты по ученикам'},
@@ -1418,6 +1447,7 @@ const studentNav=[
   {id:'student-tests',     icon:'📋',label:'Тесты'},
   {id:'student-trial',     icon:'🎯', label:'Пробник'},
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
+  {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
   {section:'Прочее'},
   {id:'student-payment',   icon:'💳',label:'Оплата'},
   {id:'student-schedule',  icon:'🗓',label:'Запись на занятия'},
@@ -1433,6 +1463,12 @@ function buildNav(){
   });
   document.getElementById('sidebar-name').textContent=currentUser.name;
   document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Администратор':'Ученик';
+  setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); }, 50);
+}
+
+function openAdminChatById(sid){
+  navigateTo('chat-admin');
+  setTimeout(()=>openAdminChat(sid), 80);
 }
 
 let curPage='';
@@ -1460,6 +1496,8 @@ function renderPage(p){
   else if(p==='hw-admin'){ renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='trial-admin'){ renderTrialAdmin(); }
   else if(p==='student-trial'){ renderStudentTrial(); }
+  else if(p==='chat-admin'){ renderChatAdmin(); }
+  else if(p==='student-chat'){ renderStudentChat(); }
   else if(p==='payment-admin'){ buildStudentSelector('pay-student-selector', ()=>renderPaymentAdmin()); renderPaymentAdmin(); }
   else if(p==='schedule-admin') renderScheduleAdmin();
   else if(p==='reports-admin') renderReportsAdmin();
@@ -1504,12 +1542,29 @@ function renderDashboard(){
     <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hw.length}</div><div class="stat-label">ДЗ назначено</div></div>
   `;
   const notifs=load('notifs')||[];
+  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+  const allAdminNotifs = [
+    ...notifs.map(n=>({...n, _student:true})),
+    ...adminNotifs
+  ].sort((a,b)=> (b.id||'').localeCompare(a.id||''));
   const nl=document.getElementById('recent-notifs-list');
-  nl.innerHTML=notifs.slice(-5).reverse().map(n=>`
-    <div class="hw-item">
-      <div class="hw-status-dot new"></div>
-      <div><div class="content-name" style="font-size:0.83rem">${n.text}</div><div class="content-meta">${n.date}</div></div>
-    </div>`).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
+  nl.innerHTML=allAdminNotifs.slice(0,8).map(n=>{
+    const isChat    = n.type==='chat';
+    const isComment = n.type==='comment';
+    const isSubmit  = n.type==='submit';
+    const clickable = isChat||isComment||isSubmit;
+    const extraClass= isChat?'notif-chat': isComment?'notif-comment':'';
+    return `<div class="hw-item ${extraClass}" style="cursor:${clickable?'pointer':'default'};${extraClass?'border-radius:10px;padding:10px;margin-bottom:4px;':''}"
+      onclick="${isChat?`openAdminChatById('${n.studentId}')`: isComment||isSubmit?`openAdminChatById('${n.studentId}')`:'' }">
+      <div class="hw-status-dot ${isChat||isComment?'new':isSubmit?'done':'new'}"></div>
+      <div style="flex:1"><div class="content-name" style="font-size:0.83rem">${n.text}</div><div class="content-meta">${n.date||''}</div></div>
+      ${clickable?`<span style="font-size:0.72rem;color:var(--green-mid);white-space:nowrap">→ Перейти</span>`:''}
+    </div>`;
+  }).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
+  // mark admin notifs as read after showing
+  adminNotifs.forEach(n=>n.read=true);
+  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  updateAdminBadge();
   const slots=load('slots')||[];
   const ul=document.getElementById('upcoming-list');
   ul.innerHTML=slots.filter(s=>s.bookedBy).map(s=>{
@@ -1956,25 +2011,38 @@ function renderTestsAdmin(){
   // Update open answers for selected student (use first student if "all")
   _selectedStudent = _testsSelectedSid === 'all' ? (students[0]||{}).id : _testsSelectedSid;
   renderOpenAnswers();
+  // Inject admin comment threads for submitted tests
+  (load('tests')||[]).filter(t=>t.submitted).forEach(t=>{
+    const el2 = document.getElementById(`adm-cmt-test-${t.id}`);
+    if(el2 && !el2.innerHTML.trim()) renderCommentThread('test', t.id, el2);
+  });
 }
 function testItemHTML(t){
   const totalPts = (t.questions||[]).reduce((s,q)=>s+(+q.points||1),0);
-  return `<div class="content-item">
-    <div class="content-icon">📋</div>
-    <div class="content-info">
-      <div class="content-name">${t.title}</div>
-      <div class="content-meta">${t.questions.length} вопросов · ${totalPts} ${ptWord(totalPts)} · Создан: ${t.date}</div>
-      <div class="content-meta" style="margin-top:4px">
-        ${t.submitted?`<span class="badge badge-green">Сдан</span> ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}`:'<span class="badge badge-gold">Не сдан</span>'}
-        ${t.autoGrade?`<span class="grade-result-badge grade-${t.autoGrade}" style="font-size:0.72rem;padding:3px 10px">Оценка: ${t.autoGrade}</span>`:''}
-        ${t.openChecked?'<span class="badge badge-blue" style="margin-left:4px">✓ Проверено</span>':''}
+  return `<div class="content-item" style="flex-direction:column;align-items:stretch">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="content-icon">📋</div>
+      <div class="content-info">
+        <div class="content-name">${t.title}</div>
+        <div class="content-meta">${t.questions.length} вопросов · ${totalPts} ${ptWord(totalPts)} · Создан: ${t.date}</div>
+        <div class="content-meta" style="margin-top:4px">
+          ${(()=>{
+            const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+            if(!t.submitted) return '<span class="badge badge-gold">Не сдан</span>';
+            const scoreStr = t.autoTotal ? ` ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}` : '';
+            if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}`;
+            return `<span class="badge badge-gold">Ожидает проверки</span>${scoreStr}`;
+          })()}
+          ${t.autoGrade?`<span class="grade-result-badge grade-${t.autoGrade}" style="font-size:0.72rem;padding:3px 10px">Оценка: ${t.autoGrade}</span>`:''}
+        </div>
+      </div>
+      <div class="content-actions" style="flex-shrink:0">
+        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
+        <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
       </div>
     </div>
-    <div class="content-actions">
-      <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
-      <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
-      <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
-    </div>
+    ${t.submitted ? `<div id="adm-cmt-test-${t.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
 }
 function renderOpenAnswers(){
@@ -2257,23 +2325,35 @@ function renderHWAdmin(){
 
   _selectedStudent = _hwSelectedSid === 'all' ? (students[0]||{}).id : _hwSelectedSid;
   renderHWOpenAnswers();
+  // Inject admin comment threads for submitted HW
+  (load('hw')||[]).filter(h=>h.submitted).forEach(h=>{
+    const el2 = document.getElementById(`adm-cmt-hw-${h.id}`);
+    if(el2 && !el2.innerHTML.trim()) renderCommentThread('hw', h.id, el2);
+  });
 }
 function hwItemHTML(h){
-  return `<div class="content-item">
-    <div class="content-icon">✏️</div>
-    <div class="content-info">
-      <div class="content-name">${h.title}</div>
-      <div class="content-meta">${h.desc||''} · Срок: ${h.due||'—'}</div>
-      <div class="content-meta" style="margin-top:4px">
-        ${h.submitted?'<span class="badge badge-green">Отправлено на проверку</span>':'<span class="badge badge-gold">Ожидается</span>'}
-        ${h.openChecked?'<span class="badge badge-blue" style="margin-left:4px">✓ Проверено</span>':''}
+  return `<div class="content-item" style="flex-direction:column;align-items:stretch">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="content-icon">✏️</div>
+      <div class="content-info">
+        <div class="content-name">${h.title}</div>
+        <div class="content-meta">${h.desc||''} · Срок: ${h.due||'—'}</div>
+        <div class="content-meta" style="margin-top:4px">
+          ${(()=>{
+            const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+            if(!h.submitted) return '<span class="badge badge-gold">Ожидается</span>';
+            if(h.openChecked || !hasOpen) return '<span class="badge badge-green">✓ Проверено</span>';
+            return '<span class="badge badge-gold">Ожидает проверки</span>';
+          })()}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
+        <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
       </div>
     </div>
-    <div style="display:flex;gap:6px">
-      <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
-      <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
-      <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
-    </div>
+    ${h.submitted ? `<div id="adm-cmt-hw-${h.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
 }
 function renderHWOpenAnswers(){
@@ -3231,8 +3311,14 @@ function renderStudentTrial(){
         ?`<button class="btn btn-green" onclick="startTrial('${t.id}')">▶ Начать пробник</button>`
         :viewTrialResultHTML(t)
       }
+      <div id="cmt-trial-${t.id}"></div>
     </div>`;
   }).join('');
+  // Inject comment threads
+  trials.filter(t=>t.submitted).forEach(t=>{
+    const el2 = document.getElementById(`cmt-trial-${t.id}`);
+    if(el2) renderCommentThread('trial', t.id, el2);
+  });
 }
 
 // ── TAKING A TRIAL ──
@@ -3378,11 +3464,18 @@ function renderStudentDashboard(){
   `;
   const notifs=(load('notifs')||[]).filter(n=>n.studentId===sid);
   document.getElementById('student-notifs-list').innerHTML=notifs.slice().reverse().map(n=>{
-    const isRepeat = n.type==='repeat';
-    return `<div class="hw-item" style="cursor:${isRepeat?'pointer':'default'}" onclick="${isRepeat?'navigateTo(\'student-repeat\')':''}">
-      <div class="hw-status-dot ${isRepeat?'':'new'}"></div>
+    const isRepeat  = n.type==='repeat';
+    const isChat    = n.type==='chat';
+    const isComment = n.type==='comment';
+    const nav = n.nav || (isRepeat?'student-repeat': isChat?'student-chat': '');
+    const clickable = !!nav;
+    const dotClass  = isChat?'new': isComment?'done': isRepeat?'':'new';
+    const arrow     = isChat?'→ Чат': isComment?'→ Перейти': isRepeat?'→ Повторить':'';
+    const extraClass= isChat?'notif-chat': isComment?'notif-comment':'';
+    return `<div class="hw-item ${extraClass}" style="cursor:${clickable?'pointer':'default'};${extraClass?'border-radius:10px;padding:10px;margin-bottom:4px;':''}" onclick="${clickable?`navigateTo('${nav}')`:''}" >
+      <div class="hw-status-dot ${dotClass}"></div>
       <div><div class="content-name" style="font-size:0.85rem">${n.text}</div><div class="content-meta">${n.date}</div></div>
-      ${isRepeat?'<span style="font-size:0.75rem;color:var(--green-mid);margin-left:auto">→ Повторить</span>':''}
+      ${clickable?`<span style="font-size:0.75rem;color:var(--green-mid);margin-left:auto;white-space:nowrap">${arrow}</span>`:''}
     </div>`;
   }).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
 
@@ -3406,13 +3499,15 @@ function setMaterialFilter(f, el){
 function setTestFilter(f, el){
   _testFilter = f;
   document.querySelectorAll('#page-student-tests .filter-pill').forEach(p=>p.className='filter-pill');
-  el.className = 'filter-pill ' + (f==='all'?'active': f==='done'?'active-done':'active-todo');
+  const cls = {all:'active', done:'active-done', pending:'active-todo', waiting:'active-todo', checked:'active-done'}[f]||'active';
+  el.className = 'filter-pill ' + cls;
   renderStudentTests();
 }
 function setHWFilter(f, el){
   _hwFilter = f;
   document.querySelectorAll('#page-student-hw .filter-pill').forEach(p=>p.className='filter-pill');
-  el.className = 'filter-pill ' + (f==='all'?'active': f==='done'?'active-done':'active-todo');
+  const cls = {all:'active', done:'active-done', pending:'active-todo', waiting:'active-todo', checked:'active-done'}[f]||'active';
+  el.className = 'filter-pill ' + cls;
   renderStudentHW();
 }
 
@@ -3455,12 +3550,19 @@ function renderStudentTests(){
   if(!tests.length){ el.innerHTML=emptyHTML(); return; }
 
   if(_testFilter==='pending') tests=tests.filter(t=>!t.submitted);
-  if(_testFilter==='done')    tests=tests.filter(t=>t.submitted);
+  if(_testFilter==='done')    tests=tests.filter(t=>t.submitted && !(t.openChecked || !(t.questions||[]).some(q=>q.type==='open')));
+  if(_testFilter==='checked') tests=tests.filter(t=>t.submitted && (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')));
   tests = tests.slice().reverse();
 
   if(!tests.length){
-    const msgs={pending:'Все тесты уже отправлены на проверку! 🎉',done:'Отправленных на проверку тестов пока нет'};
-    el.innerHTML=`<div class="empty-state"><div class="big">${_testFilter==='pending'?'🎉':'📋'}</div><p>${msgs[_testFilter]}</p></div>`;
+    const msgs={
+      all:'Тестов пока нет',
+      pending:'Все тесты уже сданы! 🎉',
+      done:'Нет тестов на проверке',
+      checked:'Нет проверенных тестов'
+    };
+    const icons={all:'📋',pending:'🎉',done:'📝',checked:'✔️'};
+    el.innerHTML=`<div class="empty-state"><div class="big">${icons[_testFilter]||'📋'}</div><p>${msgs[_testFilter]||'Нет тестов'}</p></div>`;
     return;
   }
   el.innerHTML=tests.map(t=>{
@@ -3469,14 +3571,24 @@ function renderStudentTests(){
     return `<div class="card" data-item-id="${t.id}">
       <div class="card-title"><span class="dot"></span>${t.title}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-        ${t.submitted?`<span class="badge badge-green">✅ Отправлено на проверку</span>`:`<span class="badge badge-gold">⏳ Ожидает</span>`}
+        ${(()=>{
+          const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+          if(!t.submitted) return `<span class="badge badge-gold">⏳ Не сдан</span>`;
+          if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
+          return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
+        })()}
         ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
         ${grade?`<span class="grade-result-badge grade-${grade}">Оценка: ${grade}</span>`:''}
-        ${t.openChecked?`<span class="badge badge-green">📝 Проверено</span>`:(t.submitted&&(t.questions||[]).some(q=>q.type==='open')?`<span class="badge badge-gold">📝 Ожидает проверки</span>`:'')}
       </div>
       ${t.submitted?renderTestResults(t):`<button class="btn btn-green" onclick="takeTest('${t.id}')">▶️ Пройти тест</button>`}
+      <div id="cmt-test-${t.id}"></div>
     </div>`;
   }).join('');
+  // Inject comment threads after render
+  tests.filter(t=>t.submitted).forEach(t=>{
+    const el2 = document.getElementById(`cmt-test-${t.id}`);
+    if(el2) renderCommentThread('test', t.id, el2);
+  });
 }
 function renderTestResults(t){
   return (t.questions||[]).map(q=>{
@@ -3570,6 +3682,11 @@ function submitTest(){
   closeModal('modal-take-test');
   renderStudentTests();
   showNotif(`✅ Тест сдан! ${score}/${t.autoTotal} баллов (${pct}%) — оценка ${t.autoGrade}`);
+  // notify admin
+  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${t.title}»`, date:new Date().toLocaleDateString('ru'), read:false});
+  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  updateAdminBadge();
 }
 
 // STUDENT HW
@@ -3580,12 +3697,19 @@ function renderStudentHW(){
   if(!hws.length){ el.innerHTML=emptyHTML(); return; }
 
   if(_hwFilter==='pending') hws=hws.filter(h=>!h.submitted);
-  if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted);
+  if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted && !(h.openChecked || !(h.questions||[]).some(q=>q.type==='open')));
+  if(_hwFilter==='checked') hws=hws.filter(h=>h.submitted && (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')));
   hws = hws.slice().reverse(); // новые сверху
 
   if(!hws.length){
-    const msgs={pending:'Все ДЗ уже отправлены на проверку! 🎉',done:'Отправленных на проверку ДЗ пока нет'};
-    el.innerHTML=`<div class="empty-state"><div class="big">${_hwFilter==='pending'?'🎉':'✏️'}</div><p>${msgs[_hwFilter]}</p></div>`;
+    const msgs={
+      all:'ДЗ пока нет',
+      pending:'Все ДЗ уже сданы! 🎉',
+      done:'Нет ДЗ на проверке',
+      checked:'Нет проверенных ДЗ'
+    };
+    const icons={all:'✏️',pending:'🎉',done:'📝',checked:'✔️'};
+    el.innerHTML=`<div class="empty-state"><div class="big">${icons[_hwFilter]||'✏️'}</div><p>${msgs[_hwFilter]||'Нет ДЗ'}</p></div>`;
     return;
   }
   el.innerHTML=hws.map(h=>`
@@ -3594,10 +3718,21 @@ function renderStudentHW(){
       <div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${h.desc}</div>
       ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
       <div style="display:flex;gap:8px;margin-bottom:12px">
-        ${h.submitted?'<span class="badge badge-green">✅ Отправлено на проверку</span>':'<span class="badge badge-gold">⏳ Не сдано</span>'}
+        ${(()=>{
+          const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+          if(!h.submitted) return `<span class="badge badge-gold">⏳ Не сдано</span>`;
+          if(h.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
+          return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
+        })()}
       </div>
       ${h.submitted?renderHWResults(h):`<button class="btn btn-green" onclick="doHW('${h.id}')">✏️ Выполнить</button>`}
+      <div id="cmt-hw-${h.id}"></div>
     </div>`).join('');
+  // Inject comment threads
+  hws.filter(h=>h.submitted).forEach(h=>{
+    const el2 = document.getElementById(`cmt-hw-${h.id}`);
+    if(el2) renderCommentThread('hw', h.id, el2);
+  });
 }
 function renderHWResults(h){
   if(!h.questions||!h.questions.length) return `<div class="feedback-box">Свободная форма — ответ сдан</div>`;
@@ -3669,6 +3804,11 @@ function submitHW(){
   closeModal('modal-take-test');
   renderStudentHW();
   showNotif('✅ ДЗ отправлено на проверку!');
+  // notify admin
+  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${h.title}»`, date:new Date().toLocaleDateString('ru'), read:false});
+  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  updateAdminBadge();
 }
 
 // STUDENT PAYMENT
@@ -4018,17 +4158,13 @@ function showNotif(msg){
   document.body.appendChild(overlay);
 
   try {
-    const timeout = new Promise((_,reject) => setTimeout(()=>reject(new Error('Превышено время ожидания (10 сек). Проверьте правила Firestore и интернет-соединение.')), 10000));
-    await Promise.race([
-      (async()=>{ await preloadCache(); await initData(); })(),
-      timeout
-    ]);
+    await preloadCache();
+    await initData();
   } catch(e) {
-    console.error('Firebase init error:', e);
+    console.error('Init error:', e);
     overlay.innerHTML = `
       <div style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--green-deep)">Био<span style="color:var(--chem)">Хим</span></div>
-      <div style="color:var(--red);font-size:0.9rem;max-width:340px;text-align:center">⚠️ Ошибка подключения:<br><b>${e.message||e}</b></div>
-      <div style="color:var(--text3);font-size:0.78rem;max-width:340px;text-align:center">Проверьте правила Firestore:<br>Firestore → Rules → allow read, write: if true</div>
+      <div style="color:var(--red);font-size:0.9rem;max-width:340px;text-align:center">⚠️ Ошибка инициализации:<br><b>${e.message||e}</b></div>
     `;
     return;
   }
@@ -4536,7 +4672,281 @@ function renderTodoList(mode){
     el.innerHTML = html;
   }
 }
+// ══════════════════════════════════════════
+// CHAT
+// ══════════════════════════════════════════
+function chatKey(sid){ return 'chat_'+sid; }
+function loadChat(sid){ return JSON.parse(localStorage.getItem(chatKey(sid))||'[]'); }
+function saveChat(sid, msgs){ localStorage.setItem(chatKey(sid), JSON.stringify(msgs)); }
+
+function chatUnread(sid){
+  const msgs = loadChat(sid);
+  const role = currentUser.role;
+  return msgs.filter(m=> m.from !== role && !m.read).length;
+}
+function markChatRead(sid){
+  const role = currentUser.role;
+  const msgs = loadChat(sid);
+  let changed = false;
+  msgs.forEach(m=>{ if(m.from!==role && !m.read){ m.read=true; changed=true; } });
+  if(changed) saveChat(sid, msgs);
+}
+
+let _chatActiveSid = null;
+
+// ─ ADMIN ─
+function renderChatAdmin(){
+  const students = getStudents();
+  const el = document.getElementById('chat-admin-contacts');
+  if(!el) return;
+  el.innerHTML = students.map(s=>{
+    const msgs = loadChat(s.id);
+    const last = msgs[msgs.length-1];
+    const unread = chatUnread(s.id);
+    const initials = s.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    return `<div class="chat-contact ${_chatActiveSid===s.id?'active':''}" onclick="openAdminChat('${s.id}')">
+      <div class="chat-avatar">${initials}</div>
+      <div style="flex:1;min-width:0">
+        <div class="chat-contact-name">${s.name}</div>
+        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+last.text:'Нет сообщений'}</div>
+      </div>
+      ${unread?`<div class="chat-unread">${unread}</div>`:''}
+    </div>`;
+  }).join('') || '<div style="padding:16px;font-size:0.85rem;color:var(--text3)">Нет учеников</div>';
+}
+
+function openAdminChat(sid){
+  _chatActiveSid = sid;
+  markChatRead(sid);
+  renderChatAdmin();
+  const student = getStudents().find(s=>s.id===sid);
+  const initials = student ? student.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase() : '?';
+  const main = document.getElementById('chat-admin-main');
+  main.innerHTML = `
+    <div class="chat-header">
+      <div class="chat-avatar">${initials}</div>
+      <div><div class="chat-header-name">${student?student.name:'Ученик'}</div><div class="chat-header-sub">${student?student.subject||'':''}</div></div>
+    </div>
+    <div class="chat-messages" id="chat-admin-messages"></div>
+    <div class="chat-input-bar">
+      <textarea id="chat-admin-input" placeholder="Написать сообщение..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdminMsg()}"></textarea>
+      <button class="chat-send-btn" onclick="sendAdminMsg()">➤</button>
+    </div>`;
+  renderChatMessages('chat-admin-messages', sid, 'admin');
+}
+
+function sendAdminMsg(){
+  if(!_chatActiveSid) return;
+  const inp = document.getElementById('chat-admin-input');
+  const text = inp.value.trim();
+  if(!text) return;
+  const msgs = loadChat(_chatActiveSid);
+  msgs.push({id:'m'+Date.now(), from:'admin', text, time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}), date: new Date().toLocaleDateString('ru'), read: false});
+  saveChat(_chatActiveSid, msgs);
+  inp.value = '';
+  renderChatMessages('chat-admin-messages', _chatActiveSid, 'admin');
+  renderChatAdmin();
+  // notify student
+  addNotif(_chatActiveSid, {type:'chat', text:`💬 Новое сообщение от преподавателя`, nav:'student-chat'});
+  updateChatBadge();
+}
+
+function renderChatMessages(containerId, sid, myRole){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  const msgs = loadChat(sid);
+  if(!msgs.length){ el.innerHTML='<div class="chat-empty"><div style="font-size:2rem">👋</div><div>Начните диалог!</div></div>'; return; }
+  let lastDate = '';
+  el.innerHTML = msgs.map(m=>{
+    const mine = m.from === myRole;
+    let html = '';
+    if(m.date !== lastDate){
+      html += `<div class="chat-date-divider">${m.date}</div>`;
+      lastDate = m.date;
+    }
+    const refBlock = m.ref ? `<div class="chat-bubble-ref">📎 ${m.ref}</div>` : '';
+    html += `<div class="chat-msg ${mine?'mine':'theirs'}">
+      <div class="chat-bubble">${refBlock}${escHtml(m.text)}</div>
+      <div class="chat-time">${m.time}</div>
+    </div>`;
+    return html;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ─ STUDENT ─
+function renderStudentChat(){
+  markChatRead(currentUser.id);
+  updateChatBadge();
+  renderChatMessages('chat-student-messages', currentUser.id, 'student');
+  const inp = document.getElementById('chat-student-input');
+  if(inp) inp.value = '';
+}
+
+function sendStudentMsg(){
+  const inp = document.getElementById('chat-student-input');
+  const text = inp ? inp.value.trim() : '';
+  if(!text) return;
+  const sid = currentUser.id;
+  const msgs = loadChat(sid);
+  msgs.push({id:'m'+Date.now(), from:'student', text, time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}), date: new Date().toLocaleDateString('ru'), read: false});
+  saveChat(sid, msgs);
+  inp.value = '';
+  renderChatMessages('chat-student-messages', sid, 'student');
+  // notify admin (global notif with type chat)
+  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+  adminNotifs.push({id:'an'+Date.now(), studentId:sid, studentName: currentUser.name, type:'chat', text:`💬 ${currentUser.name}: ${text.substring(0,60)}`, time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}), date: new Date().toLocaleDateString('ru'), read:false});
+  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  updateChatBadge();
+}
+
+function updateChatBadge(){
+  // Student: count unread from admin
+  if(currentUser && currentUser.role==='student'){
+    const count = chatUnread(currentUser.id);
+    document.querySelectorAll('#nav-student-chat').forEach(el=>{
+      el.querySelectorAll('.chat-badge').forEach(b=>b.remove());
+      if(count>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${count}</span>`);
+    });
+  }
+  // Admin: count all unread
+  if(currentUser && currentUser.role==='admin'){
+    const total = getStudents().reduce((s,st)=>s+chatUnread(st.id),0);
+    const adminTotal = total + (JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]').filter(n=>!n.read).length);
+    document.querySelectorAll('#nav-chat-admin').forEach(el=>{
+      el.querySelectorAll('.chat-badge').forEach(b=>b.remove());
+      if(adminTotal>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${adminTotal}</span>`);
+    });
+  }
+}
+
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+
+// Helper to send chat message from a work item context (with ref)
+function sendChatWithRef(sid, refText){
+  if(currentUser.role==='admin'){
+    _chatActiveSid = sid;
+    const msgs = loadChat(sid);
+    msgs.push({id:'m'+Date.now(), from:'admin', text:'', ref: refText, time:'', date: new Date().toLocaleDateString('ru'), read:false, _draft:true});
+    // Just open chat and prefill
+    navigateTo('chat-admin');
+    setTimeout(()=>{
+      openAdminChat(sid);
+      const inp = document.getElementById('chat-admin-input');
+      if(inp){ inp.value = ''; inp.focus(); inp.setAttribute('data-ref', refText); }
+      // patch send to include ref
+    },100);
+  }
+}
+
+// ══════════════════════════════════════════
+// COMMENTS (on test/hw/trial items)
+// ══════════════════════════════════════════
+function commentsKey(type, itemId){ return `comments_${type}_${itemId}`; }
+function loadComments(type, itemId){ return JSON.parse(localStorage.getItem(commentsKey(type,itemId))||'[]'); }
+function saveComments(type, itemId, arr){ localStorage.setItem(commentsKey(type,itemId), JSON.stringify(arr)); }
+
+function renderCommentThread(type, itemId, containerEl){
+  const comments = loadComments(type, itemId);
+  const isAdmin = currentUser.role === 'admin';
+  const myName = currentUser.name;
+  const html = `
+    <div class="comment-thread">
+      <div style="font-size:0.78rem;font-weight:700;color:var(--text3);margin-bottom:8px">💬 Комментарии</div>
+      <div id="comments-${type}-${itemId}">
+        ${comments.length ? comments.map(c=>{
+          const initials = c.author.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+          return `<div class="comment-item">
+            <div class="comment-avatar" style="${c.role==='admin'?'':'background:linear-gradient(135deg,#1565c0,#42a5f5)'}">${initials}</div>
+            <div class="comment-body">
+              <div class="comment-author">${c.author} ${c.role==='admin'?'· Преподаватель':''}</div>
+              <div class="comment-text">${escHtml(c.text)}</div>
+              <div class="comment-time">${c.date} ${c.time}</div>
+            </div>
+          </div>`;
+        }).join('') : '<div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Комментариев пока нет</div>'}
+      </div>
+      <div class="comment-input-row">
+        <input id="ci-${type}-${itemId}" placeholder="Написать комментарий..." onkeydown="if(event.key==='Enter'){addComment('${type}','${itemId}')}" />
+        <button class="btn btn-green btn-sm" onclick="addComment('${type}','${itemId}')">Отправить</button>
+      </div>
+    </div>`;
+  containerEl.insertAdjacentHTML('beforeend', html);
+}
+
+function addComment(type, itemId){
+  const inp = document.getElementById(`ci-${type}-${itemId}`);
+  if(!inp) return;
+  const text = inp.value.trim();
+  if(!text) return;
+  const comments = loadComments(type, itemId);
+  const now = new Date();
+  const c = {
+    id: 'c'+Date.now(),
+    author: currentUser.name,
+    role: currentUser.role,
+    text,
+    date: now.toLocaleDateString('ru'),
+    time: now.toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
+  };
+  comments.push(c);
+  saveComments(type, itemId, comments);
+  inp.value = '';
+
+  // Determine who to notify
+  let item = null;
+  if(type==='test') item = (load('tests')||[]).find(t=>t.id===itemId);
+  else if(type==='hw') item = (load('hw')||[]).find(h=>h.id===itemId);
+  else if(type==='trial') item = (load('trials')||[]).find(t=>t.id===itemId);
+
+  const itemTitle = item ? item.title : type;
+  const typeLabel = {test:'тест',hw:'ДЗ',trial:'пробник'}[type]||type;
+
+  if(currentUser.role==='admin' && item){
+    // notify student
+    addNotif(item.studentId, {type:'comment', text:`💬 Преподаватель прокомментировал ${typeLabel} «${itemTitle}»`, nav: type==='hw'?'student-hw':type==='test'?'student-tests':'student-trial'});
+  } else if(currentUser.role==='student' && item){
+    // notify admin
+    const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+    adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'comment', text:`💬 ${currentUser.name} прокомментировал(а) ${typeLabel} «${itemTitle}»`, date:now.toLocaleDateString('ru'), read:false});
+    localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  }
+
+  // Re-render only the comment list
+  const listEl = document.getElementById(`comments-${type}-${itemId}`);
+  if(listEl){
+    const initials = c.author.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+    listEl.insertAdjacentHTML('beforeend', `<div class="comment-item">
+      <div class="comment-avatar" style="${c.role==='admin'?'':'background:linear-gradient(135deg,#1565c0,#42a5f5)'}">${initials}</div>
+      <div class="comment-body">
+        <div class="comment-author">${c.author} ${c.role==='admin'?'· Преподаватель':''}</div>
+        <div class="comment-text">${escHtml(c.text)}</div>
+        <div class="comment-time">${c.date} ${c.time}</div>
+      </div>
+    </div>`);
+  }
+}
+
+
+function updateAdminBadge(){
+  if(currentUser && currentUser.role==='admin'){
+    const total = getStudents().reduce((s,st)=>s+chatUnread(st.id),0)
+      + (JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]').filter(n=>!n.read).length);
+    document.querySelectorAll('#nav-chat-admin').forEach(el=>{
+      el.querySelectorAll('.chat-badge').forEach(b=>b.remove());
+      if(total>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${total}</span>`);
+    });
+  }
+}
+
+// ── addNotif helper ──
+function addNotif(studentId, {type, text, nav}){
+  const notifs = load('notifs')||[];
+  notifs.push({id:'n'+Date.now(), studentId, type, text, nav, date:new Date().toLocaleDateString('ru'), read:false});
+  save('notifs', notifs);
+}
 </script>
+
 <!-- ASSIGN STUDENTS MODAL -->
 <div class="modal-bg" id="modal-assign-students">
   <div class="modal">
