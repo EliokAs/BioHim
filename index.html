@@ -5198,8 +5198,29 @@ function sendChatWithRef(sid, refText){
 // COMMENTS (on test/hw/trial items)
 // ══════════════════════════════════════════
 function commentsKey(type, itemId){ return `comments_${type}_${itemId}`; }
-function loadComments(type, itemId){ return JSON.parse(localStorage.getItem(commentsKey(type,itemId))||'[]'); }
-function saveComments(type, itemId, arr){ localStorage.setItem(commentsKey(type,itemId), JSON.stringify(arr)); }
+
+function loadComments(type, itemId){
+  // First try: embedded in the item itself (syncs across devices)
+  const items = load(type==='test'?'tests':type==='hw'?'hw':'trials') || [];
+  const item = items.find(x=>x.id===itemId);
+  if(item && item.comments) return item.comments;
+  // Fallback: old separate key
+  return load(commentsKey(type, itemId)) || [];
+}
+
+function saveComments(type, itemId, arr){
+  // Save embedded in the item so it syncs with tests/hw/trials via save()
+  const key = type==='test'?'tests':type==='hw'?'hw':'trials';
+  const items = load(key) || [];
+  const item = items.find(x=>x.id===itemId);
+  if(item){
+    item.comments = arr;
+    save(key, items);
+  } else {
+    // Fallback: separate key
+    save(commentsKey(type, itemId), arr);
+  }
+}
 
 function renderCommentThread(type, itemId, containerEl){
   const comments = loadComments(type, itemId);
@@ -5261,7 +5282,7 @@ function addComment(type, itemId){
     // notify student
     addNotif(item.studentId, {type:'comment', text:`💬 Преподаватель прокомментировал ${typeLabel} «${itemTitle}»`, nav: type==='hw'?'student-hw':type==='test'?'student-tests':'student-trial'});
   } else if(currentUser.role==='student' && item){
-    // notify admin
+    // notify admin — use same save() so Firebase syncs it
     const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
     adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'comment', text:`💬 ${currentUser.name} прокомментировал(а) ${typeLabel} «${itemTitle}»`, date:now.toLocaleDateString('ru'), read:false});
     localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
