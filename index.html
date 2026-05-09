@@ -240,6 +240,7 @@ tr:hover td { background: var(--bg2); }
 .time-slot.free { border-color: var(--green-pale); }
 .time-slot.booked { background: var(--green-xpale); border-color: var(--green-light); color: var(--green-deep); }
 .time-slot.mine { background: linear-gradient(135deg, var(--green-deep), var(--green-mid)); color: #fff; border-color: transparent; }
+.sg-type-btn.active { background: var(--green-xpale); border-color: var(--green-mid); color: var(--green-deep); font-weight: 700; }
 .day-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); text-align: center; padding: 6px; font-weight: 700; }
 
 /* ─── NOTIFICATION ─── */
@@ -622,6 +623,13 @@ tr:hover td { background: var(--bg2); }
           </table>
         </div>
       </div>
+      <div class="card" style="margin-top:18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <div class="card-title" style="margin:0"><span class="dot"></span>👥 Группы и пары</div>
+          <button class="btn btn-green btn-sm" onclick="openModal_createGroup()">＋ Создать группу</button>
+        </div>
+        <div id="groups-list"></div>
+      </div>
     </div>
 
     <!-- Content Admin -->
@@ -696,7 +704,7 @@ tr:hover td { background: var(--bg2); }
         </div>
         <div class="card">
           <div class="card-title"><span class="dot"></span>Слоты записи</div>
-          <button class="btn btn-green btn-sm" onclick="openModal('modal-add-slot')">＋ Добавить слот</button>
+          <button class="btn btn-green btn-sm" onclick="openModal_addSlot()">＋ Добавить слот</button>
           <div id="slots-admin-list" style="margin-top:14px"></div>
         </div>
       </div>
@@ -731,6 +739,31 @@ tr:hover td { background: var(--bg2); }
         </div>
       </div>
       <div class="grid-3" id="student-stats-grid"></div>
+
+      <!-- DAILY TASK -->
+      <div id="daily-task-block" style="margin-top:20px;display:none">
+        <div class="card" style="border:2px solid var(--green-pale);background:linear-gradient(135deg,#f4fdf7,#ffffff)">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <span style="font-size:1.4rem">🎲</span>
+            <div>
+              <div class="card-title" style="margin:0">Задание дня</div>
+              <div style="font-size:0.75rem;color:var(--text3)">Каждый день — новое задание. Следующее завтра!</div>
+            </div>
+            <div id="daily-task-badge" style="margin-left:auto;font-size:0.72rem;font-weight:700;padding:4px 10px;border-radius:12px;background:#e8f8f0;color:#27ae60;display:none">✅ Отвечено</div>
+          </div>
+          <div id="daily-task-subject" style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px"></div>
+          <div id="daily-task-text" style="font-size:0.97rem;font-weight:600;color:var(--accent);line-height:1.6;margin-bottom:12px"></div>
+          <div id="daily-task-img-wrap" style="display:none;margin-bottom:12px">
+            <img id="daily-task-img" style="max-width:100%;border-radius:10px;border:1px solid var(--green-xpale)" alt="">
+          </div>
+          <div id="daily-task-answer-block">
+            <textarea id="daily-task-answer" rows="3" placeholder="Введите ваш ответ..."
+              style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;background:var(--white)"></textarea>
+            <button class="btn btn-green" style="margin-top:10px;width:100%" onclick="submitDailyTask()">📤 Отправить ответ</button>
+          </div>
+          <div id="daily-task-result" style="display:none"></div>
+        </div>
+      </div>
       <div class="card" style="margin-top:20px">
         <div class="card-title"><span class="dot"></span>🔔 Уведомления</div>
         <div id="student-notifs-list"></div>
@@ -764,6 +797,22 @@ tr:hover td { background: var(--bg2); }
           <div class="todo-list-scroll" id="s-todo-list"></div>
         </div>
       </div>
+    </div>
+
+    <!-- Task Bank Admin -->
+    <div class="page" id="page-taskbank-admin">
+      <div class="page-title">🎲 База заданий</div>
+      <div class="page-sub">Задания перемешиваются и выдаются ученикам каждый день по одному — без повторений</div>
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="card-title" style="margin:0"><span class="dot"></span>Все задания</div>
+            <div style="font-size:0.8rem;color:var(--text3);margin-top:4px" id="taskbank-count-label"></div>
+          </div>
+          <button class="btn btn-green btn-sm" onclick="openModal('modal-add-task')">＋ Добавить задание</button>
+        </div>
+      </div>
+      <div id="taskbank-list"></div>
     </div>
 
     <!-- Student Materials -->
@@ -1136,6 +1185,100 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
+<!-- ADD TASK -->
+<div class="modal-bg" id="modal-add-task">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-title">🎲 Новое задание</div>
+    <span class="modal-close" onclick="closeModal('modal-add-task')">✕</span>
+
+    <div class="form-group">
+      <label>Тема / предмет <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+      <input id="ntask-subject" placeholder="Биология, Органика, Клетка...">
+    </div>
+    <div class="form-group">
+      <label>Текст задания</label>
+      <textarea id="ntask-text" rows="4" placeholder="Напишите вопрос или задание для ученика..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Картинка <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+      <div class="q-img-tabs" style="margin-bottom:8px">
+        <div class="q-img-tab active" onclick="switchImgTab('ntask-img','url')">Ссылка</div>
+        <div class="q-img-tab" onclick="switchImgTab('ntask-img','file')">Загрузить</div>
+      </div>
+      <div id="ntask-img-url">
+        <input id="ntask-imgurl" placeholder="https://..." style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem"
+          oninput="updateQImgPreview('ntask-img-preview',this.value)">
+      </div>
+      <div id="ntask-img-file" style="display:none">
+        <input type="file" accept="image/*" style="font-size:0.83rem;padding:6px" onchange="handleTaskImgUpload(this)">
+      </div>
+      <img id="ntask-img-preview" style="display:none;max-width:100%;border-radius:8px;margin-top:8px;border:1px solid var(--green-xpale)" alt="">
+    </div>
+
+    <hr class="divider">
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Тип ответа</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap">
+          <input type="radio" name="ntask-type" value="open" checked onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 📝 Открытый
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap">
+          <input type="radio" name="ntask-type" value="choice" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> ⚡ Выбор из вариантов
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap">
+          <input type="radio" name="ntask-type" value="short" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔤 Точный ответ
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>⭐ Баллы за задание</label>
+      <input id="ntask-points" type="number" min="1" max="100" value="1"
+        style="width:100px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.92rem;text-align:center">
+      <span style="font-size:0.82rem;color:var(--text3);margin-left:10px">По умолчанию: 1 балл</span>
+    </div>
+
+    <!-- Open: reference answer -->
+    <div id="ntask-ui-open">
+      <div class="form-group">
+        <label>Эталонный ответ <span style="color:var(--text3);font-weight:400">(покажется ученику после ответа)</span></label>
+        <textarea id="ntask-answer" rows="3" placeholder="Правильный ответ или пояснение..."></textarea>
+      </div>
+    </div>
+
+    <!-- Choice: variants + correct -->
+    <div id="ntask-ui-choice" style="display:none">
+      <div class="form-group">
+        <label>Варианты ответов <span style="color:var(--text3);font-weight:400">(каждый с новой строки)</span></label>
+        <textarea id="ntask-options" rows="4" placeholder="Митоз&#10;Мейоз&#10;Амитоз&#10;Бинарное деление"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Правильный вариант <span style="color:var(--text3);font-weight:400">(точно как написано выше)</span></label>
+        <input id="ntask-correct-choice" placeholder="Митоз">
+      </div>
+      <div class="form-group">
+        <label>Пояснение <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+        <textarea id="ntask-explanation-choice" rows="2" placeholder="Почему именно этот ответ..."></textarea>
+      </div>
+    </div>
+
+    <!-- Short: exact match -->
+    <div id="ntask-ui-short" style="display:none">
+      <div class="form-group">
+        <label>Правильный ответ <span style="color:var(--text3);font-weight:400">(точное совпадение, без учёта регистра)</span></label>
+        <input id="ntask-correct-short" placeholder="ДНК">
+      </div>
+      <div class="form-group">
+        <label>Пояснение <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+        <textarea id="ntask-explanation-short" rows="2" placeholder="Пояснение к ответу..."></textarea>
+      </div>
+    </div>
+
+    <input type="hidden" id="ntask-edit-id">
+    <button class="btn btn-green" onclick="saveTask()">Сохранить задание</button>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-create-test">
   <div class="modal" style="max-width:680px">
     <div class="modal-title">📋 Создать тест</div>
@@ -1240,6 +1383,22 @@ tr:hover td { background: var(--bg2); }
       <select id="nsl-day"><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option><option>Воскресенье</option></select></div>
     <div class="form-group"><label>Время</label><input id="nsl-time" type="time" value="10:00"></div>
     <div class="form-group"><label>Продолжительность (мин)</label><input id="nsl-dur" type="number" value="60"></div>
+    <div class="form-group"><label>Курс <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+      <select id="nsl-course"><option value="">— Без курса —</option></select></div>
+    <div class="form-group">
+      <label>Назначить ученика или группу <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+      <select id="nsl-assigntype" onchange="updateSlotAssignUI()" style="margin-bottom:8px">
+        <option value="">— Свободный слот —</option>
+        <option value="student">Отдельный ученик</option>
+        <option value="group">Группа / пара</option>
+      </select>
+      <div id="nsl-student-wrap" style="display:none">
+        <select id="nsl-student" style="width:100%"><option value="">— Выберите ученика —</option></select>
+      </div>
+      <div id="nsl-group-wrap" style="display:none">
+        <select id="nsl-group" style="width:100%"><option value="">— Выберите группу —</option></select>
+      </div>
+    </div>
     <button class="btn btn-green" onclick="saveSlot()">Сохранить</button>
   </div>
 </div>
@@ -1486,6 +1645,7 @@ async function initData(){
   if(!load('content'))  save('content',[]);
   if(!load('bookings')) save('bookings',[]);
   if(!load('notifs'))   save('notifs',[]);
+  if(!load('groups'))   save('groups',[]);
 }
 
 // ══════════════════════════════════════════
@@ -1539,6 +1699,7 @@ const adminNav=[
   {id:'tests-admin',  icon:'📋',label:'Тесты'},
   {id:'hw-admin',     icon:'✏️', label:'Домашние задания'},
   {id:'trial-admin',  icon:'🎯', label:'Пробник'},
+  {id:'taskbank-admin',icon:'🎲',label:'База заданий'},
   {section:'Управление'},
   {id:'chat-admin',   icon:'💬', label:'Чат с учениками'},
   {id:'payment-admin',  icon:'💳',label:'Оплата'},
@@ -1601,6 +1762,7 @@ function renderPage(p){
   else if(p==='tests-admin'){ renderTestsAdmin(); renderOpenAnswers(); }
   else if(p==='hw-admin'){ renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='trial-admin'){ renderTrialAdmin(); }
+  else if(p==='taskbank-admin'){ renderTaskBankAdmin(); }
   else if(p==='student-trial'){ renderStudentTrial(); }
   else if(p==='chat-admin'){ renderChatAdmin(); }
   else if(p==='student-chat'){ renderStudentChat(); }
@@ -1696,6 +1858,7 @@ function renderStudents(){
       <td><button class="btn btn-red btn-sm" onclick="deleteStudent('${s.id}')">🗑 Удалить</button>
           <button class="btn btn-outline btn-sm" onclick="openEditStudent('${s.id}')">✏️ Изменить</button></td>
     </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Нет учеников</td></tr>`;
+  renderGroups();
 }
 function getPaymentStatusBadge(sid){
   const payments=(load('payments')||[]).filter(p=>p.studentId===sid);
@@ -1893,6 +2056,26 @@ function contentItemHTML(c, isAdmin){
 function emptyHTML(){ return '<div class="empty-state"><div class="big">📭</div><p>Нет материалов</p></div>'; }
 
 function openModal(id, extra){
+  if(id==='modal-add-task'){
+    if(!extra){ // new task
+      document.getElementById('ntask-edit-id').value='';
+      document.getElementById('ntask-subject').value='';
+      document.getElementById('ntask-text').value='';
+      document.getElementById('ntask-imgurl').value='';
+      document.getElementById('ntask-answer').value='';
+      document.getElementById('ntask-options').value='';
+      document.getElementById('ntask-correct-choice').value='';
+      document.getElementById('ntask-explanation-choice').value='';
+      document.getElementById('ntask-correct-short').value='';
+      document.getElementById('ntask-explanation-short').value='';
+      document.querySelector('input[name="ntask-type"][value="open"]').checked=true;
+      updateTaskTypeUI();
+      document.getElementById('ntask-points').value='1';
+      document.getElementById('ntask-img-preview').style.display='none';
+      document.getElementById('ntask-img-preview').src='';
+      document.querySelector('#modal-add-task .modal-title').textContent='🎲 Новое задание';
+    }
+  }
   document.getElementById(id).classList.add('open');
   // Populate student checkboxes inside modal if present
   const containerId = {
@@ -2873,11 +3056,14 @@ function renderScheduleAdmin(){
     </div>`).join('') || emptyHTML();
   document.getElementById('slots-admin-list').innerHTML=slots.map(s=>{
     const u=s.bookedBy?users.find(u=>u.id===s.bookedBy):null;
+    const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
+    const whoLabel = g ? `<b>👥 ${g.name}</b>` : (u?`<b>${u.name}</b>`:'<span style="color:var(--text3)">Свободно</span>');
+    const courseLabel = s.courseId ? (load('courses')||[]).find(c=>c.id===s.courseId)?.title : null;
     return `<div class="content-item">
       <div class="content-icon">🕐</div>
       <div class="content-info">
-        <div class="content-name">${s.day} ${s.time}</div>
-        <div class="content-meta">${s.dur} мин · ${u?`<b>${u.name}</b>`:'Свободно'}</div>
+        <div class="content-name">${s.day} ${s.time}${courseLabel?` · <span style="color:var(--chem);font-size:0.8rem">${courseLabel}</span>`:''}</div>
+        <div class="content-meta">${s.dur} мин · ${whoLabel}</div>
       </div>
       <button class="btn btn-red btn-sm" onclick="deleteSlot('${s.id}')">🗑</button>
     </div>`;
@@ -2918,9 +3104,25 @@ function saveSlot(){
   const day=document.getElementById('nsl-day').value;
   const time=document.getElementById('nsl-time').value;
   const dur=document.getElementById('nsl-dur').value;
+  const courseId=document.getElementById('nsl-course')?.value||null;
+  const assignType=document.getElementById('nsl-assigntype')?.value||'';
+  let bookedBy=null, groupId=null;
+  if(assignType==='student'){
+    bookedBy=document.getElementById('nsl-student').value||null;
+  } else if(assignType==='group'){
+    groupId=document.getElementById('nsl-group').value||null;
+    const g=getGroups().find(x=>x.id===groupId);
+    if(g&&g.memberIds&&g.memberIds.length) bookedBy=g.memberIds[0];
+  }
   const slots=load('slots')||[];
-  slots.push({id:'s'+Date.now(),day,time,dur:parseInt(dur),bookedBy:null});
+  slots.push({id:'s'+Date.now(),day,time,dur:parseInt(dur),bookedBy,groupId:groupId||null,courseId:courseId||null});
   save('slots',slots);
+  // Notify assigned student(s)
+  if(bookedBy) addNotif(bookedBy,{type:'schedule',text:`🗓 Вас записали: ${day} ${time}`,nav:'schedule'});
+  if(groupId){
+    const g=getGroups().find(x=>x.id===groupId);
+    if(g) (g.memberIds||[]).forEach(sid=>addNotif(sid,{type:'schedule',text:`🗓 Группа записана: ${day} ${time}`,nav:'schedule'}));
+  }
   closeModal('modal-add-slot');
   renderScheduleAdmin();
   showNotif('✅ Слот добавлен');
@@ -3794,6 +3996,296 @@ function viewTrialResult(id){
   showNotif(`Пробник: ${t.autoScore}/${t.autoTotal} б. · ${t.autoPct||0}% · Оценка ${t.autoGrade||'—'}`);
 }
 
+// ══════════════════════════════════════════════
+// БАЗА ЗАДАНИЙ (TASK BANK)
+// ══════════════════════════════════════════════
+
+function renderTaskBankAdmin(){
+  const tasks = load('taskbank')||[];
+  const el = document.getElementById('taskbank-list');
+  const label = document.getElementById('taskbank-count-label');
+  if(label) label.textContent = `${tasks.length} заданий в базе`;
+  if(!el) return;
+  if(!tasks.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  el.innerHTML = tasks.map((t,i)=>`
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;flex-shrink:0;margin-top:2px">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            ${t.subject?`<span style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">${t.subject}</span>`:''}
+            <span class="badge" style="background:var(--green-xpale);color:var(--green-deep);border:none;font-size:0.7rem">${typeLabel[t.answerType||'open']||'📝 Открытый'}</span>
+            <span class="badge" style="background:#fef3cd;color:#856404;border:none;font-size:0.7rem">⭐ ${t.points||1} ${(t.points||1)===1?'балл':(t.points||1)<5?'балла':'баллов'}</span>
+          </div>
+          <div style="font-size:0.92rem;font-weight:600;color:var(--accent);margin-bottom:6px;line-height:1.5">${t.text}</div>
+          ${t.imageUrl?`<img src="${t.imageUrl}" style="max-width:200px;border-radius:8px;border:1px solid var(--green-xpale);margin-bottom:6px" alt="">`:''}
+          ${t.answerType==='choice'&&t.options?.length?`
+            <div style="font-size:0.8rem;color:var(--text3);margin-bottom:4px">Варианты: ${t.options.join(' · ')}</div>
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctOption}</b>${t.explanation?` — ${t.explanation}`:''}</div>
+          `:''}
+          ${t.answerType==='short'?`
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctShort}</b>${t.explanation?` — ${t.explanation}`:''}</div>
+          `:''}
+          ${t.answerType==='open'&&t.answer?`<div style="font-size:0.8rem;color:var(--text3);background:var(--bg);padding:8px 12px;border-radius:8px;border-left:3px solid var(--green-mid)">💡 ${t.answer}</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-outline btn-sm" onclick="openEditTask('${t.id}')">✏️</button>
+          <button class="btn btn-red btn-sm" onclick="deleteTask('${t.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function updateTaskTypeUI(){
+  const type = document.querySelector('input[name="ntask-type"]:checked')?.value||'open';
+  document.getElementById('ntask-ui-open').style.display   = type==='open'   ?'block':'none';
+  document.getElementById('ntask-ui-choice').style.display = type==='choice' ?'block':'none';
+  document.getElementById('ntask-ui-short').style.display  = type==='short'  ?'block':'none';
+}
+
+let _ntaskImgData = '';
+function handleTaskImgUpload(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{ _ntaskImgData=e.target.result; updateQImgPreview('ntask-img-preview',e.target.result); };
+  reader.readAsDataURL(file);
+}
+
+function saveTask(){
+  const text=document.getElementById('ntask-text').value.trim();
+  if(!text){ showNotif('Введите текст задания'); return; }
+  const type    = document.querySelector('input[name="ntask-type"]:checked')?.value||'open';
+  const subject = document.getElementById('ntask-subject').value.trim();
+  const imgUrl  = document.getElementById('ntask-imgurl').value.trim()||_ntaskImgData;
+  const editId  = document.getElementById('ntask-edit-id').value;
+
+  let taskData = { text, subject, imageUrl:imgUrl, answerType:type, points:Math.max(1,+document.getElementById('ntask-points').value||1) };
+  if(type==='open'){
+    taskData.answer = document.getElementById('ntask-answer').value.trim();
+  } else if(type==='choice'){
+    const opts = document.getElementById('ntask-options').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!opts.length){ showNotif('Добавьте варианты ответов'); return; }
+    const correct = document.getElementById('ntask-correct-choice').value.trim();
+    if(!correct){ showNotif('Укажите правильный вариант'); return; }
+    taskData.options = opts;
+    taskData.correctOption = correct;
+    taskData.explanation = document.getElementById('ntask-explanation-choice').value.trim();
+  } else if(type==='short'){
+    const correct = document.getElementById('ntask-correct-short').value.trim();
+    if(!correct){ showNotif('Укажите правильный ответ'); return; }
+    taskData.correctShort = correct;
+    taskData.explanation = document.getElementById('ntask-explanation-short').value.trim();
+  }
+
+  const tasks = load('taskbank')||[];
+  if(editId){
+    const idx = tasks.findIndex(t=>t.id===editId);
+    if(idx!==-1) tasks[idx] = { ...tasks[idx], ...taskData };
+  } else {
+    tasks.push({ id:'task_'+Date.now(), ...taskData, createdAt:todayStr() });
+  }
+  save('taskbank',tasks);
+  _ntaskImgData='';
+  closeModal('modal-add-task');
+  renderTaskBankAdmin();
+  showNotif(editId?'✅ Задание обновлено':'✅ Задание добавлено в базу');
+}
+
+function openEditTask(id){
+  const t=(load('taskbank')||[]).find(t=>t.id===id);
+  if(!t) return;
+  document.getElementById('ntask-edit-id').value=t.id;
+  document.getElementById('ntask-subject').value=t.subject||'';
+  document.getElementById('ntask-text').value=t.text||'';
+  document.getElementById('ntask-imgurl').value=t.imageUrl&&!t.imageUrl.startsWith('data:')?t.imageUrl:'';
+  document.getElementById('ntask-answer').value=t.answer||'';
+  document.getElementById('ntask-options').value=(t.options||[]).join('\n');
+  document.getElementById('ntask-correct-choice').value=t.correctOption||'';
+  document.getElementById('ntask-explanation-choice').value=t.explanation||'';
+  document.getElementById('ntask-correct-short').value=t.correctShort||'';
+  document.getElementById('ntask-explanation-short').value=t.explanation||'';
+  // Set radio
+  const type = t.answerType||'open';
+  document.querySelectorAll('input[name="ntask-type"]').forEach(r=>r.checked=(r.value===type));
+  updateTaskTypeUI();
+  document.getElementById('ntask-points').value = t.points||1;
+  const prev=document.getElementById('ntask-img-preview');
+  if(t.imageUrl){prev.src=t.imageUrl;prev.style.display='block';}else{prev.style.display='none';}
+  document.querySelector('#modal-add-task .modal-title').textContent='✏️ Редактировать задание';
+  document.getElementById('modal-add-task').classList.add('open');
+}
+
+function deleteTask(id){
+  if(!confirm('Удалить задание?')) return;
+  save('taskbank',(load('taskbank')||[]).filter(t=>t.id!==id));
+  renderTaskBankAdmin();
+}
+
+// ── DAILY TASK for student ──
+function getDailyTask(sid){
+  const tasks=load('taskbank')||[];
+  if(!tasks.length) return null;
+  const today=todayStr();
+  const log=JSON.parse(localStorage.getItem('biohim_daily_task_log')||'{}');
+  const sidLog=log[sid]||[];
+  const todayEntry=sidLog.find(e=>e.date===today);
+  if(todayEntry){ return {task:tasks.find(t=>t.id===todayEntry.taskId)||null,isNew:false}; }
+  const usedIds=new Set(sidLog.map(e=>e.taskId));
+  const available=tasks.filter(t=>!usedIds.has(t.id));
+  const pool=available.length?available:tasks;
+  const task=pool[Math.floor(seededRandom(sid+today)*pool.length)];
+  if(!task) return null;
+  log[sid]=[...sidLog,{date:today,taskId:task.id}].slice(-365);
+  localStorage.setItem('biohim_daily_task_log',JSON.stringify(log));
+  return {task,isNew:true};
+}
+function seededRandom(seed){
+  let h=0; for(let i=0;i<seed.length;i++) h=(Math.imul(31,h)+seed.charCodeAt(i))|0;
+  return Math.abs(h)/2147483647;
+}
+function getDailyAnswer(sid){
+  const answers=JSON.parse(localStorage.getItem('biohim_daily_answers')||'{}');
+  return (answers[sid]||{})[todayStr()]||null;
+}
+function saveDailyAnswer(sid,data){
+  const answers=JSON.parse(localStorage.getItem('biohim_daily_answers')||'{}');
+  if(!answers[sid]) answers[sid]={};
+  answers[sid][todayStr()]=data;
+  localStorage.setItem('biohim_daily_answers',JSON.stringify(answers));
+}
+
+function renderDailyTaskBlock(sid){
+  const block=document.getElementById('daily-task-block');
+  const result=getDailyTask(sid);
+  if(!result||!result.task){block.style.display='none';return;}
+  block.style.display='block';
+  const {task}=result;
+  document.getElementById('daily-task-subject').textContent=task.subject||'';
+  document.getElementById('daily-task-text').textContent=task.text;
+  const imgWrap=document.getElementById('daily-task-img-wrap');
+  if(task.imageUrl){imgWrap.style.display='block';document.getElementById('daily-task-img').src=task.imageUrl;}
+  else imgWrap.style.display='none';
+
+  // Build answer UI
+  const ansBlock=document.getElementById('daily-task-answer-block');
+  const type=task.answerType||'open';
+  if(type==='choice'&&task.options?.length){
+    ansBlock.innerHTML=`
+      <div id="daily-choice-opts" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+        ${task.options.map(o=>`
+          <div class="option-item" id="daily-opt-${o.replace(/\W/g,'_')}" onclick="selectDailyChoice(this,'${o.replace(/'/g,"\\'")}')"
+            style="cursor:pointer;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);background:var(--white);font-size:0.9rem;transition:all 0.15s">
+            ${o}
+          </div>`).join('')}
+      </div>
+      <button class="btn btn-green" style="width:100%" onclick="submitDailyTask()">📤 Отправить ответ</button>`;
+    window._dailyChoiceSelected = '';
+  } else if(type==='short'){
+    ansBlock.innerHTML=`
+      <input id="daily-short-input" placeholder="Введите краткий ответ..."
+        style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;outline:none;background:var(--white);margin-bottom:10px">
+      <button class="btn btn-green" style="width:100%" onclick="submitDailyTask()">📤 Отправить ответ</button>`;
+  } else {
+    ansBlock.innerHTML=`
+      <textarea id="daily-task-answer" rows="3" placeholder="Введите ваш ответ..."
+        style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;background:var(--white)"></textarea>
+      <button class="btn btn-green" style="margin-top:10px;width:100%" onclick="submitDailyTask()">📤 Отправить ответ</button>`;
+  }
+
+  const existing=getDailyAnswer(sid);
+  if(existing){
+    ansBlock.style.display='none';
+    document.getElementById('daily-task-result').style.display='block';
+    document.getElementById('daily-task-badge').style.display='flex';
+    showDailyTaskResult(task,existing);
+  } else {
+    ansBlock.style.display='block';
+    document.getElementById('daily-task-result').style.display='none';
+    document.getElementById('daily-task-badge').style.display='none';
+  }
+}
+
+function selectDailyChoice(el, val){
+  window._dailyChoiceSelected=val;
+  document.querySelectorAll('#daily-choice-opts .option-item').forEach(o=>{
+    o.style.background='var(--white)'; o.style.borderColor='var(--green-pale)'; o.style.fontWeight='';
+  });
+  el.style.background='var(--green-xpale)'; el.style.borderColor='var(--green-mid)'; el.style.fontWeight='700';
+}
+
+function submitDailyTask(){
+  const sid=currentUser.id;
+  const result=getDailyTask(sid);
+  if(!result||!result.task) return;
+  const task=result.task;
+  const type=task.answerType||'open';
+  let userAnswer='';
+  if(type==='choice'){
+    userAnswer=window._dailyChoiceSelected||'';
+    if(!userAnswer){showNotif('Выберите вариант ответа');return;}
+  } else if(type==='short'){
+    userAnswer=document.getElementById('daily-short-input')?.value.trim()||'';
+    if(!userAnswer){showNotif('Введите ответ');return;}
+  } else {
+    userAnswer=document.getElementById('daily-task-answer')?.value.trim()||'';
+    if(!userAnswer){showNotif('Введите ответ');return;}
+  }
+
+  // For auto types — check correctness immediately
+  let isCorrect=null;
+  if(type==='choice') isCorrect = userAnswer===task.correctOption;
+  if(type==='short')  isCorrect = userAnswer.trim().toLowerCase()===(task.correctShort||'').trim().toLowerCase();
+
+  saveDailyAnswer(sid,{text:userAnswer, isCorrect, type});
+  document.getElementById('daily-task-answer-block').style.display='none';
+  document.getElementById('daily-task-badge').style.display='flex';
+  // Update badge color
+  const badge=document.getElementById('daily-task-badge');
+  if(isCorrect===true)  { badge.style.background='#e8f8f0'; badge.style.color='#27ae60'; badge.textContent='✅ Верно!'; }
+  else if(isCorrect===false){ badge.style.background='#fdecea'; badge.style.color='#c0392b'; badge.textContent='❌ Неверно'; }
+  else                  { badge.style.background='#e8f8f0'; badge.style.color='#27ae60'; badge.textContent='✅ Отвечено'; }
+  document.getElementById('daily-task-result').style.display='block';
+  showDailyTaskResult(task,{text:userAnswer,isCorrect,type});
+  showNotif(isCorrect===true?'🎉 Правильно!':isCorrect===false?'❌ Неверно, смотри правильный ответ':'✅ Ответ сохранён!');
+}
+
+function showDailyTaskResult(task, answerData){
+  const resultEl=document.getElementById('daily-task-result');
+  const type = typeof answerData==='object' ? answerData.type : 'open';
+  const userText = typeof answerData==='object' ? answerData.text : answerData;
+  const isCorrect = typeof answerData==='object' ? answerData.isCorrect : null;
+
+  let correctBlock='';
+  if(isCorrect===true){
+    correctBlock=`<div style="background:#e8f8f0;border-radius:10px;padding:10px 14px;border-left:3px solid #27ae60;font-size:0.88rem;color:#1a7a4a;font-weight:600">🎉 Правильно!</div>`;
+  } else if(isCorrect===false){
+    const correct = type==='choice'?task.correctOption:task.correctShort;
+    correctBlock=`
+      <div style="background:#fdecea;border-radius:10px;padding:10px 14px;border-left:3px solid #c0392b;font-size:0.88rem;color:#c0392b;font-weight:600;margin-bottom:8px">❌ Неверно</div>
+      <div style="background:var(--bg);border-radius:10px;padding:10px 14px;border-left:3px solid var(--green-mid);font-size:0.88rem">
+        ✅ Правильный ответ: <b>${correct}</b>
+        ${task.explanation?`<br><span style="color:var(--text3)">${task.explanation}</span>`:''}
+      </div>`;
+  } else if(task.answer){
+    correctBlock=`<div style="background:var(--bg);border-radius:10px;padding:10px 14px;border-left:3px solid var(--green-mid);font-size:0.88rem">
+      <div style="font-size:0.75rem;font-weight:700;color:var(--green-deep);text-transform:uppercase;margin-bottom:4px">💡 Эталонный ответ</div>
+      <div style="color:var(--text1);line-height:1.6">${task.answer}</div>
+    </div>`;
+  }
+
+  resultEl.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="background:var(--bg);border-radius:10px;padding:10px 14px;border:1px solid var(--green-xpale)">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Ваш ответ</div>
+        <div style="font-size:0.9rem;color:var(--accent)">${userText}</div>
+      </div>
+      ${correctBlock}
+    </div>
+    <div style="font-size:0.78rem;color:var(--text3);margin-top:8px;text-align:center">Следующее задание появится завтра 🌅</div>`;
+}
+
+
 function renderStudentDashboard(){
   document.getElementById('student-wb-title').textContent=`Добро пожаловать, ${currentUser.name}! 👋`;
   const sid=currentUser.id;
@@ -3839,6 +4331,8 @@ function renderStudentDashboard(){
   _sCalMonth = new Date().getMonth();
   renderStudentCalendar();
   renderStudentTodoList('day');
+  // Daily task
+  renderDailyTaskBlock(sid);
 }
 
 let _materialFilter = 'all';
@@ -4188,6 +4682,16 @@ function renderStudentPayment(){
 }
 
 // STUDENT SCHEDULE
+// ── Проверяет, относится ли слот к данному ученику (напрямую или через группу) ──
+function isSlotForStudent(s, sid){
+  if(s.bookedBy === sid) return true;
+  if(s.groupId){
+    const g = getGroups().find(x=>x.id===s.groupId);
+    if(g && (g.memberIds||[]).includes(sid)) return true;
+  }
+  return false;
+}
+
 function renderStudentSchedule(){
   const courses=load('courses')||[];
   const slots=load('slots')||[];
@@ -4216,8 +4720,32 @@ function renderStudentSchedule(){
       <div style="font-size:0.7rem">${s.dur} мин</div>
       <button class="btn btn-green btn-sm" style="margin-top:6px;width:100%;padding:4px 8px;font-size:0.7rem" onclick="bookSlot('${s.id}')">Занять</button>
     </div>`).join('') || '<div class="empty-state"><p>Нет свободных слотов</p></div>';
+  // Заявки, которые ученик сам подавал
   const myBookings=bookings.filter(b=>b.studentId===sid);
-  document.getElementById('my-bookings-list').innerHTML=myBookings.map(b=>{
+  // Слоты, назначенные преподавателем напрямую или через группу
+  const assignedSlots=slots.filter(s=>isSlotForStudent(s,sid));
+
+  // Объединяем: сначала назначенные, потом заявки (без дублей по slotId)
+  const assignedSlotIds=new Set(assignedSlots.map(s=>s.id));
+  const bookingItems=myBookings.filter(b=>!assignedSlotIds.has(b.slotId));
+
+  const assignedItems=assignedSlots.map(s=>{
+    const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
+    const c=s.courseId?courses.find(c=>c.id===s.courseId):null;
+    return `<div class="content-item">
+      <div class="content-icon">📅</div>
+      <div class="content-info">
+        <div class="content-name" style="display:flex;align-items:center;gap:8px">
+          ${c?c.title:'Занятие'}
+          ${g?`<span class="badge badge-blue" style="font-size:0.7rem">👥 ${g.name}</span>`:''}
+        </div>
+        <div class="content-meta">${s.day} ${s.time} · ${s.dur} мин</div>
+        <span class="badge badge-green" style="margin-top:4px">✅ Записан</span>
+      </div>
+    </div>`;
+  });
+
+  const bookingItemsHTML=bookingItems.map(b=>{
     const s=slots.find(s=>s.id===b.slotId);
     const c=courses.find(c=>c.id===b.courseId);
     const statusLabel={pending:'⏳ На рассмотрении',approved:'✅ Подтверждено',rejected:'❌ Отклонено'}[b.status];
@@ -4230,7 +4758,10 @@ function renderStudentSchedule(){
         <span class="badge ${cls}" style="margin-top:4px">${statusLabel}</span>
       </div>
     </div>`;
-  }).join('') || '<div class="empty-state"><p>Нет записей</p></div>';
+  });
+
+  const allItems=[...assignedItems,...bookingItemsHTML];
+  document.getElementById('my-bookings-list').innerHTML=allItems.join('') || '<div class="empty-state"><p>Нет записей</p></div>';
 }
 function showBookSlot(courseId){
   const slots=(load('slots')||[]).filter(s=>!s.bookedBy);
@@ -4771,9 +5302,9 @@ function getCalEventsForStudent(){
   if(!sid) return events;
   const today = new Date(); today.setHours(0,0,0,0);
 
-  // BLUE — занятия этого ученика
+  // BLUE — занятия этого ученика (напрямую или через группу)
   const slots = load('slots')||[];
-  slots.filter(s=>s.bookedBy===sid).forEach(s=>{
+  slots.filter(s=>isSlotForStudent(s,sid)).forEach(s=>{
     const dowIndex = DAY_MAP[s.day];
     if(dowIndex === undefined) return;
     for(let w=0; w<8; w++){
@@ -5332,6 +5863,260 @@ function updateAdminBadge(){
   }
 }
 
+// ══════════════════════════════════════════
+// GROUPS & PAIRS
+// ══════════════════════════════════════════
+
+function getGroups(){ return load('groups') || []; }
+
+function renderGroups(){
+  const groups = getGroups();
+  const students = getStudents();
+  const el = document.getElementById('groups-list');
+  if(!el) return;
+  if(!groups.length){
+    el.innerHTML = '<div class="empty-state"><div class="big">👥</div><p>Групп пока нет. Создайте первую!</p></div>';
+    return;
+  }
+  el.innerHTML = groups.map(g => {
+    const members = (g.memberIds||[]).map(id => students.find(s=>s.id===id)).filter(Boolean);
+    const icon = g.type === 'pair' ? '🤝' : '👥';
+    const label = g.type === 'pair' ? 'Пара' : 'Группа';
+    return `<div class="content-item" style="flex-direction:column;align-items:stretch">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="content-icon">${icon}</div>
+        <div class="content-info" style="flex:1">
+          <div class="content-name">${g.name}</div>
+          <div class="content-meta">${label} · ${members.length} уч.: ${members.map(m=>m.name).join(', ')||'нет участников'}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-outline btn-sm" onclick="openSendGroupModal('${g.id}')" title="Отправить материал группе">📤 Отправить</button>
+          <button class="btn btn-outline btn-sm" onclick="openEditGroup('${g.id}')">✏️</button>
+          <button class="btn btn-red btn-sm" onclick="deleteGroup('${g.id}')">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openModal_createGroup(){
+  const students = getStudents();
+  const el = document.getElementById('ng-students-list');
+  el.innerHTML = students.map(s => `
+    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;white-space:nowrap">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep)"> ${s.name}
+    </label>`).join('');
+  document.getElementById('ng-name').value = '';
+  openModal('modal-create-group');
+}
+
+function saveGroup(){
+  const name = document.getElementById('ng-name').value.trim();
+  const type = document.getElementById('ng-type').value;
+  if(!name){ showNotif('Введите название группы'); return; }
+  const memberIds = [...document.querySelectorAll('#ng-students-list input:checked')].map(cb=>cb.value);
+  if(memberIds.length < 1){ showNotif('Добавьте хотя бы одного участника'); return; }
+  const groups = getGroups();
+  groups.push({ id: 'g'+Date.now(), name, type, memberIds });
+  save('groups', groups);
+  closeModal('modal-create-group');
+  renderGroups();
+  showNotif('✅ Группа создана');
+}
+
+let _editGroupId = null;
+function openEditGroup(gid){
+  _editGroupId = gid;
+  const g = getGroups().find(x=>x.id===gid);
+  if(!g) return;
+  document.getElementById('eg-name').value = g.name;
+  document.getElementById('eg-type').value = g.type || 'group';
+  const students = getStudents();
+  document.getElementById('eg-students-list').innerHTML = students.map(s => `
+    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;white-space:nowrap">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep)" ${(g.memberIds||[]).includes(s.id)?'checked':''}> ${s.name}
+    </label>`).join('');
+  openModal('modal-edit-group');
+}
+
+function saveEditGroup(){
+  const name = document.getElementById('eg-name').value.trim();
+  const type = document.getElementById('eg-type').value;
+  if(!name){ showNotif('Введите название'); return; }
+  const memberIds = [...document.querySelectorAll('#eg-students-list input:checked')].map(cb=>cb.value);
+  const groups = getGroups().map(g => g.id===_editGroupId ? {...g, name, type, memberIds} : g);
+  save('groups', groups);
+  closeModal('modal-edit-group');
+  renderGroups();
+  showNotif('✅ Группа обновлена');
+}
+
+function deleteGroup(gid){
+  if(!confirm('Удалить группу?')) return;
+  save('groups', getGroups().filter(g=>g.id!==gid));
+  renderGroups();
+  showNotif('🗑 Группа удалена');
+}
+
+// ── SEND TO GROUP ──
+let _sendGroupId = null;
+let _sendGroupType = 'content';
+
+function openSendGroupModal(gid){
+  _sendGroupId = gid;
+  _sendGroupType = 'content';
+  const g = getGroups().find(x=>x.id===gid);
+  if(!g) return;
+  const students = getStudents();
+  const members = (g.memberIds||[]).map(id=>students.find(s=>s.id===id)).filter(Boolean);
+  document.getElementById('sg-members-preview').textContent = members.map(m=>m.name).join(', ');
+  document.getElementById('send-group-title').textContent = '📤 Отправить группе: ' + g.name;
+  // Reset type buttons
+  document.querySelectorAll('.sg-type-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.sg-type-btn[data-type="content"]').classList.add('active');
+  loadSendGroupItems('content');
+  openModal('modal-send-group');
+}
+
+function setSendGroupType(btn, type){
+  _sendGroupType = type;
+  document.querySelectorAll('.sg-type-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadSendGroupItems(type);
+}
+
+function loadSendGroupItems(type){
+  const sel = document.getElementById('sg-item-select');
+  let items = [];
+  if(type==='content') items = (load('content')||[]).filter(c=>c.type==='theory');
+  else if(type==='test') items = load('tests')||[];
+  else if(type==='hw') items = load('hw')||[];
+  else if(type==='trial'){
+    // use first occurrence per title to avoid duplicates
+    const seen = new Set();
+    items = (load('trials')||[]).filter(t=>{ if(seen.has(t.title)) return false; seen.add(t.title); return true; });
+  }
+  else if(type==='slot') items = load('slots')||[];
+
+  // De-duplicate by title for content/test/hw
+  if(['content','test','hw'].includes(type)){
+    const seen = new Set();
+    items = items.filter(it=>{ if(seen.has(it.title)) return false; seen.add(it.title); return true; });
+  }
+
+  sel.innerHTML = items.length
+    ? items.map(it => {
+        let label = it.title || (it.day ? it.day+' '+it.time : it.id);
+        return `<option value="${it.id}">${label}</option>`;
+      }).join('')
+    : '<option value="">— Нет доступных элементов —</option>';
+}
+
+function confirmSendToGroup(){
+  const g = getGroups().find(x=>x.id===_sendGroupId);
+  if(!g){ showNotif('Группа не найдена'); return; }
+  const itemId = document.getElementById('sg-item-select').value;
+  if(!itemId){ showNotif('Выберите элемент'); return; }
+  const memberIds = g.memberIds || [];
+  if(!memberIds.length){ showNotif('В группе нет участников'); return; }
+  const type = _sendGroupType;
+  let count = 0;
+
+  if(type === 'content'){
+    const content = load('content')||[];
+    const original = content.find(c=>c.id===itemId);
+    if(!original){ showNotif('Материал не найден'); return; }
+    memberIds.forEach(sid=>{
+      if(content.some(c=>c.title===original.title && c.studentId===sid)) return;
+      content.push({...original, id:'ct_'+Date.now()+'_'+sid, studentId:sid});
+      count++;
+    });
+    save('content', content);
+    memberIds.forEach(sid => addNotif(sid,{type:'material',text:`📚 Новый материал: ${original.title}`,nav:'materials'}));
+  } else if(type === 'test'){
+    const tests = load('tests')||[];
+    const original = tests.find(t=>t.id===itemId);
+    if(!original){ showNotif('Тест не найден'); return; }
+    memberIds.forEach(sid=>{
+      if(tests.some(t=>t.title===original.title && t.studentId===sid)) return;
+      tests.push({...original, id:'t'+Date.now()+'_'+sid, studentId:sid, submitted:false, answers:{}, autoScore:0});
+      count++;
+    });
+    save('tests', tests);
+    memberIds.forEach(sid => addNotif(sid,{type:'test',text:`📝 Новый тест: ${original.title}`,nav:'tests'}));
+  } else if(type === 'hw'){
+    const hws = load('hw')||[];
+    const original = hws.find(h=>h.id===itemId);
+    if(!original){ showNotif('ДЗ не найдено'); return; }
+    memberIds.forEach(sid=>{
+      if(hws.some(h=>h.title===original.title && h.studentId===sid)) return;
+      hws.push({...original, id:'hw'+Date.now()+'_'+sid, studentId:sid, submitted:false, answers:{}});
+      count++;
+    });
+    save('hw', hws);
+    memberIds.forEach(sid => addNotif(sid,{type:'hw',text:`✏️ Новое ДЗ: ${original.title}`,nav:'hw'}));
+  } else if(type === 'trial'){
+    const trials = load('trials')||[];
+    const original = trials.find(t=>t.id===itemId);
+    if(!original){ showNotif('Пробник не найден'); return; }
+    memberIds.forEach(sid=>{
+      if(trials.some(t=>t.title===original.title && t.studentId===sid)) return;
+      trials.push({...original, id:'tr'+Date.now()+'_'+sid, studentId:sid, submitted:false, answers:{}});
+      count++;
+    });
+    save('trials', trials);
+    memberIds.forEach(sid => addNotif(sid,{type:'trial',text:`🧪 Новый пробник: ${original.title}`,nav:'trials'}));
+  } else if(type === 'slot'){
+    const slots = load('slots')||[];
+    const slot = slots.find(s=>s.id===itemId);
+    if(!slot){ showNotif('Слот не найден'); return; }
+    // Назначаем группу на слот — все участники увидят его через isSlotForStudent
+    slot.groupId = _sendGroupId;
+    slot.bookedBy = memberIds[0] || null; // первый участник как основной контакт
+    save('slots', slots);
+    // Уведомляем КАЖДОГО участника группы
+    memberIds.forEach(sid => addNotif(sid,{
+      type:'schedule',
+      text:`🗓 Вас записали на занятие: ${slot.day} ${slot.time}`,
+      nav:'student-schedule'
+    }));
+    count = memberIds.length;
+  }
+
+  closeModal('modal-send-group');
+  showNotif(`✅ Отправлено ${count} участникам группы`);
+}
+
+// ══════════════════════════════════════════
+// SLOT ASSIGN UI
+// ══════════════════════════════════════════
+function openModal_addSlot(){
+  // Populate courses
+  const courses = load('courses')||[];
+  const cSel = document.getElementById('nsl-course');
+  cSel.innerHTML = '<option value="">— Без курса —</option>' +
+    courses.map(c=>`<option value="${c.id}">${c.title}</option>`).join('');
+  // Populate students
+  const sSel = document.getElementById('nsl-student');
+  sSel.innerHTML = '<option value="">— Выберите ученика —</option>' +
+    getStudents().map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  // Populate groups
+  const gSel = document.getElementById('nsl-group');
+  gSel.innerHTML = '<option value="">— Выберите группу —</option>' +
+    getGroups().map(g=>`<option value="${g.id}">${g.name}</option>`).join('');
+  // Reset
+  document.getElementById('nsl-assigntype').value = '';
+  document.getElementById('nsl-student-wrap').style.display = 'none';
+  document.getElementById('nsl-group-wrap').style.display = 'none';
+  openModal('modal-add-slot');
+}
+
+function updateSlotAssignUI(){
+  const v = document.getElementById('nsl-assigntype').value;
+  document.getElementById('nsl-student-wrap').style.display = v==='student' ? '' : 'none';
+  document.getElementById('nsl-group-wrap').style.display = v==='group' ? '' : 'none';
+}
+
 // ── addNotif helper ──
 function addNotif(studentId, {type, text, nav}){
   const notifs = load('notifs')||[];
@@ -5360,5 +6145,79 @@ function addNotif(studentId, {type, text, nav}){
   </div>
 </div>
 
+
+<!-- CREATE GROUP MODAL -->
+<div class="modal-bg" id="modal-create-group">
+  <div class="modal">
+    <div class="modal-title">👥 Создать группу / пару</div>
+    <span class="modal-close" onclick="closeModal('modal-create-group')">✕</span>
+    <div class="form-group">
+      <label>Название группы</label>
+      <input id="ng-name" placeholder="Группа Биология А, Пара Химия...">
+    </div>
+    <div class="form-group">
+      <label>Тип</label>
+      <select id="ng-type">
+        <option value="group">Группа (3+)</option>
+        <option value="pair">Пара (2)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Участники</label>
+      <div id="ng-students-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+    </div>
+    <button class="btn btn-green" onclick="saveGroup()">Создать группу</button>
+  </div>
+</div>
+
+<!-- EDIT GROUP MODAL -->
+<div class="modal-bg" id="modal-edit-group">
+  <div class="modal">
+    <div class="modal-title">✏️ Редактировать группу</div>
+    <span class="modal-close" onclick="closeModal('modal-edit-group')">✕</span>
+    <div class="form-group">
+      <label>Название группы</label>
+      <input id="eg-name" placeholder="Название группы">
+    </div>
+    <div class="form-group">
+      <label>Тип</label>
+      <select id="eg-type">
+        <option value="group">Группа (3+)</option>
+        <option value="pair">Пара (2)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Участники</label>
+      <div id="eg-students-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+    </div>
+    <button class="btn btn-green" onclick="saveEditGroup()">Сохранить</button>
+  </div>
+</div>
+
+<!-- SEND TO GROUP MODAL -->
+<div class="modal-bg" id="modal-send-group">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="send-group-title">📤 Отправить группе</div>
+    <span class="modal-close" onclick="closeModal('modal-send-group')">✕</span>
+    <div class="form-group">
+      <label>Тип материала</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="sg-type-btns">
+        <button class="btn btn-outline btn-sm sg-type-btn active" data-type="content" onclick="setSendGroupType(this,'content')">📚 Материалы</button>
+        <button class="btn btn-outline btn-sm sg-type-btn" data-type="test" onclick="setSendGroupType(this,'test')">📝 Тесты</button>
+        <button class="btn btn-outline btn-sm sg-type-btn" data-type="hw" onclick="setSendGroupType(this,'hw')">✏️ ДЗ</button>
+        <button class="btn btn-outline btn-sm sg-type-btn" data-type="trial" onclick="setSendGroupType(this,'trial')">🧪 Пробники</button>
+        <button class="btn btn-outline btn-sm sg-type-btn" data-type="slot" onclick="setSendGroupType(this,'slot')">🗓 Записи</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Выберите элемент</label>
+      <select id="sg-item-select" style="width:100%"><option value="">— Загрузка... —</option></select>
+    </div>
+    <div style="background:var(--bg2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.83rem;color:var(--text2)">
+      Будет отправлено всем участникам группы: <span id="sg-members-preview" style="font-weight:700;color:var(--green-deep)"></span>
+    </div>
+    <button class="btn btn-green" onclick="confirmSendToGroup()">📤 Отправить всем</button>
+  </div>
+</div>
 </body>
 </html>
