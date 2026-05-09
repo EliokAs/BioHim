@@ -369,11 +369,28 @@ tr:hover td { background: var(--bg2); }
   display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px;
 }
 .student-chip {
-  padding: 8px 16px; border-radius: 20px; border: 1.5px solid var(--green-pale);
+  padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--green-pale);
   font-size: 0.83rem; cursor: pointer; transition: all 0.15s; font-weight: 600;
   background: var(--white); color: var(--text2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;
+  display: inline-block;
 }
 .student-chip.active { background: var(--green-deep); color: #fff; border-color: var(--green-deep); }
+
+/* Универсальный чип-лейбл для всех модалов */
+.chip-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 20px;
+  border: 1.5px solid var(--green-pale); background: var(--white);
+  cursor: pointer; font-size: 0.83rem; font-weight: 600;
+  user-select: none; white-space: nowrap;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+  box-sizing: border-box; line-height: 1.3;
+}
+.chip-label input[type="checkbox"],
+.chip-label input[type="radio"] {
+  accent-color: var(--green-deep); flex-shrink: 0; width: 14px; height: 14px;
+}
 
 /* ── CALENDAR ── */
 .cal-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
@@ -1219,13 +1236,13 @@ tr:hover td { background: var(--bg2); }
     <div class="form-group" style="margin-bottom:10px">
       <label>Тип ответа</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap">
+        <label class="chip-label">
           <input type="radio" name="ntask-type" value="open" checked onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 📝 Открытый
         </label>
-        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap">
+        <label class="chip-label">
           <input type="radio" name="ntask-type" value="choice" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> ⚡ Выбор из вариантов
         </label>
-        <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap">
+        <label class="chip-label">
           <input type="radio" name="ntask-type" value="short" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔤 Точный ответ
         </label>
       </div>
@@ -2093,8 +2110,8 @@ function populateModalStudents(containerId){
   if(!students.length){ el.innerHTML='<span style="font-size:0.82rem;color:var(--text3)">Нет учеников</span>'; return; }
   const cur=_selectedStudent||(students[0]||{}).id;
   el.innerHTML=students.map(s=>`
-    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;user-select:none;white-space:nowrap;box-sizing:border-box;line-height:1.3">
-      <input type="checkbox" value="${s.id}" ${s.id===cur?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px">${s.name}
+    <label class="chip-label">
+      <input type="checkbox" value="${s.id}" ${s.id===cur?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${s.name}</span>
     </label>`).join('');
 }
 function getCheckedModalStudents(containerId){
@@ -2526,10 +2543,10 @@ function openAssignStudents(type, id){
   }
   const el=document.getElementById('assign-students-list');
   el.innerHTML=students.map(s=>`
-    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid ${existingStudentIds.includes(s.id)?'var(--green-mid)':'var(--green-pale)'};background:${existingStudentIds.includes(s.id)?'var(--green-xpale)':'var(--white)'};cursor:pointer;font-size:0.83rem;font-weight:600;white-space:nowrap;box-sizing:border-box">
-      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);width:14px;height:14px"
+    <label class="chip-label" style="border-color:${existingStudentIds.includes(s.id)?'var(--green-mid)':'var(--green-pale)'};background:${existingStudentIds.includes(s.id)?'var(--green-xpale)':'var(--white)'}">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);width:14px;height:14px;flex-shrink:0"
         ${existingStudentIds.includes(s.id)?'disabled checked':''}>
-      ${s.name}${existingStudentIds.includes(s.id)?'<span style="font-size:0.7rem;color:var(--green-mid)"> уже есть</span>':''}
+      <span style="overflow:hidden;text-overflow:ellipsis">${s.name}${existingStudentIds.includes(s.id)?'<span style="font-size:0.7rem;color:var(--green-mid)"> ✓</span>':''}</span>
     </label>`).join('');
   openModal('modal-assign-students');
 }
@@ -4821,8 +4838,8 @@ function buildMultiStudentCheckboxes(containerId){
   const el=document.getElementById(containerId);
   if(!el) return;
   el.innerHTML=students.map(s=>`
-    <label style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600">
-      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep)"> ${s.name}
+    <label class="chip-label">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${s.name}</span>
     </label>`).join('');
 }
 function getCheckedStudents(containerId){
@@ -5903,8 +5920,8 @@ function openModal_createGroup(){
   const students = getStudents();
   const el = document.getElementById('ng-students-list');
   el.innerHTML = students.map(s => `
-    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;white-space:nowrap">
-      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep)"> ${s.name}
+    <label class="chip-label">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${s.name}</span>
     </label>`).join('');
   document.getElementById('ng-name').value = '';
   openModal('modal-create-group');
@@ -5933,8 +5950,8 @@ function openEditGroup(gid){
   document.getElementById('eg-type').value = g.type || 'group';
   const students = getStudents();
   document.getElementById('eg-students-list').innerHTML = students.map(s => `
-    <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.83rem;font-weight:600;white-space:nowrap">
-      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep)" ${(g.memberIds||[]).includes(s.id)?'checked':''}> ${s.name}
+    <label class="chip-label">
+      <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px" ${(g.memberIds||[]).includes(s.id)?'checked':''}><span style="overflow:hidden;text-overflow:ellipsis">${s.name}</span>
     </label>`).join('');
   openModal('modal-edit-group');
 }
