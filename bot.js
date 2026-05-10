@@ -10,7 +10,7 @@ const https = require('https');
 const url   = require('url');
 
 // ─── КОНФИГ ────────────────────────────────────────────────
-const BOT_TOKEN  = process.env.BOT_TOKEN  || 'ВСТАВЬ_ТОКЕН_СЮДА';
+const BOT_TOKEN  = process.env.BOT_TOKEN  || '8716217176:AAHEOk5AiddkptiWRyT6y67k1KGv8hSXfdk';
 const PORT       = process.env.PORT       || 3000;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'biohim_secret_2025';
 // ──────────────────────────────────────────────────────────
