@@ -277,6 +277,15 @@ tr:hover td { background: var(--bg2); }
 .payment-status.paid { background: #e8f8f0; border: 1px solid #a8e6c7; }
 .payment-status.unpaid { background: #fdecea; border: 1px solid #f5c6c2; }
 .payment-status.partial { background: #fef3cd; border: 1px solid #fce98a; }
+.att-row { display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;margin-bottom:8px;border:1px solid var(--green-xpale);background:var(--white); }
+.att-row.att-present { border-left:4px solid var(--green-mid); }
+.att-row.att-absent { border-left:4px solid #ef4444; }
+.att-badge-present { background:#e8f8f0;color:#27ae60;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px; }
+.att-badge-absent  { background:#fdecea;color:#c0392b;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px; }
+.att-cost-badge { background:#fff3cd;color:#856404;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px; }
+.att-unpaid-badge { background:#fdecea;color:#c0392b;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px; }
+/* Calendar: red dot for unpaid lessons */
+.cal-day .cal-dot.dot-unpaid { background:#ef4444; }
 
 /* ─── COURSE CARDS ─── */
 .course-card {
@@ -697,15 +706,70 @@ tr:hover td { background: var(--bg2); }
       </div>
     </div>
 
-    <!-- Payment Admin -->
-    <div class="page" id="page-payment-admin">
-      <div class="page-title">Оплата</div>
-      <div class="page-sub">Управление оплатой занятий</div>
-      <div class="student-selector" id="pay-student-selector"></div>
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>Статус оплаты</div>
-        <button class="btn btn-green btn-sm" onclick="openModal('modal-add-payment')">＋ Добавить запись</button>
-        <div id="payment-admin-list" style="margin-top:14px"></div>
+    <!-- Attendance + Payment Admin (merged) -->
+    <div class="page" id="page-attend-pay-admin">
+      <div class="page-title">📅 Посещение и оплата</div>
+      <div class="page-sub">Отметка занятий, кошелёк ученика и история платежей</div>
+      <div class="student-selector" id="atp-student-selector"></div>
+      <div class="tabs" style="margin-bottom:16px">
+        <div class="tab active" onclick="switchAtpTab('attendance',this)">📅 Посещаемость</div>
+        <div class="tab" onclick="switchAtpTab('wallet',this)">💰 Кошелёк</div>
+        <div class="tab" onclick="switchAtpTab('payments',this)">💳 История оплаты</div>
+      </div>
+      <!-- Посещаемость -->
+      <div id="atp-tab-attendance">
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+            <div class="card-title" style="margin:0"><span class="dot"></span>Занятия ученика</div>
+            <button class="btn btn-green btn-sm" onclick="openModal('modal-add-attendance')">＋ Добавить занятие</button>
+          </div>
+        </div>
+        <div id="atp-attendance-list"></div>
+      </div>
+      <!-- Кошелёк -->
+      <div id="atp-tab-wallet" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+            <div>
+              <div class="card-title" style="margin-bottom:4px"><span class="dot"></span>💰 Кошелёк</div>
+              <div id="atp-wallet-balance" style="font-size:1.8rem;font-weight:900;color:var(--green-deep)">0 ₽</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-green btn-sm" onclick="openTopUp()">＋ Пополнить</button>
+              <button class="btn btn-outline btn-sm" onclick="openDebit()">− Списать</button>
+            </div>
+          </div>
+          <div id="atp-wallet-topup-form" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid var(--green-xpale)">
+            <div style="font-weight:700;font-size:0.88rem;margin-bottom:10px;color:var(--green-deep)">Пополнение кошелька</div>
+            <div style="display:flex;gap:8px;align-items:flex-end">
+              <div class="form-group" style="margin:0;flex:1"><label>Сумма (₽)</label><input type="number" id="atp-topup-amount" placeholder="3000" min="0"></div>
+              <div class="form-group" style="margin:0;flex:2"><label>Комментарий</label><input id="atp-topup-note" placeholder="Оплата за май..."></div>
+              <button class="btn btn-green btn-sm" style="margin-bottom:1px" onclick="doTopUp()">Сохранить</button>
+              <button class="btn btn-outline btn-sm" style="margin-bottom:1px" onclick="document.getElementById('atp-wallet-topup-form').style.display='none'">✕</button>
+            </div>
+          </div>
+          <div id="atp-wallet-debit-form" style="display:none;background:#fef3cd;border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid #fce98a">
+            <div style="font-weight:700;font-size:0.88rem;margin-bottom:10px;color:#8a5a00">Ручное списание</div>
+            <div style="display:flex;gap:8px;align-items:flex-end">
+              <div class="form-group" style="margin:0;flex:1"><label>Сумма (₽)</label><input type="number" id="atp-debit-amount" placeholder="1500" min="0"></div>
+              <div class="form-group" style="margin:0;flex:2"><label>Комментарий</label><input id="atp-debit-note" placeholder="Занятие 15 мая..."></div>
+              <button class="btn btn-green btn-sm" style="margin-bottom:1px" onclick="doDebit()">Списать</button>
+              <button class="btn btn-outline btn-sm" style="margin-bottom:1px" onclick="document.getElementById('atp-wallet-debit-form').style.display='none'">✕</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="dot"></span>История транзакций</div>
+          <div id="atp-wallet-history"></div>
+        </div>
+      </div>
+      <!-- История оплаты -->
+      <div id="atp-tab-payments" style="display:none">
+        <div class="card">
+          <div class="card-title"><span class="dot"></span>Записи об оплате</div>
+          <button class="btn btn-green btn-sm" onclick="openModal('modal-add-payment')">＋ Добавить запись</button>
+          <div id="payment-admin-list" style="margin-top:14px"></div>
+        </div>
       </div>
     </div>
 
@@ -736,10 +800,26 @@ tr:hover td { background: var(--bg2); }
       <div class="page-title">📊 Отчёты по ученикам</div>
       <div class="page-sub">Анализ успеваемости, усвоения тем и выполнения заданий</div>
       <div class="card">
-        <div class="card-title"><span class="dot"></span>Выберите ученика</div>
-        <div class="form-group" style="max-width:340px">
-          <label>Ученик</label>
-          <select id="report-student-select" onchange="generateReport()"></select>
+        <div class="card-title"><span class="dot"></span>Параметры отчёта</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end;flex-wrap:wrap">
+          <div class="form-group" style="margin:0">
+            <label>Ученик</label>
+            <select id="report-student-select" onchange="generateReport()"></select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Период — с</label>
+            <input type="date" id="report-date-from" onchange="generateReport()">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>По</label>
+            <input type="date" id="report-date-to" onchange="generateReport()">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="setReportPeriod('month')">Этот месяц</button>
+          <button class="btn btn-outline btn-sm" onclick="setReportPeriod('3month')">3 месяца</button>
+          <button class="btn btn-outline btn-sm" onclick="setReportPeriod('year')">Весь год</button>
+          <button class="btn btn-outline btn-sm" onclick="setReportPeriod('all')">Всё время</button>
         </div>
       </div>
       <div id="report-output"></div>
@@ -945,9 +1025,22 @@ tr:hover td { background: var(--bg2); }
 
     <!-- Student Payment -->
     <div class="page" id="page-student-payment">
-      <div class="page-title">Оплата занятий</div>
-      <div class="page-sub">История платежей и текущий статус</div>
-      <div id="student-payment-list"></div>
+      <div class="page-title">💰 Оплата и занятия</div>
+      <div class="page-sub">Кошелёк, история занятий и статус оплаты</div>
+      <div class="tabs" style="margin-bottom:16px">
+        <div class="tab active" onclick="switchStudentPayTab('wallet',this)">💰 Кошелёк</div>
+        <div class="tab" onclick="switchStudentPayTab('lessons',this)">📅 Мои занятия</div>
+        <div class="tab" onclick="switchStudentPayTab('history',this)">💳 История</div>
+      </div>
+      <div id="sp-tab-wallet">
+        <div id="student-wallet-block"></div>
+      </div>
+      <div id="sp-tab-lessons" style="display:none">
+        <div id="student-lessons-block"></div>
+      </div>
+      <div id="sp-tab-history" style="display:none">
+        <div id="student-payment-list"></div>
+      </div>
     </div>
 
     <!-- Student Schedule -->
@@ -957,7 +1050,8 @@ tr:hover td { background: var(--bg2); }
       <div class="tabs">
         <div class="tab active" onclick="switchTab('sched',this,'sched-courses')">📚 Курсы</div>
         <div class="tab" onclick="switchTab('sched',this,'sched-slots')">🗓 Расписание</div>
-        <div class="tab" onclick="switchTab('sched',this,'sched-my')">✅ Мои занятия</div>
+        <div class="tab" onclick="switchTab('sched',this,'sched-my')">✅ Мои записи</div>
+        <div class="tab" onclick="switchTab('sched',this,'sched-attendance');renderStudentAttendance()">📅 Мои занятия</div>
       </div>
       <div id="sched-courses" class="sched-tab">
         <div id="courses-student-list"></div>
@@ -973,6 +1067,9 @@ tr:hover td { background: var(--bg2); }
           <div class="card-title"><span class="dot"></span>Мои записи</div>
           <div id="my-bookings-list"></div>
         </div>
+      </div>
+      <div id="sched-attendance" class="sched-tab" style="display:none">
+        <div id="student-attendance-list"></div>
       </div>
     </div>
 
@@ -1364,6 +1461,37 @@ tr:hover td { background: var(--bg2); }
   </div>
 </div>
 
+<!-- ATTENDANCE MODAL -->
+<div class="modal-bg" id="modal-add-attendance">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title">📅 Добавить занятие</div>
+    <span class="modal-close" onclick="closeModal('modal-add-attendance')">✕</span>
+    <input type="hidden" id="att-slot-id">
+    <div class="form-group">
+      <label>Слот из расписания <span style="color:var(--text3);font-weight:400">(необязательно — заполнит данные автоматически)</span></label>
+      <select id="att-slot-select" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--white)">
+        <option value="">— Без привязки к слоту —</option>
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin:0"><label>Дата занятия</label>
+        <input id="att-date" type="date"></div>
+      <div class="form-group" style="margin:0"><label>Время</label>
+        <input id="att-time" type="time" value="10:00"></div>
+    </div>
+    <div class="form-group" style="margin-top:14px"><label>Тема занятия <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+      <input id="att-topic" placeholder="Строение клетки, Органика..."></div>
+    <div class="form-group"><label>Группа / пара <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+      <input id="att-group" placeholder="Группа А, Индивидуально..."></div>
+    <div class="form-group"><label>Стоимость занятия (₽)</label>
+      <input id="att-cost" type="number" min="0" placeholder="1500"></div>
+    <div class="form-group"><label>Ученики</label>
+      <div id="att-student-checks" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+    </div>
+    <button class="btn btn-green" onclick="saveAttendance()">Сохранить занятие</button>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-add-payment">
   <div class="modal">
     <div class="modal-title">💳 Запись об оплате</div>
@@ -1657,6 +1785,7 @@ async function initData(){
     ]);
   }
   if(!load('payments')) save('payments',[]);
+  if(!load('attendance')) save('attendance',[]);
   if(!load('tests'))    save('tests',[]);
   if(!load('hw'))       save('hw',[]);
   if(!load('content'))  save('content',[]);
@@ -1718,10 +1847,10 @@ const adminNav=[
   {id:'trial-admin',  icon:'🎯', label:'Пробник'},
   {id:'taskbank-admin',icon:'🎲',label:'База заданий'},
   {section:'Управление'},
-  {id:'chat-admin',   icon:'💬', label:'Чат с учениками'},
-  {id:'payment-admin',  icon:'💳',label:'Оплата'},
-  {id:'schedule-admin', icon:'🗓',label:'Расписание'},
-  {id:'reports-admin',  icon:'📊',label:'Отчёты по ученикам'},
+  {id:'chat-admin',       icon:'💬', label:'Чат с учениками'},
+  {id:'attend-pay-admin', icon:'📅', label:'Посещение и оплата'},
+  {id:'schedule-admin',   icon:'🗓', label:'Расписание'},
+  {id:'reports-admin',    icon:'📊', label:'Отчёты по ученикам'},
 ];
 const studentNav=[
   {section:'Кабинет'},
@@ -1733,7 +1862,7 @@ const studentNav=[
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
   {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
   {section:'Прочее'},
-  {id:'student-payment',   icon:'💳',label:'Оплата'},
+  {id:'student-payment',   icon:'💰',label:'Оплата и занятия'},
   {id:'student-schedule',  icon:'🗓',label:'Запись на занятия'},
 ];
 
@@ -1783,7 +1912,8 @@ function renderPage(p){
   else if(p==='student-trial'){ renderStudentTrial(); }
   else if(p==='chat-admin'){ renderChatAdmin(); }
   else if(p==='student-chat'){ renderStudentChat(); }
-  else if(p==='payment-admin'){ buildStudentSelector('pay-student-selector', ()=>renderPaymentAdmin()); renderPaymentAdmin(); }
+  else if(p==='attend-pay-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); }
+  else if(p==='payment-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); } // legacy redirect
   else if(p==='schedule-admin') renderScheduleAdmin();
   else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
@@ -2092,6 +2222,20 @@ function openModal(id, extra){
       document.getElementById('ntask-img-preview').src='';
       document.querySelector('#modal-add-task .modal-title').textContent='🎲 Новое задание';
     }
+  }
+  if(id==='modal-add-attendance'){
+    const today=new Date();
+    document.getElementById('att-date').value=today.toISOString().slice(0,10);
+    document.getElementById('att-topic').value='';
+    document.getElementById('att-group').value='';
+    document.getElementById('att-cost').value='';
+    document.getElementById('att-slot-id').value='';
+    const container=document.getElementById('att-student-checks');
+    container.innerHTML=getStudents().map(s=>`
+      <label style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600">
+        <input type="checkbox" value="${s.id}" checked style="accent-color:var(--green-deep)"> ${s.name}
+      </label>`).join('');
+    setTimeout(prefillAttendanceFromSlot, 50);
   }
   document.getElementById(id).classList.add('open');
   // Populate student checkboxes inside modal if present
@@ -4303,6 +4447,136 @@ function showDailyTaskResult(task, answerData){
 }
 
 
+// ══════════════════════════════════════════════
+// ПОСЕЩАЕМОСТЬ (ATTENDANCE)
+// ══════════════════════════════════════════════
+
+let _attSelectedSid = 'all';
+
+function renderAttendanceAdmin(){
+  const students = getStudents();
+  const allAtt = (load('attendance')||[]).slice().reverse();
+
+  // Chip bar
+  const chipsEl = document.getElementById('attendance-student-chips');
+  if(chipsEl){
+    chipsEl.innerHTML = [
+      `<div class="student-chip ${_attSelectedSid==='all'?'active':''}" onclick="_attSelectedSid='all';renderAttendanceAdmin()">👥 Все</div>`,
+      ...students.map(s=>`<div class="student-chip ${_attSelectedSid===s.id?'active':''}" onclick="_attSelectedSid='${s.id}';renderAttendanceAdmin()">${s.name}</div>`)
+    ].join('');
+  }
+
+  const el = document.getElementById('attendance-admin-list');
+  if(!el) return;
+
+  // Group lessons by date desc
+  const sids = _attSelectedSid==='all' ? students.map(s=>s.id) : [_attSelectedSid];
+  const lessons = allAtt.filter(a=>sids.includes(a.studentId));
+
+  if(!lessons.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
+
+  // Group by lessonId (same lesson = multiple students)
+  const byLesson = {};
+  lessons.forEach(a=>{
+    if(!byLesson[a.lessonId]) byLesson[a.lessonId]={
+      lessonId:a.lessonId, date:a.date, time:a.time, topic:a.topic,
+      group:a.group, costPerStudent:a.costPerStudent, entries:[]
+    };
+    byLesson[a.lessonId].entries.push(a);
+  });
+
+  const lessonGroups = Object.values(byLesson).sort((a,b)=>b.date.localeCompare(a.date));
+
+  el.innerHTML = lessonGroups.map(lg=>{
+    const dateLabel = lg.date ? new Date(lg.date).toLocaleDateString('ru',{day:'numeric',month:'long',year:'numeric'}) : '—';
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:700;font-size:0.97rem;color:var(--accent)">📅 ${dateLabel}${lg.time?' · '+lg.time:''}</div>
+          <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
+            ${lg.topic?`📖 ${lg.topic} · `:''}${lg.group?`👥 ${lg.group} · `:''}💰 ${lg.costPerStudent}₽/чел.
+          </div>
+        </div>
+        <button class="btn btn-red btn-sm" onclick="deleteLesson('${lg.lessonId}')">🗑 Занятие</button>
+      </div>
+      ${lg.entries.map(a=>{
+        const s = students.find(s=>s.id===a.studentId);
+        return `<div class="att-row att-${a.present?'present':'absent'}">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:0.88rem">${s?s.name:'—'}</div>
+            ${a.group?`<div style="font-size:0.75rem;color:var(--text3)">${a.group}</div>`:''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="att-badge-${a.present?'present':'absent'}">${a.present?'✅ Был':'❌ Не был'}</span>
+            ${a.present?`<span class="att-cost-badge">−${a.costPerStudent}₽</span>`:''}
+            ${a.present&&!a.paid?`<span class="att-unpaid-badge">💳 Не оплачено</span>`:''}
+            ${a.present&&a.paid?`<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✅ Оплачено</span>`:''}
+            <button class="btn btn-outline btn-sm" onclick="toggleAttPresence('${a.id}')">${a.present?'Отменить':'Был'}</button>
+            ${a.present?`<button class="btn btn-outline btn-sm" onclick="toggleAttPaid('${a.id}')">${a.paid?'Снять оплату':'Оплачено'}</button>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+function toggleAttPresence(id){
+  const att=load('attendance')||[];
+  const a=att.find(a=>a.id===id); if(!a) return;
+  a.present=!a.present;
+  if(!a.present) a.paid=false;
+  save('attendance',att);
+  renderAtpAttendance();
+}
+function deleteLesson(lessonId){
+  if(!confirm('Удалить всё занятие?')) return;
+  save('attendance',(load('attendance')||[]).filter(a=>a.lessonId!==lessonId));
+  renderAtpAttendance();
+}
+
+function renderStudentAttendance(){
+  const sid=currentUser.id;
+  const att=(load('attendance')||[]).filter(a=>a.studentId===sid).slice().reverse();
+  const el=document.getElementById('student-attendance-list');
+  if(!el) return;
+  if(!att.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
+
+  // Stats
+  const total=att.length, present=att.filter(a=>a.present).length;
+  const totalCost=att.filter(a=>a.present).reduce((s,a)=>s+(+a.costPerStudent||0),0);
+  const unpaidCost=att.filter(a=>a.present&&!a.paid).reduce((s,a)=>s+(+a.costPerStudent||0),0);
+
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:14px">
+      <div class="report-kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+        <div class="report-kpi"><div class="kpi-icon">📅</div><div class="kpi-val">${total}</div><div class="kpi-label">Занятий</div></div>
+        <div class="report-kpi"><div class="kpi-icon">✅</div><div class="kpi-val">${present}</div><div class="kpi-label">Посещено</div></div>
+        <div class="report-kpi"><div class="kpi-icon">💰</div><div class="kpi-val">${totalCost}₽</div><div class="kpi-label">Начислено</div></div>
+        <div class="report-kpi"><div class="kpi-icon" style="color:#c0392b">💳</div><div class="kpi-val" style="${unpaidCost>0?'color:#c0392b':''}">${unpaidCost}₽</div><div class="kpi-label">Не оплачено</div></div>
+      </div>
+    </div>
+    <div class="card">
+      ${att.map(a=>{
+        const dateLabel=a.date?new Date(a.date).toLocaleDateString('ru',{day:'numeric',month:'long'}):a.date;
+        return `<div class="att-row att-${a.present?'present':'absent'}">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:0.88rem">📅 ${dateLabel}${a.time?' · '+a.time:''}</div>
+            <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">
+              ${a.topic?`📖 ${a.topic}`:''}${a.group?' · 👥 '+a.group:''}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="att-badge-${a.present?'present':'absent'}">${a.present?'✅ Был':'❌ Не был'}</span>
+            ${a.present?`<span class="att-cost-badge">−${a.costPerStudent}₽</span>`:''}
+            ${a.present&&!a.paid?`<span class="att-unpaid-badge">💳 Не оплачено</span>`:''}
+            ${a.present&&a.paid?`<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✅ Оплачено</span>`:''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+
 function renderStudentDashboard(){
   document.getElementById('student-wb-title').textContent=`Добро пожаловать, ${currentUser.name}! 👋`;
   const sid=currentUser.id;
@@ -4331,11 +4605,12 @@ function renderStudentDashboard(){
     const isRepeat  = n.type==='repeat';
     const isChat    = n.type==='chat';
     const isComment = n.type==='comment';
-    const nav = n.nav || (isRepeat?'student-repeat': isChat?'student-chat': '');
+    const isWallet  = n.type==='wallet' || n.type==='charge';
+    const nav = n.nav || (isRepeat?'student-repeat': isChat?'student-chat': isWallet?'student-payment': '');
     const clickable = !!nav;
-    const dotClass  = isChat?'new': isComment?'done': isRepeat?'':'new';
-    const arrow     = isChat?'→ Чат': isComment?'→ Перейти': isRepeat?'→ Повторить':'';
-    const extraClass= isChat?'notif-chat': isComment?'notif-comment':'';
+    const dotClass  = isChat?'new': isComment?'done': isWallet?'new': isRepeat?'':'new';
+    const arrow     = isChat?'→ Чат': isComment?'→ Перейти': isWallet?'→ Оплата': isRepeat?'→ Повторить':'';
+    const extraClass= isChat?'notif-chat': isComment?'notif-comment': isWallet?'notif-comment':'';
     return `<div class="hw-item ${extraClass}" style="cursor:${clickable?'pointer':'default'};${extraClass?'border-radius:10px;padding:10px;margin-bottom:4px;':''}" onclick="${clickable?`navigateTo('${nav}')`:''}" >
       <div class="hw-status-dot ${dotClass}"></div>
       <div><div class="content-name" style="font-size:0.85rem">${n.text}</div><div class="content-meta">${n.date}</div></div>
@@ -4677,13 +4952,14 @@ function submitHW(){
   updateAdminBadge();
 }
 
-// STUDENT PAYMENT
-function renderStudentPayment(){
+// STUDENT PAYMENT — history tab only (wallet/lessons are handled by new functions)
+function renderStudentPaymentHistory(){
   const sid=currentUser.id;
   const payments=(load('payments')||[]).filter(p=>p.studentId===sid);
   const el=document.getElementById('student-payment-list');
+  if(!el) return;
   if(!payments.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
-  el.innerHTML=`<div class="card"><div class="card-title"><span class="dot"></span>История оплаты</div>`+
+  el.innerHTML=`<div class="card"><div class="card-title"><span class="dot"></span>История записей об оплате</div>`+
   payments.map(p=>{
     const cls={paid:'paid',unpaid:'unpaid',partial:'partial'}[p.status];
     const icon={paid:'✅',unpaid:'❌',partial:'⚠️'}[p.status];
@@ -4901,130 +5177,394 @@ function sendHWToMultiple(){
 // ═══════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════
+function setReportPeriod(period){
+  const to = new Date();
+  const from = new Date();
+  if(period==='month')  from.setDate(1);
+  else if(period==='3month') from.setMonth(from.getMonth()-3);
+  else if(period==='year')   from.setMonth(0), from.setDate(1);
+  else { // all
+    document.getElementById('report-date-from').value='';
+    document.getElementById('report-date-to').value='';
+    generateReport(); return;
+  }
+  document.getElementById('report-date-from').value=from.toISOString().slice(0,10);
+  document.getElementById('report-date-to').value=to.toISOString().slice(0,10);
+  generateReport();
+}
+
 function renderReportsAdmin(){
   const students=getStudents();
   const sel=document.getElementById('report-student-select');
   sel.innerHTML=students.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  // Default period: this month
+  if(!document.getElementById('report-date-from').value){
+    const from=new Date(); from.setDate(1);
+    document.getElementById('report-date-from').value=from.toISOString().slice(0,10);
+    document.getElementById('report-date-to').value=new Date().toISOString().slice(0,10);
+  }
   generateReport();
 }
+
 function generateReport(){
-  const sid=document.getElementById('report-student-select').value;
+  const sid = document.getElementById('report-student-select').value;
   if(!sid) return;
-  const students=getStudents();
-  const student=students.find(s=>s.id===sid);
-  const content=(load('content')||[]).filter(c=>c.studentId===sid);
-  const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
-  const hws=(load('hw')||[]).filter(h=>h.studentId===sid);
 
-  const theoryCount=content.filter(c=>c.type==='theory').length;
-  const testsTotal=tests.length;
-  const testsSubmitted=tests.filter(t=>t.submitted).length;
-  const hwTotal=hws.length;
-  const hwSubmitted=hws.filter(h=>h.submitted).length;
-  const hwPct=hwTotal?Math.round(hwSubmitted/hwTotal*100):0;
+  const dateFrom = document.getElementById('report-date-from').value;
+  const dateTo   = document.getElementById('report-date-to').value;
+  const filterDate = (dateStr) => {
+    if(!dateStr) return true;
+    if(!dateFrom && !dateTo) return true;
+    // dateStr can be 'DD.MM.YYYY' or 'YYYY-MM-DD'
+    let d;
+    if(dateStr.includes('-')) d=new Date(dateStr);
+    else { const p=dateStr.split('.'); d=new Date(+p[2],+p[1]-1,+p[0]); }
+    if(isNaN(d)) return true;
+    if(dateFrom && d < new Date(dateFrom)) return false;
+    if(dateTo   && d > new Date(dateTo+'T23:59:59')) return false;
+    return true;
+  };
 
-  // Auto-score analysis
-  let totalAuto=0, correctAuto=0;
-  tests.filter(t=>t.submitted).forEach(t=>{
-    totalAuto+=(t.autoTotal||0);
-    correctAuto+=(t.autoScore||0);
-  });
-  const autoAccuracy=totalAuto?Math.round(correctAuto/totalAuto*100):null;
+  const student  = getStudents().find(s=>s.id===sid);
+  const content  = (load('content')||[]).filter(c=>c.studentId===sid);
+  const allTests = (load('tests')||[]).filter(t=>t.studentId===sid);
+  const allHws   = (load('hw')||[]).filter(h=>h.studentId===sid);
+  const allTrials= (load('trials')||[]).filter(t=>t.studentId===sid);
+  const allAtt   = (load('attendance')||[]).filter(a=>a.studentId===sid);
+  const srData   = getSRData(sid);
 
-  // Exam grades analysis for HW
-  let examGrades=[];
-  hws.forEach(h=>{
-    (h.questions||[]).forEach(q=>{
-      if(q.examGrade!==undefined && q.examGrade!=='') examGrades.push(Number(q.examGrade));
-    });
-  });
-  const avgExam=examGrades.length?( examGrades.reduce((a,b)=>a+b,0)/examGrades.length).toFixed(2):null;
+  // Filter by period
+  const tests  = allTests.filter(t=>filterDate(t.date||t.due));
+  const hws    = allHws.filter(h=>filterDate(h.due||h.date));
+  const trials = allTrials.filter(t=>filterDate(t.date));
+  const att    = allAtt.filter(a=>filterDate(a.date));
 
-  // 5-grade analysis
-  let grades5=[];
-  tests.concat(hws).forEach(item=>{
-    (item.questions||[]).forEach(q=>{
-      if(q.grade) grades5.push(Number(q.grade));
-    });
-  });
-  const avgGrade5=grades5.length?(grades5.reduce((a,b)=>a+b,0)/grades5.length).toFixed(2):null;
+  const periodLabel = dateFrom && dateTo
+    ? `${new Date(dateFrom).toLocaleDateString('ru',{day:'numeric',month:'short'})} — ${new Date(dateTo).toLocaleDateString('ru',{day:'numeric',month:'short',year:'numeric'})}`
+    : 'Всё время';
 
-  const bar=(pct,color='var(--green-mid)')=>`<div style="background:var(--green-xpale);border-radius:100px;height:10px;overflow:hidden;margin-top:6px"><div style="width:${pct}%;background:${color};height:100%;border-radius:100px;transition:width 0.6s"></div></div>`;
+  // ── Theory (not filtered by date — always full)
+  const theoryAll    = content.filter(c=>c.type==='theory');
+  const theoryTotal  = theoryAll.length;
+  const theoryViewed = theoryAll.filter(c=>srData[c.id]&&(srData[c.id].repetitions||0)>0).length;
+  const theoryPct    = theoryTotal ? Math.round(theoryViewed/theoryTotal*100) : 0;
+
+  // ── Tests
+  const testsTotal     = tests.length;
+  const testsSubmitted = tests.filter(t=>t.submitted).length;
+  const testsPct       = testsTotal ? Math.round(testsSubmitted/testsTotal*100) : 0;
+  const checkedTests   = tests.filter(t=>t.submitted&&t.autoTotal);
+  const totalPts       = checkedTests.reduce((s,t)=>s+(t.autoTotal||0),0);
+  const correctPts     = checkedTests.reduce((s,t)=>s+(t.autoScore||0),0);
+  const testAccuracy   = totalPts ? Math.round(correctPts/totalPts*100) : null;
+  const gradeCount = {5:0,4:0,3:0,2:0};
+  tests.filter(t=>t.submitted&&t.autoGrade).forEach(t=>{ if(gradeCount[t.autoGrade]!=null) gradeCount[t.autoGrade]++; });
+  const testDynamics = tests.filter(t=>t.submitted&&t.autoTotal).slice(-5).map(t=>({
+    title:t.title, pct:Math.round((t.autoScore||0)/t.autoTotal*100), grade:t.autoGrade||'—', date:t.date
+  }));
+
+  // ── HW
+  const hwTotal     = hws.length;
+  const hwSubmitted = hws.filter(h=>h.submitted).length;
+  const hwChecked   = hws.filter(h=>h.openChecked).length;
+  const hwPct       = hwTotal ? Math.round(hwSubmitted/hwTotal*100) : 0;
+  const hwOverdue   = hws.filter(h=>!h.submitted && h.due && new Date(h.due.split('.').reverse().join('-')) < new Date()).length;
+
+  // ── Trials
+  const trialsTotal  = trials.length;
+  const trialsDone   = trials.filter(t=>t.submitted).length;
+  const trialsPct    = trialsTotal ? Math.round(trialsDone/trialsTotal*100) : 0;
+  const trialScores  = trials.filter(t=>t.submitted&&t.totalScore!=null).map(t=>t.totalScore);
+  const avgTrial     = trialScores.length ? Math.round(trialScores.reduce((a,b)=>a+b,0)/trialScores.length) : null;
+
+  // ── Attendance
+  const attTotal    = att.length;
+  const attPresent  = att.filter(a=>a.present).length;
+  const attAbsent   = attTotal - attPresent;
+  const attPct      = attTotal ? Math.round(attPresent/attTotal*100) : 0;
+  const attTotalCost= att.filter(a=>a.present).reduce((s,a)=>s+(+a.costPerStudent||0),0);
+  const attUnpaid   = att.filter(a=>a.present&&!a.paid).reduce((s,a)=>s+(+a.costPerStudent||0),0);
+
+  // ── Spaced Repetition
+  const srItems      = theoryAll.filter(c=>srData[c.id]);
+  const srDone       = srItems.filter(c=>(srData[c.id].repetitions||0)>0).length;
+  const srTotal      = theoryTotal;
+  const srPct        = srTotal ? Math.round(srDone/srTotal*100) : 0;
+  const srDueToday   = getDueItems(sid).length;
+  const srRepetitions= srItems.reduce((s,c)=>s+(srData[c.id].repetitions||0),0);
+
+  // ── Daily tasks
+  const taskLog = JSON.parse(localStorage.getItem('biohim_daily_task_log')||'{}');
+  const tasksDone = Object.values(taskLog[sid]||[]).filter(e=>!dateFrom||(e.date>=dateFrom&&e.date<=(dateTo||'9999'))).length;
+
+  // ── Helpers
+  const bar = (pct, color='var(--green-mid)', label='')=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-top:5px">
+      <div style="flex:1;background:var(--green-xpale);border-radius:100px;height:11px;overflow:hidden">
+        <div style="width:${Math.min(pct,100)}%;background:${color};height:100%;border-radius:100px;transition:width 0.6s"></div>
+      </div>
+      <div style="font-size:0.8rem;color:var(--text3);white-space:nowrap;min-width:38px;text-align:right">${label||pct+'%'}</div>
+    </div>`;
+  const trendColor = pct => pct>=80?'var(--green-mid)':pct>=60?'#e07b00':'#c0392b';
+  const trendIcon  = pct => pct>=80?'📈':pct>=60?'➡️':'📉';
+  const gradeColor = g => ({5:'#27ae60',4:'#2980b9',3:'#e07b00',2:'#c0392b'}[g]||'var(--text3)');
+  const sectionTitle = (icon, title) =>
+    `<div style="display:flex;align-items:center;gap:8px;margin:20px 0 12px;border-bottom:1.5px solid var(--green-xpale);padding-bottom:8px">
+       <span style="font-size:1.2rem">${icon}</span>
+       <span style="font-weight:800;font-size:1rem;color:var(--accent)">${title}</span>
+     </div>`;
+  const chip = (label, val, color='var(--green-deep)') =>
+    `<div style="background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;padding:10px 14px;text-align:center">
+       <div style="font-size:0.72rem;color:var(--text3);font-weight:700;margin-bottom:3px">${label}</div>
+       <div style="font-size:1.05rem;font-weight:800;color:${color}">${val}</div>
+     </div>`;
 
   document.getElementById('report-output').innerHTML=`
-    <div class="card">
-      <div class="card-title"><span class="dot"></span>📊 Отчёт: ${student.name} — ${new Date().toLocaleDateString('ru')}</div>
-      <div class="grid-3" style="margin-bottom:20px">
-        <div class="stat-card"><div class="stat-icon">📖</div><div class="stat-num">${theoryCount}</div><div class="stat-label">Теор. уроков</div></div>
-        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${testsSubmitted}/${testsTotal}</div><div class="stat-label">Тестов сдано</div></div>
-        <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hwSubmitted}/${hwTotal}</div><div class="stat-label">ДЗ выполнено</div></div>
+  <div class="card" style="padding:24px">
+
+    <!-- HEADER -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div>
+        <div style="font-size:1.4rem;font-weight:900;color:var(--accent)">${student.name}</div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-top:3px">
+          ${student.subject||''}${student.subject&&student.format?' · ':''}${student.format||''}
+          &nbsp;·&nbsp; Период: <b>${periodLabel}</b>
+        </div>
       </div>
-      <div style="margin-bottom:18px">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Выполнение ДЗ</div>
-        ${bar(hwPct)}
-        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${hwPct}% заданий сдано</div>
-      </div>
-      ${autoAccuracy!==null?`<div style="margin-bottom:18px">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Точность в авто-тестах</div>
-        ${bar(autoAccuracy, autoAccuracy>=70?'var(--green-mid)':'#e07b00')}
-        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${autoAccuracy}% правильных ответов (${correctAuto} из ${totalAuto})</div>
-      </div>`:''}
-      ${avgGrade5?`<div style="margin-bottom:18px">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Средняя оценка (5-балльная)</div>
-        ${bar(Number(avgGrade5)/5*100)}
-        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${avgGrade5} / 5.0</div>
-      </div>`:''}
-      ${avgExam?`<div style="margin-bottom:18px">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--accent)">Средний балл (экзам. 0–3)</div>
-        ${bar(Number(avgExam)/3*100, Number(avgExam)>=2?'var(--green-mid)':'#c0392b')}
-        <div style="font-size:0.8rem;color:var(--text3);margin-top:4px">${avgExam} / 3.0 (${examGrades.length} оценок)</div>
-      </div>`:''}
-      <hr class="divider">
-      <div style="font-weight:700;margin-bottom:10px;color:var(--accent)">🔍 Анализ по тестам</div>
-      ${tests.filter(t=>t.submitted).map(t=>{
-        const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null;
-        return `<div style="margin-bottom:10px">
-          <div style="font-size:0.88rem;font-weight:600">${t.title}</div>
-          ${pct!==null?`${bar(pct, pct>=70?'var(--green-mid)':'#e07b00')}<div style="font-size:0.77rem;color:var(--text3);margin-top:3px">${pct}% авто (${t.autoScore||0}/${t.autoTotal})</div>`:'<div style="font-size:0.77rem;color:var(--text3)">Только открытые вопросы</div>'}
+      <button class="btn btn-outline btn-sm" onclick="downloadReport('${sid}')">⬇ Скачать .txt</button>
+    </div>
+
+    <!-- OVERVIEW CHIPS -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-bottom:4px">
+      ${chip('📖 Теория',`${theoryViewed}/${theoryTotal}`, trendColor(theoryPct))}
+      ${chip('📋 Тесты',`${testsSubmitted}/${testsTotal}`, trendColor(testsPct))}
+      ${chip('✏️ ДЗ',`${hwSubmitted}/${hwTotal}`, trendColor(hwPct))}
+      ${chip('🎯 Пробник',trialsTotal?`${trialsDone}/${trialsTotal}`:'—', trialsPct>=50?'var(--green-mid)':'#e07b00')}
+      ${chip('🧠 Повторение',`${srDone}/${srTotal}`, trendColor(srPct))}
+      ${attTotal?chip('📅 Занятий',`${attPresent}/${attTotal}`, trendColor(attPct)):''}
+    </div>
+
+    <!-- ── ATTENDANCE ── -->
+    ${attTotal>0?`
+    ${sectionTitle('📅','Посещаемость')}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:14px">
+      ${chip('Занятий всего', attTotal, 'var(--accent)')}
+      ${chip('Посещено', attPresent, trendColor(attPct))}
+      ${chip('Пропущено', attAbsent, attAbsent>0?'#c0392b':'var(--green-mid)')}
+      ${chip('Посещаемость', attPct+'%', trendColor(attPct))}
+      ${chip('Начислено', attTotalCost+'₽', 'var(--accent)')}
+      ${attUnpaid>0?chip('Не оплачено', attUnpaid+'₽', '#c0392b'):chip('Оплачено','✅','var(--green-mid)')}
+    </div>
+    <div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Посещаемость за период</div>
+      ${bar(attPct, trendColor(attPct))}
+    </div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:4px">
+      ${att.slice().reverse().map(a=>{
+        const dateLabel=a.date?new Date(a.date).toLocaleDateString('ru',{day:'numeric',month:'short'}):a.date;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--green-xpale);border-left:3px solid ${a.present?'var(--green-mid)':'#ef4444'}">
+          <div style="font-size:0.8rem;color:var(--text3);min-width:60px">${dateLabel}${a.time?' '+a.time:''}</div>
+          <div style="flex:1;font-size:0.82rem;font-weight:600">${a.topic||'Занятие'}${a.group?' · '+a.group:''}</div>
+          <span style="font-size:0.75rem;font-weight:700;color:${a.present?'var(--green-mid)':'#c0392b'}">${a.present?'✅ Был':'❌ Не был'}</span>
+          ${a.present?`<span style="font-size:0.73rem;color:var(--text3)">${a.costPerStudent}₽</span>`:''}
+          ${a.present&&!a.paid?`<span style="font-size:0.7rem;font-weight:700;color:#c0392b">не опл.</span>`:''}
         </div>`;
-      }).join('')||'<div style="color:var(--text3);font-size:0.85rem">Нет сданных тестов</div>'}
-      <hr class="divider">
-      <div style="font-weight:700;margin-bottom:10px;color:var(--accent)">📝 Домашние задания</div>
+      }).join('')}
+    </div>`:''}
+
+    <!-- ── THEORY ── -->
+    ${sectionTitle('📖','Теоретические уроки')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Пройдено уроков</div>
+        ${bar(theoryPct, trendColor(theoryPct))}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">${theoryViewed} из ${theoryTotal} материалов изучено ${trendIcon(theoryPct)}</div>
+      </div>
+      <div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Умное повторение</div>
+        ${bar(srPct, trendColor(srPct))}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">${srRepetitions} повторений · ${srDueToday>0?`<span style="color:#c0392b">⚠️ ${srDueToday} к повторению сегодня</span>`:'✅ всё повторено'}</div>
+      </div>
+    </div>
+    ${theoryAll.length ? `<div style="display:flex;flex-direction:column;gap:4px">
+      ${theoryAll.map(c=>{
+        const sr = srData[c.id];
+        const reps = sr ? (sr.repetitions||0) : 0;
+        const studied = reps > 0;
+        const nextDue = sr ? sr.nextDue : null;
+        const isOverdue = nextDue && nextDue <= todayStr() && studied;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--green-xpale)">
+          <div style="width:8px;height:8px;border-radius:50%;background:${studied?'var(--green-mid)':'#ccc'};flex-shrink:0"></div>
+          <div style="flex:1;font-size:0.83rem;color:var(--text);font-weight:${studied?600:400}">${c.title}</div>
+          <div style="font-size:0.73rem;color:var(--text3);white-space:nowrap">${reps>0?`${reps} повт.`:'не изучено'}</div>
+          ${isOverdue?`<span style="font-size:0.7rem;color:#c0392b;font-weight:700">просрочено</span>`:''}
+        </div>`;
+      }).join('')}
+    </div>` : '<div style="color:var(--text3);font-size:0.85rem">Материалов нет</div>'}
+
+    <!-- ── TESTS ── -->
+    ${sectionTitle('📋','Тесты')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Сдача тестов</div>
+        ${bar(testsPct, trendColor(testsPct))}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">${testsSubmitted} из ${testsTotal} сдано</div>
+      </div>
+      ${testAccuracy!==null?`<div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Точность ответов</div>
+        ${bar(testAccuracy, trendColor(testAccuracy))}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">${correctPts} из ${totalPts} баллов ${trendIcon(testAccuracy)}</div>
+      </div>`:'<div></div>'}
+    </div>
+    ${Object.values(gradeCount).some(v=>v>0)?`
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      ${[5,4,3,2].map(g=>gradeCount[g]?`<div style="background:${gradeColor(g)}18;border:1px solid ${gradeColor(g)}44;border-radius:8px;padding:6px 14px;font-size:0.82rem;font-weight:700;color:${gradeColor(g)}">Оценка ${g}: ${gradeCount[g]} раз(а)</div>`:'').join('')}
+    </div>`:''}
+    ${testDynamics.length?`
+    <div style="margin-bottom:4px">
+      <div style="font-size:0.8rem;color:var(--text3);font-weight:700;margin-bottom:8px">Динамика последних тестов:</div>
+      ${testDynamics.map((t,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:7px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--green-xpale)">
+          <div style="font-size:0.75rem;color:var(--text3);min-width:18px">#${i+1}</div>
+          <div style="flex:1;font-size:0.83rem;font-weight:600;color:var(--text)">${t.title}</div>
+          <div style="min-width:80px">${bar(t.pct, trendColor(t.pct),'')}</div>
+          <div style="font-size:0.78rem;font-weight:700;color:${trendColor(t.pct)};min-width:36px;text-align:right">${t.pct}%</div>
+          ${t.grade!=='—'?`<div style="background:${gradeColor(t.grade)}18;color:${gradeColor(t.grade)};border-radius:6px;padding:2px 8px;font-size:0.72rem;font-weight:700">${t.grade}</div>`:''}
+          <div style="font-size:0.72rem;color:var(--text3)">${t.date||''}</div>
+        </div>`).join('')}
+    </div>`:''}
+    ${tests.filter(t=>!t.submitted).length?`<div style="font-size:0.8rem;color:#e07b00;margin-top:4px">⏳ ${tests.filter(t=>!t.submitted).length} тест(ов) ещё не сдано</div>`:''}
+
+    <!-- ── HW ── -->
+    ${sectionTitle('✏️','Домашние задания')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Выполнение ДЗ</div>
+        ${bar(hwPct, trendColor(hwPct))}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">${hwSubmitted} из ${hwTotal} сдано · ${hwChecked} проверено</div>
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:4px">
+        ${hwOverdue?`<div style="font-size:0.82rem;color:#c0392b;font-weight:700">⚠️ ${hwOverdue} ДЗ просрочено</div>`:''}
+        ${hwOverdue===0&&hwTotal>0?`<div style="font-size:0.82rem;color:var(--green-deep);font-weight:700">✅ Все ДЗ сданы вовремя</div>`:''}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
       ${hws.map(h=>{
-        const examQs=(h.questions||[]).filter(q=>q.examGrade!==undefined&&q.examGrade!=='');
-        const avgEG=examQs.length?(examQs.reduce((a,q)=>a+Number(q.examGrade),0)/examQs.length).toFixed(1):null;
-        return `<div class="hw-item">
-          <div class="hw-status-dot ${h.submitted?'done':'pending'}"></div>
-          <div>
-            <div class="content-name" style="font-size:0.85rem">${h.title}</div>
-            <div class="content-meta">Срок: ${h.due||'—'} · ${h.submitted?'✅ Отправлено на проверку':'⏳ Не сдано'}</div>
-            ${avgEG?`<div class="content-meta">Экзам. балл: ${avgEG}/3</div>`:''}
-          </div>
+        const isOverdue = !h.submitted && h.due && new Date(h.due.split('.').reverse().join('-')) < new Date();
+        const statusColor = h.openChecked?'var(--green-mid)':h.submitted?'#2980b9':isOverdue?'#c0392b':'#e07b00';
+        const statusLabel = h.openChecked?'✅ Проверено':h.submitted?'📝 На проверке':isOverdue?'⚠️ Просрочено':'⏳ Не сдано';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--green-xpale)">
+          <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0"></div>
+          <div style="flex:1;font-size:0.83rem;font-weight:600">${h.title}</div>
+          <div style="font-size:0.73rem;color:var(--text3)">Срок: ${h.due||'—'}</div>
+          <div style="font-size:0.73rem;font-weight:700;color:${statusColor};white-space:nowrap">${statusLabel}</div>
         </div>`;
       }).join('')||'<div style="color:var(--text3);font-size:0.85rem">Нет ДЗ</div>'}
-      <hr class="divider">
-      <button class="btn btn-green" onclick="downloadReport('${sid}')">⬇ Скачать отчёт (txt)</button>
-    </div>`;
+    </div>
+
+    <!-- ── TRIALS ── -->
+    ${sectionTitle('🎯','Пробники')}
+    ${trialsTotal===0?`<div style="color:var(--text3);font-size:0.85rem">Пробников нет</div>`:`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:2px">Прохождение</div>
+        ${bar(trialsPct, trendColor(trialsPct))}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">${trialsDone} из ${trialsTotal} пройдено</div>
+      </div>
+      ${avgTrial!==null?`<div style="display:flex;flex-direction:column;justify-content:center">
+        <div style="font-size:0.82rem;color:var(--text3)">Средний балл</div>
+        <div style="font-size:1.4rem;font-weight:900;color:${trendColor(avgTrial)}">${avgTrial}</div>
+      </div>`:'<div></div>'}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      ${trials.map(t=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--green-xpale)">
+          <div style="width:8px;height:8px;border-radius:50%;background:${t.submitted?'var(--green-mid)':'#ccc'};flex-shrink:0"></div>
+          <div style="flex:1;font-size:0.83rem;font-weight:600">${t.title||'Пробник'}</div>
+          ${t.submitted&&t.totalScore!=null?`<div style="font-size:0.78rem;font-weight:700;color:${trendColor(t.totalScore)}">${t.totalScore} б.</div>`:''}
+          <div style="font-size:0.73rem;font-weight:700;color:${t.submitted?'var(--green-mid)':'var(--text3)'}">${t.submitted?'✅ Сдан':'⏳ Не сдан'}</div>
+        </div>`).join('')}
+    </div>`}
+
+    <!-- ── SMART REPEAT ── -->
+    ${sectionTitle('🧠','Умное повторение')}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+      ${chip('Охват материала',`${srPct}%`, trendColor(srPct))}
+      ${chip('Всего повторений', srRepetitions, 'var(--green-deep)')}
+      ${chip('Ожидают сегодня', srDueToday, srDueToday>0?'#c0392b':'var(--green-mid)')}
+    </div>
+    ${srDueToday>0?`<div style="font-size:0.82rem;color:#c0392b;font-weight:700;margin-bottom:8px">⚠️ Ученик не выполнил повторение сегодня (${srDueToday} материалов)</div>`:
+    srRepetitions>0?`<div style="font-size:0.82rem;color:var(--green-deep);font-weight:700;margin-bottom:8px">✅ Умное повторение ведётся активно</div>`:
+    `<div style="font-size:0.82rem;color:var(--text3);margin-bottom:8px">Повторений пока не было</div>`}
+
+    <!-- ── DAILY TASKS ── -->
+    ${sectionTitle('📅','Задание дня')}
+    ${tasksDone>0
+      ?`<div style="font-size:0.88rem;color:var(--green-deep);font-weight:700">✅ Решено ${tasksDone} заданий дня за период</div>`
+      :`<div style="font-size:0.85rem;color:var(--text3)">Заданий дня за период не было</div>`}
+
+    <hr class="divider" style="margin-top:24px">
+    <button class="btn btn-green" onclick="downloadReport('${sid}')">⬇ Скачать отчёт (.txt)</button>
+  </div>`;
 }
+
 function downloadReport(sid){
-  const students=getStudents();
-  const s=students.find(s=>s.id===sid);
-  const tests=(load('tests')||[]).filter(t=>t.studentId===sid);
-  const hws=(load('hw')||[]).filter(h=>h.studentId===sid);
-  let txt=`ОТЧЁТ ПО УЧЕНИКУ: ${s.name}\nДата: ${new Date().toLocaleDateString('ru')}\n${'='.repeat(40)}\n\n`;
-  txt+=`ТЕСТЫ (${tests.filter(t=>t.submitted).length} из ${tests.length} сдано):\n`;
-  tests.forEach(t=>{ txt+=`  • ${t.title}: ${t.submitted?`Авто ${t.autoScore||0}/${t.autoTotal||0}`:'Не сдан'}\n`; });
-  txt+=`\nДОМАШНИЕ ЗАДАНИЯ (${hws.filter(h=>h.submitted).length} из ${hws.length} сдано):\n`;
-  hws.forEach(h=>{
-    txt+=`  • ${h.title}: ${h.submitted?'Сдано':'Не сдано'}`;
-    const examQs=(h.questions||[]).filter(q=>q.examGrade!==undefined&&q.examGrade!=='');
-    if(examQs.length) txt+=` | Экзам: ${(examQs.reduce((a,q)=>a+Number(q.examGrade),0)/examQs.length).toFixed(1)}/3`;
-    txt+='\n';
+  const student  = getStudents().find(s=>s.id===sid);
+  const content  = (load('content')||[]).filter(c=>c.studentId===sid);
+  const tests    = (load('tests')||[]).filter(t=>t.studentId===sid);
+  const hws      = (load('hw')||[]).filter(h=>h.studentId===sid);
+  const trials   = (load('trials')||[]).filter(t=>t.studentId===sid);
+  const srData   = getSRData(sid);
+  const theory   = content.filter(c=>c.type==='theory');
+  const srDone   = theory.filter(c=>srData[c.id]&&(srData[c.id].repetitions||0)>0).length;
+  const taskLog  = JSON.parse(localStorage.getItem('biohim_daily_task_log')||'{}');
+  const tasksDone = Object.keys(taskLog).filter(k=>k.endsWith('_'+sid)).length;
+
+  const line = '─'.repeat(48);
+  let txt = `ОТЧЁТ ПО УЧЕНИКУ\n${line}\n`;
+  txt += `Ученик:  ${student.name}\n`;
+  txt += `Предмет: ${student.subject||'—'}  Формат: ${student.format||'—'}\n`;
+  txt += `Дата:    ${new Date().toLocaleDateString('ru',{day:'numeric',month:'long',year:'numeric'})}\n\n`;
+
+  txt += `📖 ТЕОРИЯ\n${line}\n`;
+  txt += `Пройдено: ${srDone} из ${theory.length}\n`;
+  theory.forEach(c=>{
+    const sr=srData[c.id];
+    txt += `  ${sr&&(sr.repetitions||0)>0?'✅':'○'} ${c.title}${sr?(` — ${sr.repetitions||0} повт.`):'  (не изучено)'}\n`;
   });
-  const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`Отчёт_${s.name.replace(/ /g,'_')}.txt`;
+
+  txt += `\n🧠 УМНОЕ ПОВТОРЕНИЕ\n${line}\n`;
+  const srReps = theory.reduce((s,c)=>s+(srData[c.id]?.repetitions||0),0);
+  txt += `Всего повторений: ${srReps}\nОхват: ${srDone}/${theory.length}\n`;
+
+  txt += `\n📋 ТЕСТЫ\n${line}\n`;
+  txt += `Сдано: ${tests.filter(t=>t.submitted).length} из ${tests.length}\n`;
+  tests.forEach(t=>{
+    txt += `  ${t.submitted?'✅':'○'} ${t.title}`;
+    if(t.submitted&&t.autoTotal) txt += ` — ${t.autoScore||0}/${t.autoTotal} б. (${Math.round((t.autoScore||0)/t.autoTotal*100)}%)${t.autoGrade?' оценка '+t.autoGrade:''}`;
+    txt += `  ${t.date||''}\n`;
+  });
+
+  txt += `\n✏️ ДОМАШНИЕ ЗАДАНИЯ\n${line}\n`;
+  txt += `Сдано: ${hws.filter(h=>h.submitted).length} из ${hws.length}\n`;
+  hws.forEach(h=>{
+    const isOverdue = !h.submitted&&h.due&&new Date(h.due.split('.').reverse().join('-'))<new Date();
+    txt += `  ${h.openChecked?'✅':h.submitted?'📝':isOverdue?'⚠️':'○'} ${h.title}  Срок: ${h.due||'—'}  ${h.openChecked?'Проверено':h.submitted?'На проверке':isOverdue?'ПРОСРОЧЕНО':'Не сдано'}\n`;
+  });
+
+  txt += `\n🎯 ПРОБНИКИ\n${line}\n`;
+  txt += `Пройдено: ${trials.filter(t=>t.submitted).length} из ${trials.length}\n`;
+  trials.forEach(t=>{
+    txt += `  ${t.submitted?'✅':'○'} ${t.title||'Пробник'}${t.submitted&&t.totalScore!=null?` — ${t.totalScore} б.`:''}\n`;
+  });
+
+  txt += `\n📅 ЗАДАНИЕ ДНЯ\n${line}\n`;
+  txt += `Решено заданий: ${tasksDone}\n`;
+
+  const blob = new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Отчёт_${student.name.replace(/ /g,'_')}_${new Date().toLocaleDateString('ru').replace(/\./g,'-')}.txt`;
   a.click();
 }
 function switchTab(group, tabEl, targetId){
@@ -5339,6 +5879,13 @@ function getCalEventsForStudent(){
   hws.filter(h=>h.studentId===sid && h.due && !h.submitted).forEach(h=>{
     const d = new Date(h.due); d.setHours(0,0,0,0);
     events.push({ date: d, type: 'red', label: 'ДЗ: ' + h.title, who: '', itemId: h.id, nav: 'student-hw' });
+  });
+
+  // RED — неоплаченные занятия
+  const att = load('attendance')||[];
+  att.filter(a=>a.studentId===sid && a.present && !a.paid && a.date).forEach(a=>{
+    const d = new Date(a.date); d.setHours(0,0,0,0);
+    events.push({ date: d, type: 'red', label: `💳 Не оплачено: ${a.topic||'занятие'} (${a.costPerStudent}₽)`, who:'', itemId:a.id, nav:'student-schedule', unpaidLesson:true });
   });
 
   // YELLOW — срок тестов этого ученика
@@ -6140,6 +6687,394 @@ function addNotif(studentId, {type, text, nav}){
   notifs.push({id:'n'+Date.now(), studentId, type, text, nav, date:new Date().toLocaleDateString('ru'), read:false});
   save('notifs', notifs);
 }
+
+// ══════════════════════════════════════════
+// WALLET (кошелёк)
+// ══════════════════════════════════════════
+function walletKey(sid){ return 'biohim_wallet_' + sid; }
+function loadWallet(sid){
+  const raw = localStorage.getItem(walletKey(sid));
+  return raw ? JSON.parse(raw) : { balance: 0, txns: [] };
+}
+function saveWallet(sid, w){ localStorage.setItem(walletKey(sid), JSON.stringify(w)); }
+
+function walletTopUp(sid, amount, note){
+  const w = loadWallet(sid);
+  w.balance += amount;
+  w.txns.push({ id:'tx'+Date.now(), type:'topup', amount, note: note||'Пополнение',
+    date: new Date().toLocaleDateString('ru'), ts: Date.now() });
+  saveWallet(sid, w);
+  addNotif(sid, {type:'wallet', text:`💰 Кошелёк пополнен на ${amount}₽${note?' · '+note:''}`, nav:'student-payment'});
+}
+
+function walletDebit(sid, amount, note){
+  const w = loadWallet(sid);
+  w.balance -= amount;
+  w.txns.push({ id:'tx'+Date.now(), type:'debit', amount, note: note||'Списание',
+    date: new Date().toLocaleDateString('ru'), ts: Date.now() });
+  saveWallet(sid, w);
+  addNotif(sid, {type:'wallet', text:`💳 Списано ${amount}₽ с кошелька${note?' · '+note:''}`, nav:'student-payment'});
+}
+
+// ── ATP PAGE (unified attend+pay admin) ──
+let _atpTab = 'attendance';
+function switchAtpTab(tab, el){
+  _atpTab = tab;
+  document.querySelectorAll('#page-attend-pay-admin .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['attendance','wallet','payments'].forEach(t=>{
+    const el2 = document.getElementById('atp-tab-'+t);
+    if(el2) el2.style.display = t===tab ? '' : 'none';
+  });
+  renderAtpTab();
+}
+
+function renderAtpPage(){
+  renderAtpTab();
+}
+
+function renderAtpTab(){
+  if(_atpTab==='attendance') renderAtpAttendance();
+  else if(_atpTab==='wallet') renderAtpWallet();
+  else if(_atpTab==='payments') renderPaymentAdmin();
+}
+
+// ── Attendance sub-tab ──
+function renderAtpAttendance(){
+  const sid = getSelectedStudent();
+  const students = getStudents();
+  const allAtt = (load('attendance')||[]).slice().reverse();
+  const el = document.getElementById('atp-attendance-list');
+  if(!el) return;
+
+  const sids = sid ? [sid] : students.map(s=>s.id);
+  const lessons = allAtt.filter(a=>sids.includes(a.studentId));
+  if(!lessons.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
+
+  const byLesson = {};
+  lessons.forEach(a=>{
+    if(!byLesson[a.lessonId]) byLesson[a.lessonId]={
+      lessonId:a.lessonId, date:a.date, time:a.time, topic:a.topic,
+      group:a.group, costPerStudent:a.costPerStudent, slotId:a.slotId, entries:[]
+    };
+    byLesson[a.lessonId].entries.push(a);
+  });
+
+  el.innerHTML = Object.values(byLesson).sort((a,b)=>b.date.localeCompare(a.date)).map(lg=>{
+    const dateLabel = lg.date ? new Date(lg.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long',year:'numeric'}) : '—';
+    const slotInfo  = lg.slotId ? (() => {
+      const slot   = (load('slots')||[]).find(s=>s.id===lg.slotId);
+      const course = slot?.courseId ? (load('courses')||[]).find(c=>c.id===slot.courseId) : null;
+      return slot ? `🗓 ${slot.day} ${slot.time}${course?' · '+course.title:''}` : '';
+    })() : '';
+    return `<div class="card" style="margin-bottom:12px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-weight:700;font-size:0.97rem;color:var(--accent)">📅 ${dateLabel}${lg.time?' · '+lg.time:''}</div>
+          <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
+            ${lg.topic?`📖 ${lg.topic} · `:''}${lg.group?`👥 ${lg.group} · `:''}${slotInfo?slotInfo+' · ':''}💰 ${lg.costPerStudent}₽/чел.
+          </div>
+        </div>
+        <button class="btn btn-red btn-sm" onclick="deleteLesson('${lg.lessonId}')">🗑 Занятие</button>
+      </div>
+      ${lg.entries.map(a=>{
+        const s = students.find(s=>s.id===a.studentId);
+        const w = loadWallet(a.studentId);
+        const balColor = w.balance < 0 ? 'color:#c0392b' : 'color:var(--green-deep)';
+        return `<div class="att-row att-${a.present?'present':'absent'}">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:0.88rem">${s?s.name:'—'}</div>
+            <div style="font-size:0.75rem;${balColor};font-weight:700">Баланс: ${w.balance}₽</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="toggleAttPresence('${a.id}')" style="min-width:80px">
+              ${a.present?'✅ Был':'❌ Не был'}
+            </button>
+            ${a.present ? `
+              <button class="btn ${a.paid?'btn-outline':'btn-green'} btn-sm" onclick="toggleAttPaid('${a.id}')" style="min-width:100px">
+                ${a.paid?'💳 Оплачено':'Списать ₽'}
+              </button>
+              ${!a.paid?`<span class="att-unpaid-badge">💳 ${a.costPerStudent}₽ не списано</span>`:''}
+            ` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+// ── Wallet sub-tab ──
+function renderAtpWallet(){
+  const sid = getSelectedStudent();
+  if(!sid) return;
+  const w = loadWallet(sid);
+  const balEl = document.getElementById('atp-wallet-balance');
+  if(balEl){
+    balEl.style.color = w.balance < 0 ? '#c0392b' : 'var(--green-deep)';
+    balEl.textContent = w.balance.toLocaleString('ru') + ' ₽';
+  }
+  const histEl = document.getElementById('atp-wallet-history');
+  if(!histEl) return;
+  const txns = [...(w.txns||[])].reverse();
+  if(!txns.length){ histEl.innerHTML='<div style="color:var(--text3);font-size:0.85rem;padding:12px 0">Транзакций пока нет</div>'; return; }
+  histEl.innerHTML = txns.map(tx=>{
+    const isTopup = tx.type==='topup';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+      <div style="width:32px;height:32px;border-radius:50%;background:${isTopup?'#e8f8f0':'#fdecea'};display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">
+        ${isTopup?'↑':'↓'}
+      </div>
+      <div style="flex:1">
+        <div style="font-size:0.88rem;font-weight:600;color:var(--text)">${tx.note||''}</div>
+        <div style="font-size:0.75rem;color:var(--text3)">${tx.date}</div>
+      </div>
+      <div style="font-weight:800;font-size:0.97rem;color:${isTopup?'var(--green-deep)':'#c0392b'}">
+        ${isTopup?'+':'−'}${tx.amount}₽
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openTopUp(){
+  document.getElementById('atp-wallet-debit-form').style.display='none';
+  const f=document.getElementById('atp-wallet-topup-form');
+  f.style.display = f.style.display==='none' ? '' : 'none';
+}
+function openDebit(){
+  document.getElementById('atp-wallet-topup-form').style.display='none';
+  const f=document.getElementById('atp-wallet-debit-form');
+  f.style.display = f.style.display==='none' ? '' : 'none';
+}
+function doTopUp(){
+  const sid    = getSelectedStudent();
+  const amount = +(document.getElementById('atp-topup-amount').value)||0;
+  const note   = document.getElementById('atp-topup-note').value;
+  if(!amount){ showNotif('Укажите сумму'); return; }
+  walletTopUp(sid, amount, note);
+  document.getElementById('atp-wallet-topup-form').style.display='none';
+  document.getElementById('atp-topup-amount').value='';
+  document.getElementById('atp-topup-note').value='';
+  renderAtpWallet();
+  showNotif(`✅ Пополнено на ${amount}₽`);
+}
+function doDebit(){
+  const sid    = getSelectedStudent();
+  const amount = +(document.getElementById('atp-debit-amount').value)||0;
+  const note   = document.getElementById('atp-debit-note').value;
+  if(!amount){ showNotif('Укажите сумму'); return; }
+  walletDebit(sid, amount, note);
+  document.getElementById('atp-wallet-debit-form').style.display='none';
+  document.getElementById('atp-debit-amount').value='';
+  document.getElementById('atp-debit-note').value='';
+  renderAtpWallet();
+  showNotif(`✅ Списано ${amount}₽`);
+}
+
+// ── Override toggleAttPaid: debit wallet + notify ──
+function toggleAttPaid(id){
+  const att = load('attendance')||[];
+  const a   = att.find(a=>a.id===id); if(!a) return;
+  if(!a.paid){
+    // Debit from wallet
+    const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
+    walletDebit(a.studentId, +a.costPerStudent||0,
+      `Занятие ${dateLabel}${a.topic?' · '+a.topic:''}${a.group?' · '+a.group:''}`);
+    a.paid = true;
+  } else {
+    // Refund
+    const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
+    walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`);
+    a.paid = false;
+  }
+  save('attendance', att);
+  renderAtpAttendance();
+  renderAtpWallet();
+}
+
+// ── Override saveAttendance: prefill from slot ──
+function saveAttendance(){
+  const date  = document.getElementById('att-date').value;
+  const time  = document.getElementById('att-time').value;
+  const topic = document.getElementById('att-topic').value.trim();
+  const group = document.getElementById('att-group').value.trim();
+  const cost  = +(document.getElementById('att-cost').value)||0;
+  const slotId = document.getElementById('att-slot-id')?.value || null;
+  if(!date){ showNotif('Укажите дату'); return; }
+  const checks = document.querySelectorAll('#att-student-checks input[type=checkbox]:checked');
+  if(!checks.length){ showNotif('Выберите хотя бы одного ученика'); return; }
+  const lessonId = 'les_'+Date.now();
+  const att = load('attendance')||[];
+  checks.forEach(cb=>{
+    att.push({
+      id:'att_'+Date.now()+'_'+cb.value,
+      lessonId, studentId:cb.value,
+      date, time, topic, group,
+      costPerStudent: cost,
+      slotId: slotId || null,
+      present:true, paid:false,
+      createdAt: todayStr()
+    });
+  });
+  save('attendance', att);
+  closeModal('modal-add-attendance');
+  renderAtpAttendance();
+  showNotif(`✅ Занятие добавлено для ${checks.length} учеников`);
+}
+
+// ── Student wallet + lessons view ──
+function switchStudentPayTab(tab, el){
+  document.querySelectorAll('#page-student-payment .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['wallet','lessons','history'].forEach(t=>{
+    const div = document.getElementById('sp-tab-'+t);
+    if(div) div.style.display = t===tab ? '' : 'none';
+  });
+  if(tab==='wallet')  renderStudentWallet();
+  if(tab==='lessons') renderStudentLessons();
+  if(tab==='history') renderStudentPaymentHistory();
+}
+
+function renderStudentWallet(){
+  const sid = currentUser.id;
+  const w   = loadWallet(sid);
+  const balColor = w.balance < 0 ? '#c0392b' : 'var(--green-deep)';
+  const el  = document.getElementById('student-wallet-block');
+  if(!el) return;
+
+  // Unpaid lessons count
+  const unpaidLessons = (load('attendance')||[])
+    .filter(a=>a.studentId===sid && a.present && !a.paid);
+  const unpaidTotal = unpaidLessons.reduce((s,a)=>s+(+a.costPerStudent||0), 0);
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title"><span class="dot"></span>💰 Мой кошелёк</div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:16px">
+        <div>
+          <div style="font-size:0.78rem;color:var(--text3);font-weight:700;margin-bottom:4px">Баланс</div>
+          <div style="font-size:2.2rem;font-weight:900;color:${balColor}">${w.balance.toLocaleString('ru')} ₽</div>
+        </div>
+        ${unpaidTotal>0?`<div style="background:#fdecea;border-radius:10px;padding:10px 16px;border:1px solid #f5c6c2">
+          <div style="font-size:0.75rem;color:#c0392b;font-weight:700">Не списано</div>
+          <div style="font-size:1.3rem;font-weight:900;color:#c0392b">${unpaidTotal} ₽</div>
+          <div style="font-size:0.72rem;color:#c0392b">${unpaidLessons.length} занят.</div>
+        </div>`:'<div style="font-size:0.85rem;color:var(--green-deep);font-weight:700">✅ Нет задолженностей</div>'}
+      </div>
+      ${w.balance<0?`<div style="background:#fdecea;border-radius:8px;padding:10px 14px;font-size:0.85rem;color:#c0392b;font-weight:600;margin-bottom:12px">⚠️ Баланс отрицательный. Пожалуйста, пополните кошелёк.</div>`:''}
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>История транзакций</div>
+      ${(w.txns||[]).length===0
+        ? '<div style="color:var(--text3);font-size:0.85rem;padding:8px 0">Транзакций нет</div>'
+        : [...(w.txns||[])].reverse().map(tx=>{
+            const isTopup = tx.type==='topup';
+            return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+              <div style="width:32px;height:32px;border-radius:50%;background:${isTopup?'#e8f8f0':'#fdecea'};display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0">
+                ${isTopup?'↑':'↓'}
+              </div>
+              <div style="flex:1">
+                <div style="font-size:0.87rem;font-weight:600">${tx.note}</div>
+                <div style="font-size:0.73rem;color:var(--text3)">${tx.date}</div>
+              </div>
+              <div style="font-weight:800;font-size:0.97rem;color:${isTopup?'var(--green-deep)':'#c0392b'}">
+                ${isTopup?'+':'−'}${tx.amount}₽
+              </div>
+            </div>`;
+          }).join('')
+      }
+    </div>`;
+}
+
+function renderStudentLessons(){
+  const sid = currentUser.id;
+  const att = (load('attendance')||[]).filter(a=>a.studentId===sid).slice().reverse();
+  const el  = document.getElementById('student-lessons-block');
+  if(!el) return;
+  if(!att.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
+
+  const present = att.filter(a=>a.present).length;
+  const absent  = att.filter(a=>!a.present).length;
+  const unpaid  = att.filter(a=>a.present&&!a.paid).length;
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        <div style="text-align:center;padding:10px;background:var(--bg);border-radius:10px;border:1px solid var(--green-xpale)">
+          <div style="font-size:1.3rem;font-weight:900;color:var(--accent)">${att.length}</div>
+          <div style="font-size:0.73rem;color:var(--text3);font-weight:700">Всего</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:#e8f8f0;border-radius:10px;border:1px solid #a8e6c7">
+          <div style="font-size:1.3rem;font-weight:900;color:#1a7a4a">${present}</div>
+          <div style="font-size:0.73rem;color:#1a7a4a;font-weight:700">Посещено</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:${unpaid>0?'#fdecea':'var(--bg)'};border-radius:10px;border:1px solid ${unpaid>0?'#f5c6c2':'var(--green-xpale)'}">
+          <div style="font-size:1.3rem;font-weight:900;color:${unpaid>0?'#c0392b':'var(--text3)'}">
+            ${unpaid>0?unpaid+'⚠️':'✅'}
+          </div>
+          <div style="font-size:0.73rem;color:${unpaid>0?'#c0392b':'var(--text3)'};font-weight:700">${unpaid>0?'Не оплачено':'Всё ок'}</div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      ${att.map(a=>{
+        const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{weekday:'short',day:'numeric',month:'long'}) : '—';
+        const isUnpaid  = a.present && !a.paid;
+        return `<div style="padding:12px;border-radius:10px;margin-bottom:8px;border:1px solid var(--green-xpale);
+          ${isUnpaid?'border-left:3px solid #ef4444;background:#fef2f2;':a.present?'border-left:3px solid var(--green-mid);':''}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:700;font-size:0.9rem;color:var(--accent)">${dateLabel}${a.time?' · '+a.time:''}</div>
+              ${a.topic||a.group?`<div style="font-size:0.78rem;color:var(--text2);margin-top:3px">${a.topic?'📖 '+a.topic:''}${a.group?' · 👥 '+a.group:''}</div>`:''}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <span class="att-badge-${a.present?'present':'absent'}">${a.present?'✅ Был(а)':'❌ Не был(а)'}</span>
+              ${a.present?`<span class="att-cost-badge">−${a.costPerStudent}₽</span>`:''}
+              ${isUnpaid?`<span class="att-unpaid-badge">Не оплачено</span>`:''}
+              ${a.present&&a.paid?`<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✅ Оплачено</span>`:''}
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// Init student payment page on load
+function renderStudentPayment(){
+  renderStudentWallet();
+}
+
+// Prefill slot data when opening attendance modal
+function prefillAttendanceFromSlot(){
+  const students = getStudents();
+  const slots = load('slots')||[];
+  const courses = load('courses')||[];
+  // Find slots happening today (by day of week)
+  const dow = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'][new Date().getDay()];
+  const todaySlots = slots.filter(s=>s.day===dow);
+  const slotSel = document.getElementById('att-slot-select');
+  if(slotSel){
+    slotSel.innerHTML = '<option value="">— Без привязки к слоту —</option>' +
+      todaySlots.map(s=>{
+        const c = s.courseId ? courses.find(c=>c.id===s.courseId) : null;
+        return `<option value="${s.id}">${s.time}${c?' · '+c.title:''} (${c?.price||0}₽)</option>`;
+      }).join('');
+    slotSel.onchange = function(){
+      const sl = slots.find(s=>s.id===this.value);
+      if(!sl) return;
+      const c = sl.courseId ? courses.find(c=>c.id===sl.courseId) : null;
+      if(c?.price) document.getElementById('att-cost').value = c.price;
+      document.getElementById('att-time').value = sl.time||'';
+      // Check students in this slot
+      const slotStudents = students.filter(s=>isSlotForStudent(sl,s.id));
+      document.querySelectorAll('#att-student-checks input[type=checkbox]').forEach(cb=>{
+        cb.checked = slotStudents.some(s=>s.id===cb.value);
+      });
+      // Store slotId
+      const hidden = document.getElementById('att-slot-id');
+      if(hidden) hidden.value = sl.id;
+    };
+  }
+}
+
 </script>
 
 <!-- ASSIGN STUDENTS MODAL -->
