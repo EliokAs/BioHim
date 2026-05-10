@@ -1123,33 +1123,37 @@ tr:hover td { background: var(--bg2); }
     <!-- ADMIN NOTIF SETTINGS -->
     <div class="page" id="page-notif-settings-admin">
       <div class="page-title">🔔 Интеграции уведомлений</div>
-      <div class="page-sub">Настройте автоматические уведомления ученикам через Telegram, ВКонтакте или email</div>
+      <div class="page-sub">Telegram-уведомления для учеников — без сервера, прямо из браузера</div>
 
       <div class="card" style="margin-bottom:16px">
-        <div class="card-title"><span class="dot"></span>Как это работает</div>
-        <div style="font-size:0.85rem;color:var(--text2);line-height:1.8">
-          Когда вы создаёте тест, ДЗ, занятие или пополняете кошелёк — система автоматически отправляет уведомление ученику через выбранный им канал.<br>
-          <b>Telegram</b>: через бота, ученик указывает свой username.<br>
-          <b>ВКонтакте</b>: ссылка на диалог открывается автоматически.<br>
-          <b>Email (Mail.ru)</b>: письмо через mailto-ссылку.
+        <div class="card-title"><span class="dot"></span>🤖 Токен Telegram бота</div>
+        <div style="background:#e8f4fd;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:0.84rem;color:#1565c0;line-height:1.8">
+          1. Создайте бота через <a href="https://t.me/BotFather" target="_blank" style="color:#1565c0;font-weight:700">@BotFather</a> → команда <code>/newbot</code><br>
+          2. Скопируйте токен вида <code>1234567890:ABCdef...</code> и вставьте ниже<br>
+          3. Ученик переходит к боту, пишет <code>/start</code>, получает свой Chat ID<br>
+          4. Ученик вводит Chat ID в разделе «Уведомления» — и всё работает
         </div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-title"><span class="dot"></span>Telegram — настройка бота</div>
-        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:12px">Укажите username вашего Telegram-бота для отправки уведомлений</div>
-        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-          <div class="form-group" style="margin:0;flex:1;min-width:200px">
-            <label>Telegram Bot Username</label>
-            <input id="admin-tg-bot" placeholder="@MyStudyBot" style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;width:100%">
-          </div>
-          <button class="btn btn-green" onclick="saveAdminTgBot()">Сохранить</button>
+        <div class="form-group">
+          <label>Bot Token (из @BotFather)</label>
+          <input id="admin-tg-token" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" type="password"
+            style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;width:100%;box-sizing:border-box;font-size:0.9rem">
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">Токен хранится только в вашем браузере</div>
         </div>
-        <div style="font-size:0.78rem;color:var(--text3);margin-top:8px">Создайте бота через <a href="https://t.me/BotFather" target="_blank">@BotFather</a> и вставьте username сюда. Ученики сами подписываются на бота.</div>
+        <div class="form-group" style="margin-bottom:14px">
+          <label>Username бота <span style="font-weight:400;color:var(--text3)">(заполняется автоматически при проверке)</span></label>
+          <input id="admin-tg-botname" placeholder="@MyStudyBot"
+            style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;width:100%;box-sizing:border-box;font-size:0.9rem">
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-green" onclick="saveAdminTgBot()">💾 Сохранить</button>
+          <button class="btn btn-outline" onclick="testBotToken()">🔌 Проверить токен</button>
+        </div>
+        <div id="bot-connection-status" style="margin-top:12px;font-size:0.84rem"></div>
       </div>
 
       <div class="card">
-        <div class="card-title"><span class="dot"></span>Статус подключения учеников</div>
+        <div class="card-title"><span class="dot"></span>👥 Статус подключения учеников</div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:10px">Ученики подключаются самостоятельно в разделе «Уведомления»</div>
         <div id="admin-notif-student-status"></div>
       </div>
     </div>
@@ -1157,87 +1161,55 @@ tr:hover td { background: var(--bg2); }
     <!-- STUDENT NOTIF SETTINGS -->
     <div class="page" id="page-student-notif-settings">
       <div class="page-title">🔔 Уведомления</div>
-      <div class="page-sub">Подключите удобный канал — получайте напоминания о занятиях, тестах и оплате</div>
+      <div class="page-sub">Получайте напоминания о занятиях, тестах и оплате в Telegram</div>
 
-      <div class="card" style="margin-bottom:16px" id="notif-channel-tg">
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#2AABEE;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">✈️</div>
+      <!-- Telegram connect -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+          <div style="width:48px;height:48px;border-radius:14px;background:#2AABEE;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0">✈️</div>
           <div style="flex:1">
-            <div style="font-weight:700;font-size:1rem;color:var(--accent)">Telegram</div>
-            <div style="font-size:0.78rem;color:var(--text3)">Мгновенные уведомления в мессенджере</div>
+            <div style="font-weight:700;font-size:1.05rem;color:var(--accent)">Telegram</div>
+            <div style="font-size:0.78rem;color:var(--text3)">Мгновенные уведомления прямо в мессенджере</div>
           </div>
           <div id="tg-status-badge"></div>
         </div>
+
+        <!-- Not connected -->
         <div id="tg-connect-block">
-          <div style="font-size:0.85rem;color:var(--text2);margin-bottom:10px">1. Подпишитесь на бота: <span id="tg-bot-link" style="color:var(--green-deep);font-weight:700"></span><br>2. Введите ваш Telegram username:</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <input id="student-tg-username" placeholder="@username" style="flex:1;min-width:160px;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem">
-            <button class="btn btn-green" onclick="saveTgConnect()">Подключить</button>
+          <div style="background:#e8f4fd;border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.88rem;color:#1565c0;line-height:1.9">
+            <b>Как подключить:</b><br>
+            1. Перейдите к боту: <a id="tg-bot-link" href="#" target="_blank" style="color:#2AABEE;font-weight:700;text-decoration:none"></a><br>
+            2. Нажмите <b>Запустить</b> или отправьте команду <code style="background:#fff;padding:1px 7px;border-radius:5px;font-size:0.85rem">/start</code><br>
+            3. Бот пришлёт вам <b>Chat ID</b> — вставьте его ниже
           </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label>Ваш Chat ID</label>
+            <input id="student-tg-chatid" placeholder="Например: 123456789" type="text" inputmode="numeric"
+              style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;width:100%;box-sizing:border-box">
+            <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">Бот пришлёт числовой ID сразу после команды /start</div>
+          </div>
+          <button class="btn btn-green" style="width:100%" onclick="saveTgConnect()">✈️ Подключить Telegram</button>
         </div>
+
+        <!-- Connected -->
         <div id="tg-connected-block" style="display:none">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="font-size:0.88rem;color:var(--green-deep);font-weight:600">✅ Подключён: <span id="tg-connected-name"></span></span>
-            <button class="btn btn-outline btn-sm" onclick="testNotifChannel('telegram')">🔔 Тест</button>
-            <button class="btn btn-red btn-sm" onclick="disconnectChannel('telegram')">Отключить</button>
+          <div style="background:#e8f8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+            <div style="font-weight:700;color:#27ae60;margin-bottom:4px">✅ Telegram подключён</div>
+            <div style="font-size:0.82rem;color:var(--text2)">Chat ID: <b id="tg-connected-name"></b></div>
           </div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px" id="notif-channel-vk">
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#4C75A3;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">💙</div>
-          <div style="flex:1">
-            <div style="font-weight:700;font-size:1rem;color:var(--accent)">ВКонтакте</div>
-            <div style="font-size:0.78rem;color:var(--text3)">Уведомления через VK Сообщения</div>
-          </div>
-          <div id="vk-status-badge"></div>
-        </div>
-        <div id="vk-connect-block">
-          <div style="font-size:0.85rem;color:var(--text2);margin-bottom:10px">Введите ссылку на ваш профиль ВКонтакте:</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <input id="student-vk-link" placeholder="https://vk.com/id123456 или @username" style="flex:1;min-width:160px;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem">
-            <button class="btn btn-green" onclick="saveVkConnect()">Подключить</button>
-          </div>
-        </div>
-        <div id="vk-connected-block" style="display:none">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="font-size:0.88rem;color:#4C75A3;font-weight:600">✅ Подключён ВК</span>
-            <button class="btn btn-outline btn-sm" onclick="testNotifChannel('vk')">🔔 Тест</button>
-            <button class="btn btn-red btn-sm" onclick="disconnectChannel('vk')">Отключить</button>
+            <button class="btn btn-green btn-sm" onclick="testNotifChannel()">🔔 Отправить тест</button>
+            <button class="btn btn-red btn-sm" onclick="disconnectTelegram()">Отключить</button>
           </div>
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:16px" id="notif-channel-email">
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-          <div style="width:44px;height:44px;border-radius:12px;background:#FF6B35;display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">📧</div>
-          <div style="flex:1">
-            <div style="font-weight:700;font-size:1rem;color:var(--accent)">Email (Mail.ru)</div>
-            <div style="font-size:0.78rem;color:var(--text3)">Уведомления на электронную почту</div>
-          </div>
-          <div id="email-status-badge"></div>
-        </div>
-        <div id="email-connect-block">
-          <div style="font-size:0.85rem;color:var(--text2);margin-bottom:10px">Введите ваш адрес электронной почты:</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <input id="student-email" type="email" placeholder="example@mail.ru" style="flex:1;min-width:160px;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem">
-            <button class="btn btn-green" onclick="saveEmailConnect()">Подключить</button>
-          </div>
-        </div>
-        <div id="email-connected-block" style="display:none">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="font-size:0.88rem;color:#FF6B35;font-weight:600">✅ Подключён: <span id="email-connected-addr"></span></span>
-            <button class="btn btn-outline btn-sm" onclick="testNotifChannel('email')">🔔 Тест</button>
-            <button class="btn btn-red btn-sm" onclick="disconnectChannel('email')">Отключить</button>
-          </div>
-        </div>
-      </div>
-
+      <!-- Notif types -->
       <div class="card">
         <div class="card-title"><span class="dot"></span>Какие уведомления получать</div>
+        <div style="font-size:0.82rem;color:var(--text3);margin-bottom:12px">Выберите события — уведомления придут в Telegram</div>
         <div id="notif-types-toggles"></div>
-        <button class="btn btn-green" style="margin-top:16px" onclick="saveNotifTypes()">💾 Сохранить</button>
+        <button class="btn btn-green" style="margin-top:16px;width:100%" onclick="saveNotifTypes()">💾 Сохранить</button>
       </div>
     </div>
 
@@ -6987,112 +6959,105 @@ function updateSlotAssignUI(){
 // Ключи хранилища
 function notifSettingsKey(sid){ return 'biohim_notif_settings_'+sid; }
 function adminTgBotKey(){ return 'biohim_admin_tg_bot'; }
+function adminTgTokenKey(){ return 'biohim_admin_tg_token'; }
 
 function loadNotifSettings(sid){
   const raw = localStorage.getItem(notifSettingsKey(sid));
-  return raw ? JSON.parse(raw) : {
-    channels: { telegram:false, vk:false, email:false },
-    tgUsername:'', vkLink:'', emailAddr:'',
+  const def = {
+    tgChatId: '',
     types: { lesson:true, hw:true, test:true, payment:true, chat:true, repeat:true }
   };
+  if(!raw) return def;
+  try{ return Object.assign({}, def, JSON.parse(raw)); } catch(e){ return def; }
 }
-function saveNotifSettings(sid, settings){
-  localStorage.setItem(notifSettingsKey(sid), JSON.stringify(settings));
-}
+function saveNotifSettingsData(sid, s){ localStorage.setItem(notifSettingsKey(sid), JSON.stringify(s)); }
 
-// ── Маппинг типов уведомлений ──
 const NOTIF_TYPE_MAP = {
   schedule:'lesson', hw:'hw', test:'test', trial:'test',
   wallet:'payment', chat:'chat', repeat:'repeat',
-  material:'test', comment:'chat'
+  material:'lesson', comment:'chat', attendance:'lesson'
 };
 
-// ── Основная функция добавления уведомления ──
+// ── Добавить уведомление + отправить в Telegram ──
 function addNotif(studentId, {type, text, nav}){
   const notifs = load('notifs')||[];
-  notifs.push({id:'n'+Date.now(), studentId, type, text, nav, date:new Date().toLocaleDateString('ru'), read:false});
+  notifs.push({id:'n'+Date.now(), studentId, type, text, nav,
+    date:new Date().toLocaleDateString('ru'), read:false});
   save('notifs', notifs);
-  // Отправить внешнее уведомление
-  sendExternalNotif(studentId, type, text);
+  sendTelegramNotif(studentId, type, text);
 }
 
-// ── Отправка внешнего уведомления ──
-function sendExternalNotif(sid, type, text){
+// ── Отправка через Telegram Bot API ──
+async function sendTelegramNotif(sid, type, text){
+  const token = localStorage.getItem(adminTgTokenKey());
+  if(!token) return;
   const settings = loadNotifSettings(sid);
+  if(!settings.tgChatId) return;
   const mappedType = NOTIF_TYPE_MAP[type] || type;
-  // Проверяем, включён ли этот тип
-  if(!settings.types[mappedType]) return;
+  if(settings.types[mappedType] === false) return;
 
   const student = getStudents().find(s=>s.id===sid);
-  const studentName = student ? student.name : 'Ученик';
-  const fullText = `📚 BioХим | ${studentName}\n${text}\n\nОткройте платформу для подробностей.`;
+  const name = student ? student.name : 'Ученик';
+  const msg = `📚 *BioХим* — ${name}\n\n${text}`;
 
-  if(settings.channels.telegram && settings.tgUsername){
-    sendTelegramNotif(settings.tgUsername, fullText);
+  try{
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' })
+    });
+  } catch(e){
+    console.warn('TG send error:', e);
   }
-  if(settings.channels.vk && settings.vkLink){
-    sendVkNotif(settings.vkLink, fullText);
-  }
-  if(settings.channels.email && settings.emailAddr){
-    sendEmailNotif(settings.emailAddr, `BioХим: ${text}`, fullText);
-  }
 }
 
-function sendTelegramNotif(username, text){
-  const botUsername = localStorage.getItem(adminTgBotKey()) || '';
-  if(!botUsername) return;
-  // Открываем ссылку на бота с предзаполненным сообщением через start параметр
-  const encoded = encodeURIComponent(text);
-  const cleanBot = botUsername.replace('@','');
-  // Используем tg:// deep link — открывает мессенджер и чат с ботом
-  const link = `https://t.me/${cleanBot}?text=${encoded}`;
-  window.open(link, '_blank', 'noopener');
-}
-
-function sendVkNotif(vkLink, text){
-  // Из ссылки вида vk.com/id123 или vk.com/@username извлекаем id/username
-  const match = vkLink.match(/vk\.com\/(?:id)?(\w+)/);
-  if(!match) return;
-  const target = match[1];
-  const encoded = encodeURIComponent(text);
-  const link = `https://vk.com/im?sel=${target}&message=${encoded}`;
-  window.open(link, '_blank', 'noopener');
-}
-
-function sendEmailNotif(email, subject, body){
-  const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  window.open(mailtoLink, '_blank', 'noopener');
-}
-
-// ── Страница настроек ученика ──
+// ── Страница ученика ──
 function renderNotifSettingsStudent(){
   const sid = currentUser.id;
   const settings = loadNotifSettings(sid);
-  const botUsername = localStorage.getItem(adminTgBotKey()) || '';
 
-  // Telegram block
-  const tgLink = document.getElementById('tg-bot-link');
-  if(tgLink) tgLink.textContent = botUsername || '(бот не настроен администратором)';
+  // Bot link
+  const botName = localStorage.getItem(adminTgBotKey()) || '';
+  const botLink = document.getElementById('tg-bot-link');
+  if(botLink){
+    if(botName){
+      const clean = botName.replace('@','');
+      botLink.href = `https://t.me/${clean}`;
+      botLink.textContent = botName;
+    } else {
+      botLink.textContent = '(бот не настроен — обратитесь к преподавателю)';
+    }
+  }
 
-  renderChannelBlock('telegram', settings.channels.telegram, settings.tgUsername, 'tg-status-badge','tg-connect-block','tg-connected-block','tg-connected-name');
-  renderChannelBlock('vk',       settings.channels.vk,       settings.vkLink,     'vk-status-badge','vk-connect-block','vk-connected-block', null);
-  renderChannelBlock('email',    settings.channels.email,    settings.emailAddr,  'email-status-badge','email-connect-block','email-connected-block','email-connected-addr');
+  // Show/hide connect vs connected
+  const connectBlock  = document.getElementById('tg-connect-block');
+  const connectedBlock= document.getElementById('tg-connected-block');
+  const statusBadge   = document.getElementById('tg-status-badge');
+  const connectedName = document.getElementById('tg-connected-name');
+  const chatIdInput   = document.getElementById('student-tg-chatid');
 
-  // Pre-fill inputs
-  if(document.getElementById('student-tg-username')) document.getElementById('student-tg-username').value = settings.tgUsername||'';
-  if(document.getElementById('student-vk-link'))     document.getElementById('student-vk-link').value     = settings.vkLink||'';
-  if(document.getElementById('student-email'))       document.getElementById('student-email').value       = settings.emailAddr||'';
+  if(settings.tgChatId){
+    if(connectBlock)   connectBlock.style.display   = 'none';
+    if(connectedBlock) connectedBlock.style.display  = 'block';
+    if(statusBadge)    statusBadge.innerHTML = `<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">✅ Подключён</span>`;
+    if(connectedName)  connectedName.textContent = settings.tgChatId;
+  } else {
+    if(connectBlock)   connectBlock.style.display   = 'block';
+    if(connectedBlock) connectedBlock.style.display  = 'none';
+    if(statusBadge)    statusBadge.innerHTML = `<span style="background:var(--bg);color:var(--text3);font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">Не подключён</span>`;
+    if(chatIdInput)    chatIdInput.value = '';
+  }
 
   // Types toggles
   const typesEl = document.getElementById('notif-types-toggles');
   if(typesEl){
     const types = [
-      {key:'lesson',  icon:'📅', name:'Занятия',        desc:'Напоминания о предстоящих занятиях и изменениях в расписании'},
-      {key:'hw',      icon:'✏️', name:'Домашние задания',desc:'Уведомления о новых ДЗ и приближении дедлайна'},
-      {key:'test',    icon:'📋', name:'Тесты и пробники',desc:'Новые тесты, пробники и результаты проверки'},
-      {key:'payment', icon:'💰', name:'Оплата',          desc:'Пополнение кошелька, списания и задолженности'},
-      {key:'chat',    icon:'💬', name:'Чат',             desc:'Новые сообщения от преподавателя'},
-      {key:'repeat',  icon:'🧠', name:'Умное повторение',desc:'Напоминания о запланированных повторениях'},
+      {key:'lesson',  icon:'📅', name:'Занятия',          desc:'Напоминания о занятиях и изменениях в расписании'},
+      {key:'hw',      icon:'✏️', name:'Домашние задания',  desc:'Новые ДЗ и приближение дедлайна'},
+      {key:'test',    icon:'📋', name:'Тесты и пробники',  desc:'Новые тесты и результаты проверки'},
+      {key:'payment', icon:'💰', name:'Оплата',            desc:'Пополнение кошелька, списания и задолженности'},
+      {key:'chat',    icon:'💬', name:'Чат',               desc:'Новые сообщения от преподавателя'},
+      {key:'repeat',  icon:'🧠', name:'Умное повторение',  desc:'Напоминания о запланированных повторениях'},
     ];
     typesEl.innerHTML = types.map(t=>`
       <div class="toggle-row">
@@ -7108,70 +7073,27 @@ function renderNotifSettingsStudent(){
   }
 }
 
-function renderChannelBlock(channel, isConnected, value, badgeId, connectId, connectedId, nameId){
-  const badge = document.getElementById(badgeId);
-  const connectBlock = document.getElementById(connectId);
-  const connectedBlock = document.getElementById(connectedId);
-  if(!badge) return;
-
-  if(isConnected && value){
-    badge.innerHTML = `<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">✅ Подключён</span>`;
-    if(connectBlock) connectBlock.style.display='none';
-    if(connectedBlock) connectedBlock.style.display='block';
-    if(nameId && document.getElementById(nameId)) document.getElementById(nameId).textContent = value;
-  } else {
-    badge.innerHTML = `<span style="background:var(--bg);color:var(--text3);font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">Не подключён</span>`;
-    if(connectBlock) connectBlock.style.display='block';
-    if(connectedBlock) connectedBlock.style.display='none';
-  }
-}
-
 function saveTgConnect(){
   const sid = currentUser.id;
-  const username = document.getElementById('student-tg-username').value.trim();
-  if(!username){ showNotif('Введите Telegram username'); return; }
+  const chatId = (document.getElementById('student-tg-chatid')||{}).value?.trim();
+  if(!chatId){ showNotif('Введите Chat ID из Telegram бота'); return; }
+  if(!/^\d+$/.test(chatId)){ showNotif('Chat ID — только цифры, например: 123456789'); return; }
   const settings = loadNotifSettings(sid);
-  settings.channels.telegram = true;
-  settings.tgUsername = username.startsWith('@') ? username : '@'+username;
-  saveNotifSettings(sid, settings);
+  settings.tgChatId = chatId;
+  saveNotifSettingsData(sid, settings);
   renderNotifSettingsStudent();
   showNotif('✅ Telegram подключён!');
+  // Send welcome message
+  sendTelegramNotif(sid, 'chat', '🎉 Telegram успешно подключён! Теперь вы будете получать уведомления от преподавателя здесь.');
 }
 
-function saveVkConnect(){
-  const sid = currentUser.id;
-  const link = document.getElementById('student-vk-link').value.trim();
-  if(!link){ showNotif('Введите ссылку на профиль ВК'); return; }
-  const settings = loadNotifSettings(sid);
-  settings.channels.vk = true;
-  settings.vkLink = link;
-  saveNotifSettings(sid, settings);
-  renderNotifSettingsStudent();
-  showNotif('✅ ВКонтакте подключён!');
-}
-
-function saveEmailConnect(){
-  const sid = currentUser.id;
-  const email = document.getElementById('student-email').value.trim();
-  if(!email || !email.includes('@')){ showNotif('Введите корректный email'); return; }
-  const settings = loadNotifSettings(sid);
-  settings.channels.email = true;
-  settings.emailAddr = email;
-  saveNotifSettings(sid, settings);
-  renderNotifSettingsStudent();
-  showNotif('✅ Email подключён!');
-}
-
-function disconnectChannel(channel){
+function disconnectTelegram(){
   const sid = currentUser.id;
   const settings = loadNotifSettings(sid);
-  settings.channels[channel] = false;
-  if(channel==='telegram') settings.tgUsername='';
-  if(channel==='vk')       settings.vkLink='';
-  if(channel==='email')    settings.emailAddr='';
-  saveNotifSettings(sid, settings);
+  settings.tgChatId = '';
+  saveNotifSettingsData(sid, settings);
   renderNotifSettingsStudent();
-  showNotif('Канал отключён');
+  showNotif('Telegram отключён');
 }
 
 function saveNotifTypes(){
@@ -7181,52 +7103,102 @@ function saveNotifTypes(){
     const el = document.getElementById('notif-type-'+k);
     if(el) settings.types[k] = el.checked;
   });
-  saveNotifSettings(sid, settings);
+  saveNotifSettingsData(sid, settings);
   showNotif('✅ Настройки сохранены');
 }
 
-function testNotifChannel(channel){
+async function testNotifChannel(){
   const sid = currentUser.id;
   const settings = loadNotifSettings(sid);
-  const text = '🔔 Тестовое уведомление от BioХим\nЕсли вы получили это сообщение — интеграция работает!';
-  if(channel==='telegram' && settings.tgUsername) sendTelegramNotif(settings.tgUsername, text);
-  if(channel==='vk'       && settings.vkLink)     sendVkNotif(settings.vkLink, text);
-  if(channel==='email'    && settings.emailAddr)  sendEmailNotif(settings.emailAddr, 'BioХим: Тест уведомлений', text);
-  showNotif('🔔 Тестовое уведомление отправлено');
+  if(!settings.tgChatId){ showNotif('Telegram не подключён'); return; }
+  const token = localStorage.getItem(adminTgTokenKey());
+  if(!token){ showNotif('Токен бота не настроен администратором'); return; }
+  try{
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ chat_id: settings.tgChatId,
+        text:'🔔 *Тест уведомлений*\n\nЕсли вы получили это сообщение — Telegram подключён успешно! ✅', parse_mode:'Markdown' })
+    });
+    const d = await r.json();
+    showNotif(d.ok ? '✅ Тест отправлен — проверьте Telegram!' : '❌ Ошибка: ' + (d.description||''));
+  } catch(e){ showNotif('❌ Ошибка соединения: ' + e.message); }
 }
 
-// ── Страница настроек администратора ──
+// ── Страница администратора ──
 function renderNotifSettingsAdmin(){
-  const botKey = localStorage.getItem(adminTgBotKey()) || '';
-  const el = document.getElementById('admin-tg-bot');
-  if(el) el.value = botKey;
+  const token    = localStorage.getItem(adminTgTokenKey()) || '';
+  const botName  = localStorage.getItem(adminTgBotKey())  || '';
+  const elToken  = document.getElementById('admin-tg-token');
+  const elBot    = document.getElementById('admin-tg-botname');
+  if(elToken) elToken.value = token;
+  if(elBot)   elBot.value   = botName;
 
-  // Show student connection statuses
   const statusEl = document.getElementById('admin-notif-student-status');
   if(!statusEl) return;
   const students = getStudents();
+  if(!students.length){ statusEl.innerHTML = emptyHTML(); return; }
   statusEl.innerHTML = students.map(s=>{
     const cfg = loadNotifSettings(s.id);
-    const tg    = cfg.channels.telegram && cfg.tgUsername ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✈️ TG: ${cfg.tgUsername}</span>` : `<span style="background:var(--bg);color:var(--text3);font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✈️ TG не подкл.</span>`;
-    const vk    = cfg.channels.vk && cfg.vkLink ? `<span style="background:#e8f4fd;color:#4C75A3;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">💙 VK</span>` : '';
-    const email = cfg.channels.email && cfg.emailAddr ? `<span style="background:#fff3cd;color:#856404;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">📧 ${cfg.emailAddr}</span>` : '';
-    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--green-xpale);flex-wrap:wrap">
-      <div style="font-weight:600;font-size:0.88rem;min-width:100px">${s.name}</div>
-      ${tg}${vk?vk:''}${email?email:''}
+    const connected = !!cfg.tgChatId;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--green-xpale);flex-wrap:wrap">
+      <div style="font-weight:600;font-size:0.88rem;min-width:120px">${s.name}</div>
+      ${connected
+        ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px">✅ TG подключён · ID: ${cfg.tgChatId}</span>
+           <button class="btn btn-green btn-sm" onclick="adminSendTestToStudent('${s.id}')">🔔 Тест</button>`
+        : `<span style="background:var(--bg);color:var(--text3);font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px">❌ Не подключён</span>`}
     </div>`;
-  }).join('') || emptyHTML();
+  }).join('');
 }
 
 function saveAdminTgBot(){
-  const val = document.getElementById('admin-tg-bot').value.trim();
-  localStorage.setItem(adminTgBotKey(), val);
-  showNotif('✅ Telegram бот сохранён');
-  renderNotifSettingsAdmin();
+  const token   = (document.getElementById('admin-tg-token')  ||{}).value?.trim();
+  const botName = (document.getElementById('admin-tg-botname')||{}).value?.trim();
+  if(token)   localStorage.setItem(adminTgTokenKey(), token);
+  if(botName) localStorage.setItem(adminTgBotKey(),   botName.startsWith('@')?botName:'@'+botName);
+  testBotToken();
 }
 
+async function testBotToken(){
+  const token = localStorage.getItem(adminTgTokenKey());
+  const statusEl = document.getElementById('bot-connection-status');
+  if(!token){ if(statusEl){ statusEl.textContent='Введите токен'; statusEl.style.color='var(--text3)'; } return; }
+  if(statusEl){ statusEl.textContent='⏳ Проверяем...'; statusEl.style.color='var(--text3)'; }
+  try{
+    const r = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+    const d = await r.json();
+    if(d.ok){
+      const name = d.result.first_name + ' (@' + d.result.username + ')';
+      if(statusEl){ statusEl.innerHTML=`✅ Бот найден: <b>${name}</b>`; statusEl.style.color='var(--green-deep)'; }
+      localStorage.setItem(adminTgBotKey(), '@'+d.result.username);
+      const el = document.getElementById('admin-tg-botname');
+      if(el) el.value = '@'+d.result.username;
+      showNotif('✅ Бот подключён: ' + name);
+      renderNotifSettingsAdmin();
+    } else {
+      if(statusEl){ statusEl.textContent='❌ Неверный токен: '+d.description; statusEl.style.color='#c0392b'; }
+    }
+  } catch(e){
+    if(statusEl){ statusEl.textContent='❌ Ошибка: '+e.message; statusEl.style.color='#c0392b'; }
+  }
+}
 
+async function adminSendTestToStudent(sid){
+  const settings = loadNotifSettings(sid);
+  if(!settings.tgChatId){ showNotif('Ученик не подключил Telegram'); return; }
+  const s = getStudents().find(s=>s.id===sid);
+  await sendTelegramNotif(sid,'chat',`👋 Привет, ${s?s.name:''}! Это тестовое уведомление от преподавателя.`);
+  showNotif('✅ Тест отправлен');
+}
 
-// ══════════════════════════════════════════
+function addNotif(studentId, {type, text, nav}){
+  const notifs = load('notifs')||[];
+  notifs.push({id:'n'+Date.now(), studentId, type, text, nav, date:new Date().toLocaleDateString('ru'), read:false});
+  save('notifs', notifs);
+  // Отправить внешнее уведомление
+  sendExternalNotif(studentId, type, text);
+}
+
+// ── Отправка внешнего уведомления ──
 // WALLET (кошелёк)
 // ══════════════════════════════════════════
 function walletKey(sid){ return 'biohim_wallet_' + sid; }
