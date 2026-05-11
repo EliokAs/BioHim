@@ -2924,6 +2924,7 @@ function saveTest(){
     tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,isLibrary:true,openAt,closeAt});
   }
   save('tests',tests);
+  if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'test',text:`📝 Новый тест: ${title}`,nav:'student-tests'}));
   _tempQuestions=[];
   ['nt-questions-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['nt-title','nt-open-at','nt-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -3151,6 +3152,7 @@ function saveHW(){
     hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt});
   }
   save('hw',hws);
+  if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'hw',text:`✏️ Новое домашнее задание: ${title}`,nav:'student-hw'}));
   _tempHWQuestions=[];
   ['nhw-questions-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['nhw-title','nhw-desc','nhw-fileurl','nhw-open-at','nhw-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -3573,9 +3575,7 @@ function approveBooking(id){
   const s=slots.find(s=>s.id===b.slotId);
   if(s) s.bookedBy=b.studentId;
   save('bookings',bookings); save('slots',slots);
-  const notifs=load('notifs')||[];
-  notifs.push({id:'n'+Date.now(),studentId:b.studentId,text:`🎉 Ваша запись подтверждена! ${s?s.day+' '+s.time:''}`,date:new Date().toLocaleDateString('ru'),read:false});
-  save('notifs',notifs);
+  addNotif(b.studentId,{type:'schedule',text:`🎉 Ваша запись подтверждена! ${s?s.day+' '+s.time:''}`,nav:'student-schedule'});
   renderScheduleAdmin();
   showNotif('✅ Запись подтверждена');
 }
@@ -3970,6 +3970,7 @@ function saveTrial(){
     trials.push({...tBase,id:'tr_'+Date.now()+'_lib',studentId:null,isLibrary:true});
   }
   save('trials',trials);
+  if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'trial',text:`🧪 Новый пробник: ${title}`,nav:'student-trial'}));
   _trialSections=[];
   ['ntr-sections-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['ntr-title','ntr-subject','ntr-instruction','ntr-open-at','ntr-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -7190,15 +7191,6 @@ async function adminSendTestToStudent(sid){
   showNotif('✅ Тест отправлен');
 }
 
-function addNotif(studentId, {type, text, nav}){
-  const notifs = load('notifs')||[];
-  notifs.push({id:'n'+Date.now(), studentId, type, text, nav, date:new Date().toLocaleDateString('ru'), read:false});
-  save('notifs', notifs);
-  // Отправить внешнее уведомление
-  sendExternalNotif(studentId, type, text);
-}
-
-// ── Отправка внешнего уведомления ──
 // WALLET (кошелёк)
 // ══════════════════════════════════════════
 function walletKey(sid){ return 'biohim_wallet_' + sid; }
