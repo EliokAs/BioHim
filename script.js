@@ -902,22 +902,18 @@ let currentUser = null;
 
 function doLogin(){
   const uname = document.getElementById('login-username').value.trim();
-  const upass = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-err');
+  const upass  = document.getElementById('login-password').value;
+  const errEl  = document.getElementById('login-err');
 
   const users = load('users')||[];
-  if(!users.length){
-    errEl.textContent = 'Ошибка: пользователи не загружены. Обновите страницу.';
-    return;
-  }
-
-  const found = users.find(u => u.login === uname && u.password === upass);
-  if(!found){
-    errEl.textContent = 'Неверный логин или пароль.';
-    return;
-  }
-
-  _startSession(found);
+  if(!users.length){ ... }
+  const found = users.find(u=>u.login===uname);
+  if(!found){ ... }
+  hashPassword(upass).then(hash=>{
+    const ok = (found.passwordHash && hash === found.passwordHash) || (!found.passwordHash && found.password === upass);
+    if(!ok){ ... }
+    _startSession(found);
+  }).catch(...);
 }
 
   const found = users.find(u=>u.login===uname);
