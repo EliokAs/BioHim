@@ -823,30 +823,28 @@ function subscribeRealtime(){ /* не нужен polling для localStorage */ 
 // ══════════════════════════════════════════
 async function initData(){
   if(!(load('users')||[]).length){
-    // Хешируем пароли асинхронно при первом запуске
-    Promise.all([
+    // Хешируем пароли асинхронно при первом запуске — ЖДЁМ завершения
+    const [h1,h2,h3] = await Promise.all([
       hashPassword('admin123'),
       hashPassword('1234'),
       hashPassword('1234')
-    ]).then(([h1,h2,h3])=>{
-      save('users',[
-        {id:'admin', login:'admin', passwordHash:h1, name:'Преподаватель', role:'admin'},
-        {id:'anna',  login:'anna',  passwordHash:h2, name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-        {id:'dima',  login:'dima',  passwordHash:h3, name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
-      ]);
-    });
+    ]);
+    save('users',[
+      {id:'admin', login:'admin', passwordHash:h1, name:'Преподаватель', role:'admin'},
+      {id:'anna',  login:'anna',  passwordHash:h2, name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
+      {id:'dima',  login:'dima',  passwordHash:h3, name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
+    ]);
   } else {
     // Миграция: если остались старые пользователи с plain-text паролями
     const users = load('users')||[];
     const needsMigration = users.filter(u=>u.password && !u.passwordHash);
     if(needsMigration.length){
-      Promise.all(needsMigration.map(u=>hashPassword(u.password))).then(hashes=>{
-        needsMigration.forEach((u,i)=>{
-          u.passwordHash = hashes[i];
-          delete u.password; // удаляем plain-text
-        });
-        save('users', users);
+      const hashes = await Promise.all(needsMigration.map(u=>hashPassword(u.password)));
+      needsMigration.forEach((u,i)=>{
+        u.passwordHash = hashes[i];
+        delete u.password;
       });
+      save('users', users);
     }
   }
   if(!(load('courses')||[]).length){
@@ -7000,7 +6998,6 @@ function renderStudentWallet(){
       }
     </div>`;
 }
-
 function renderStudentLessons(){
   const sid = currentUser.id;
   const att = (load('attendance')||[]).filter(a=>a.studentId===sid).slice().reverse();
@@ -7374,4 +7371,3 @@ function renderReviewQuestion(q, answers){
 }
 
 // Add .q-input CSS class shorthand helper (used in buildQuestionHTML)
-
