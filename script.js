@@ -2,6 +2,63 @@
 // ══════════════════════════════════════════════════════
 // ОНЛАЙН-ЗАНЯТИЕ — полнофункциональный урок
 // ══════════════════════════════════════════════════════
+// ==================== ИНИЦИАЛИЗАЦИЯ ДАННЫХ (пароли в открытом виде) ====================
+const LS_PREFIX = 'biohim_db_';
+function load(k) { return JSON.parse(localStorage.getItem(LS_PREFIX+k)||'null'); }
+function save(k,v) { localStorage.setItem(LS_PREFIX+k, JSON.stringify(v)); }
+
+async function initData() {
+  // Удаляем старые хешированные записи
+  let users = load('users') || [];
+  if(users.some(u => u.passwordHash)) localStorage.removeItem(LS_PREFIX+'users');
+  users = load('users') || [];
+  if(!users.length) {
+    save('users', [
+      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
+      {id:'anna',  login:'anna',  password:'1234',     name:'Анна Петрова',  role:'student', active:true},
+      {id:'dima',  login:'dima',  password:'1234',     name:'Дмитрий Козлов',role:'student', active:true}
+    ]);
+  }
+  // Остальные коллекции
+  if(!load('courses')) save('courses',[]);
+  if(!load('slots')) save('slots',[]);
+  if(!load('payments')) save('payments',[]);
+  if(!load('attendance')) save('attendance',[]);
+  if(!load('tests')) save('tests',[]);
+  if(!load('hw')) save('hw',[]);
+  if(!load('content')) save('content',[]);
+  if(!load('bookings')) save('bookings',[]);
+  if(!load('notifs')) save('notifs',[]);
+  if(!load('groups')) save('groups',[]);
+  if(!load('trials')) save('trials',[]);
+  if(!load('taskbank')) save('taskbank',[]);
+}
+
+// ==================== АУТЕНТИФИКАЦИЯ ====================
+let currentUser = null;
+function doLogin() {
+  const login = document.getElementById('login-username').value.trim();
+  const pass = document.getElementById('login-password').value;
+  const users = load('users') || [];
+  const user = users.find(u => u.login === login && u.password === pass);
+  if(!user) {
+    document.getElementById('login-err').textContent = 'Неверный логин или пароль';
+    return;
+  }
+  currentUser = user;
+  localStorage.setItem('biohim_session', JSON.stringify({id:user.id, role:user.role, name:user.name, expires:Date.now()+12*3600000}));
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  buildNav();
+  navigateTo(user.role==='admin' ? 'dashboard' : 'student-dashboard');
+}
+function doLogout() {
+  if(currentUser) localStorage.removeItem('biohim_last_page_'+currentUser.id);
+  currentUser = null;
+  localStorage.removeItem('biohim_session');
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
 
 let _lessonTimer   = null;
 let _lessonStart   = 0;
