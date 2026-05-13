@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/platform_jitsi_embedded_6.html" }
+  ]
+}
