@@ -804,7 +804,11 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="student-selector" id="content-student-selector"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
         <div style="font-size:0.9rem;color:var(--text3)">Нажмите на урок, чтобы раскрыть содержимое</div>
-        <button class="btn btn-green" onclick="nbResetNew(); openModal('modal-add-theory')">＋ Добавить урок</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-outline btn-sm" onclick="triggerImportJSON('material')" title="Импорт из JSON">📥 Импорт JSON</button>
+          <button class="btn btn-green" onclick="nbResetNew(); openModal('modal-add-theory')">＋ Добавить урок</button>
+        </div>
+        <input type="file" id="import-json-input" accept=".json" style="display:none" onchange="handleImportJSON(event)">
       </div>
       <div id="list-theory-accordion"></div>
     </div>
@@ -816,7 +820,10 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div class="card-title" style="margin:0"><span class="dot"></span>Ученики</div>
-          <button class="btn btn-green btn-sm" onclick="openModal('modal-create-test')">＋ Создать тест</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="triggerImportJSON('test')">📥 Импорт JSON</button>
+            <button class="btn btn-green btn-sm" onclick="openModal('modal-create-test')">＋ Создать тест</button>
+          </div>
         </div>
         <div id="tests-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
@@ -834,7 +841,10 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div class="card-title" style="margin:0"><span class="dot"></span>Ученики</div>
-          <button class="btn btn-green btn-sm" onclick="openModal('modal-create-hw')">＋ Создать ДЗ</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="triggerImportJSON('hw')">📥 Импорт JSON</button>
+            <button class="btn btn-green btn-sm" onclick="openModal('modal-create-hw')">＋ Создать ДЗ</button>
+          </div>
         </div>
         <div id="hw-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
@@ -1132,7 +1142,10 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
           <div class="card-title" style="margin:0"><span class="dot"></span>Ученики</div>
-          <button class="btn btn-green btn-sm" onclick="openModal('modal-create-trial')">＋ Создать пробник</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="triggerImportJSON('trial')">📥 Импорт JSON</button>
+            <button class="btn btn-green btn-sm" onclick="openModal('modal-create-trial')">＋ Создать пробник</button>
+          </div>
         </div>
         <div id="trial-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
