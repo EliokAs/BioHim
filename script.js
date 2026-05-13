@@ -10,7 +10,7 @@ function save(k,v) { localStorage.setItem(LS_PREFIX+k, JSON.stringify(v)); }
 async function initData() {
   // Удаляем старые хешированные записи
   let users = load('users') || [];
-  if(users.some(u => u.passwordHash)) localStorage.removeItem(LS_PREFIX+'users');
+  if(users.some(u => u.password: pass)) localStorage.removeItem(LS_PREFIX+'users');
   users = load('users') || [];
   if(!users.length) {
     save('users', [
@@ -36,22 +36,7 @@ async function initData() {
 
 // ==================== АУТЕНТИФИКАЦИЯ ====================
 let currentUser = null;
-function doLogin() {
-  const login = document.getElementById('login-username').value.trim();
-  const pass = document.getElementById('login-password').value;
-  const users = load('users') || [];
-  const user = users.find(u => u.login === login && u.password === pass);
-  if(!user) {
-    document.getElementById('login-err').textContent = 'Неверный логин или пароль';
-    return;
-  }
-  currentUser = user;
-  localStorage.setItem('biohim_session', JSON.stringify({id:user.id, role:user.role, name:user.name, expires:Date.now()+12*3600000}));
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  buildNav();
-  navigateTo(user.role==='admin' ? 'dashboard' : 'student-dashboard');
-}
+
 function doLogout() {
   if(currentUser) localStorage.removeItem('biohim_last_page_'+currentUser.id);
   currentUser = null;
@@ -891,23 +876,7 @@ function subscribeRealtime(){ /* не нужен polling для localStorage */ 
 // ══════════════════════════════════════════
 // DEFAULT DATA (записываются один раз)
 // ══════════════════════════════════════════
-async function initData(){
-  // Удаляем старые данные с passwordHash, если есть
-  const existingUsers = load('users')||[];
-  if(existingUsers.length && existingUsers.some(u=>u.passwordHash)){
-    localStorage.removeItem('biohim_db_users');
-  }
-  // Заново создаём пользователей с паролями в открытом виде
-  if(!(load('users')||[]).length){
-    save('users',[
-      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
-      {id:'anna',  login:'anna',  password:'1234',      name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-      {id:'dima',  login:'dima',  password:'1234',      name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
-    ]);
-  }
-  // Далее инициализация остальных коллекций (courses, slots, payments, attendance, tests, hw, content, bookings, notifs, groups)
-  // Оставьте их как есть, только уберите всё, что связано с passwordHash
-}
+
   if(!(load('courses')||[]).length){
     save('courses',[
       {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
@@ -947,22 +916,6 @@ async function resetAllData(){
 }
 
 let currentUser = null;
-
-function doLogin(){
-  const uname = document.getElementById('login-username').value.trim();
-  const upass  = document.getElementById('login-password').value;
-  const errEl  = document.getElementById('login-err');
-
-  // DEBUG: show what's in localStorage
-  const users = load('users')||[];
-  console.log('users in DB:', JSON.stringify(users.map(u=>({login:u.login,hasHash:!!u.passwordHash,hashVal:u.passwordHash}))));
-
-  if(!checkBruteForce(uname)) return;
-
-  if(!users.length){
-    errEl.textContent = 'Ошибка: пользователи не загружены. Обновите страницу.';
-    return;
-  }
 
   const found = users.find(u=>u.login===uname);
   if(!found){
