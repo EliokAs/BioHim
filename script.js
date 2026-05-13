@@ -902,19 +902,23 @@ let currentUser = null;
 
 function doLogin(){
   const uname = document.getElementById('login-username').value.trim();
-  const upass  = document.getElementById('login-password').value;
-  const errEl  = document.getElementById('login-err');
+  const upass = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-err');
 
-  // DEBUG: show what's in localStorage
   const users = load('users')||[];
-  console.log('users in DB:', JSON.stringify(users.map(u=>({login:u.login,hasHash:!!u.passwordHash,hashVal:u.passwordHash}))));
-
-  if(!checkBruteForce(uname)) return;
-
   if(!users.length){
     errEl.textContent = 'Ошибка: пользователи не загружены. Обновите страницу.';
     return;
   }
+
+  const found = users.find(u => u.login === uname && u.password === upass);
+  if(!found){
+    errEl.textContent = 'Неверный логин или пароль.';
+    return;
+  }
+
+  _startSession(found);
+}
 
   const found = users.find(u=>u.login===uname);
   if(!found){
