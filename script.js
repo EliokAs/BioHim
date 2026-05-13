@@ -835,23 +835,17 @@ function subscribeRealtime(){ /* не нужен polling для localStorage */ 
 // DEFAULT DATA (записываются один раз)
 // ══════════════════════════════════════════
 async function initData(){
-  try {
-    // Fix: clear users with undefined/null passwordHash (broken from old async bug)
-    const existingUsers = load('users')||[];
-    if(existingUsers.length && existingUsers.some(u=>!u.passwordHash && !u.password)){
-      localStorage.removeItem('biohim_db_users');
-    }
-  } catch(e){ console.warn('user-check error', e); }
-
+  // Удаляем старые данные с passwordHash, если есть
+  const existingUsers = load('users')||[];
+  if(existingUsers.length && existingUsers.some(u=>u.passwordHash)){
+    localStorage.removeItem('biohim_db_users');
+  }
+  // Заново создаём пользователей с паролями в открытом виде
   if(!(load('users')||[]).length){
-    // Создаём пользователей — пароли хешируются синхронно
-    const h1 = await hashPassword('admin123');
-    const h2 = await hashPassword('1234');
-    const h3 = await hashPassword('1234');
     save('users',[
-      {id:'admin', login:'admin', passwordHash:h1, name:'Преподаватель', role:'admin'},
-      {id:'anna',  login:'anna',  passwordHash:h2, name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-      {id:'dima',  login:'dima',  passwordHash:h3, name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
+      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
+      {id:'anna',  login:'anna',  password:'1234',      name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
+      {id:'dima',  login:'dima',  password:'1234',      name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
     ]);
   } else {
     // Миграция: если остались старые пользователи с plain-text паролями
