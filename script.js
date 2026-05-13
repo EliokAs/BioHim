@@ -1959,6 +1959,10 @@ function buildQuestionHTML(q,i,ctx){
       <input class="q-input" style="margin-top:4px" placeholder="https://... или оставь пустым" value="${(q.imageUrl||'').startsWith('data:')?'':q.imageUrl||''}" oninput="${pfx}[${i}].imageUrl=this.value;updateQImgPreview('${imgPreId}',this.value)">
       ${imgPreview}
     </div>
+    <div style="margin-top:8px">
+      <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка для ученика (необязательно)</label>
+      <input class="q-input" placeholder="Подсказка появится по кнопке — не раскрывает ответ..." value="${(q.hint||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].hint=this.value">
+    </div>
   </div>`;
 }
 
@@ -2728,11 +2732,18 @@ function renderEditTestBuilder(){
       ${showText?`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
         placeholder="Текст вопроса..." oninput="_editTestQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">`:''}
       ${typeBody}
+      <div style="margin-top:8px">
+        <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
+        <input style="width:100%;padding:7px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;background:var(--white)"
+          placeholder="Подсказка для ученика — не раскрывает ответ..."
+          oninput="_editTestQuestions[${i}].hint=this.value"
+          value="${(q.hint||'').replace(/"/g,'&quot;')}">
+      </div>
     </div>`;
   }).join('');
 }
 function addEditTestQuestion(type){
-  _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[]});
+  _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
   renderEditTestBuilder();
 }
 function removeEditQ(i){ _editTestQuestions.splice(i,1); renderEditTestBuilder(); }
@@ -2799,11 +2810,18 @@ function renderEditHWBuilder(){
       ${showText?`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
         placeholder="Текст вопроса..." oninput="_editHWQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">`:''}
       ${typeBody}
+      <div style="margin-top:8px">
+        <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
+        <input style="width:100%;padding:7px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;background:var(--white)"
+          placeholder="Подсказка для ученика — не раскрывает ответ..."
+          oninput="_editHWQuestions[${i}].hint=this.value"
+          value="${(q.hint||'').replace(/"/g,'&quot;')}">
+      </div>
     </div>`;
   }).join('');
 }
 function addEditHWQuestion(type){
-  _editHWQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[]});
+  _editHWQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
   renderEditHWBuilder();
 }
 function removeEditHWQ(i){ _editHWQuestions.splice(i,1); renderEditHWBuilder(); }
@@ -4707,6 +4725,12 @@ function doHW(id){
           <div class="option-item" onclick="selectHWOption('${q.id}','${o.replace(/'/g,"\\'")}',this)">${o}</div>`).join('')}</div>`
         :`<textarea style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;min-height:80px" 
           onchange="_hwAnswers['${q.id}']=this.value" placeholder="Ваш ответ..."></textarea>`}
+        ${q.hint?`<div style="margin-top:10px">
+          <button onclick="toggleHint('hint-hw-${q.id}')" style="background:none;border:1.5px solid var(--green-pale);border-radius:8px;padding:5px 12px;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.78rem;color:var(--text3);display:inline-flex;align-items:center;gap:5px">💡 Показать подсказку</button>
+          <div id="hint-hw-${q.id}" style="display:none;margin-top:8px;background:linear-gradient(135deg,#fffbeb,#fef9e7);border:1.5px solid #fce98a;border-radius:10px;padding:10px 14px;font-size:0.84rem;color:#856404;line-height:1.6">
+            <span style="font-weight:700;margin-right:6px">💡</span>${q.hint}
+          </div>
+        </div>`:''}
       </div>`).join('')+`<hr class="divider"><button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>`;
   }
   openModal('modal-take-test');
@@ -7205,7 +7229,7 @@ function clearEditAvail(){
 
 /** Create a blank question of any type */
 function initQuestion(id, type){
-  return {id, type, text:'', options:[], correct:'', pairs:[], points:1, imageUrl:''};
+  return {id, type, text:'', options:[], correct:'', pairs:[], points:1, imageUrl:'', hint:''};
 }
 
 /** Auto-score a question (returns true/false) */
@@ -7340,7 +7364,26 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
     ${q.type!=='fill'?`<div class="question-text">${q.text}</div>`:''}
     ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
     ${body}
+    ${q.hint?`<div style="margin-top:10px">
+      <button onclick="toggleHint('hint-${q.id}')" style="background:none;border:1.5px solid var(--green-pale);border-radius:8px;padding:5px 12px;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.78rem;color:var(--text3);display:inline-flex;align-items:center;gap:5px;transition:all 0.15s" onmouseover="this.style.borderColor='var(--green-mid)';this.style.color='var(--green-deep)'" onmouseout="this.style.borderColor='var(--green-pale)';this.style.color='var(--text3)'">💡 Показать подсказку</button>
+      <div id="hint-${q.id}" style="display:none;margin-top:8px;background:linear-gradient(135deg,#fffbeb,#fef9e7);border:1.5px solid #fce98a;border-radius:10px;padding:10px 14px;font-size:0.84rem;color:#856404;line-height:1.6">
+        <span style="font-weight:700;margin-right:6px">💡</span>${q.hint}
+      </div>
+    </div>`:''}
   </div>`;
+}
+
+function toggleHint(id){
+  const el=document.getElementById(id);
+  if(!el) return;
+  const btn=el.previousElementSibling;
+  if(el.style.display==='none'){
+    el.style.display='block';
+    if(btn) btn.innerHTML='💡 Скрыть подсказку';
+  } else {
+    el.style.display='none';
+    if(btn) btn.innerHTML='💡 Показать подсказку';
+  }
 }
 
 function moveOrderItem(qId, idx, dir, answerObj){
