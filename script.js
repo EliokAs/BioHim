@@ -749,24 +749,7 @@ function esc(str){
     .replace(/'/g,'&#39;');
 }
 
-// 2. Хеширование пароля (SHA-256, встроено в браузер)
-function hashPassword(plain){
-  // Simple but consistent hash — no crypto.subtle needed (works on HTTP too)
-  if(!plain) return Promise.resolve('');
-  let h = 0x811c9dc5;
-  for(let i=0;i<plain.length;i++){
-    h ^= plain.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  // Second pass for better avalanche
-  let h2 = 0x5f5f5f5f;
-  for(let i=plain.length-1;i>=0;i--){
-    h2 ^= plain.charCodeAt(i);
-    h2 = Math.imul(h2, 0x01000193) >>> 0;
-  }
-  const result = (h >>> 0).toString(16).padStart(8,'0') + (h2 >>> 0).toString(16).padStart(8,'0') + plain.length.toString(16).padStart(4,'0');
-  return Promise.resolve(result);
-}
+
 
 // 3. Защита от брутфорса
 const _loginAttempts = {};
@@ -836,35 +819,21 @@ function subscribeRealtime(){ /* не нужен polling для localStorage */ 
 // ══════════════════════════════════════════
 async function initData(){
   try {
-    // Fix: clear users with undefined/null passwordHash (broken from old async bug)
+    // Миграция: если хранились хеши — сбрасываем, пересоздаём с plain паролями
     const existingUsers = load('users')||[];
-    if(existingUsers.length && existingUsers.some(u=>!u.passwordHash && !u.password)){
+    if(existingUsers.length && existingUsers.some(u=>u.passwordHash && !u.password)){
+      existingUsers.forEach(u=>{ if(u.passwordHash){ u.password = null; delete u.passwordHash; } });
+      // Невозможно восстановить пароль из хеша — сбрасываем дефолтных пользователей
       localStorage.removeItem('biohim_db_users');
     }
   } catch(e){ console.warn('user-check error', e); }
 
   if(!(load('users')||[]).length){
-    // Создаём пользователей — пароли хешируются синхронно
-    const h1 = await hashPassword('admin123');
-    const h2 = await hashPassword('1234');
-    const h3 = await hashPassword('1234');
     save('users',[
-      {id:'admin', login:'admin', passwordHash:h1, name:'Преподаватель', role:'admin'},
-      {id:'anna',  login:'anna',  passwordHash:h2, name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-      {id:'dima',  login:'dima',  passwordHash:h3, name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
+      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
+      {id:'anna',  login:'anna',  password:'1234',     name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
+      {id:'dima',  login:'dima',  password:'1234',     name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
     ]);
-  } else {
-    // Миграция: если остались старые пользователи с plain-text паролями
-    const users = load('users')||[];
-    const needsMigration = users.filter(u=>u.password && !u.passwordHash);
-    if(needsMigration.length){
-      const hashes = await Promise.all(needsMigration.map(u=>hashPassword(u.password)));
-      needsMigration.forEach((u,i)=>{
-        u.passwordHash = hashes[i];
-        delete u.password;
-      });
-      save('users', users);
-    }
   }
   if(!(load('courses')||[]).length){
     save('courses',[
@@ -911,12 +880,9 @@ function doLogin(){
   const upass  = document.getElementById('login-password').value;
   const errEl  = document.getElementById('login-err');
 
-  // DEBUG: show what's in localStorage
-  const users = load('users')||[];
-  console.log('users in DB:', JSON.stringify(users.map(u=>({login:u.login,hasHash:!!u.passwordHash,hashVal:u.passwordHash}))));
-
   if(!checkBruteForce(uname)) return;
 
+  const users = load('users')||[];
   if(!users.length){
     errEl.textContent = 'Ошибка: пользователи не загружены. Обновите страницу.';
     return;
@@ -924,28 +890,20 @@ function doLogin(){
 
   const found = users.find(u=>u.login===uname);
   if(!found){
-    errEl.textContent = 'Пользователь «'+uname+'» не найден. Доступны: '+users.map(u=>u.login).join(', ');
+    errEl.textContent = 'Пользователь не найден.';
     recordFailedLogin(uname);
     return;
   }
 
-  hashPassword(upass).then(hash=>{
-    console.log('entered hash:', hash, 'stored hash:', found.passwordHash, 'match:', hash===found.passwordHash);
-    // Support plain-text password (legacy) and hash
-    const ok = (found.passwordHash && hash === found.passwordHash)
-             || (!found.passwordHash && found.password === upass);
-    if(!ok){
-      recordFailedLogin(uname);
-      errEl.textContent = 'Неверный пароль. (debug: hash='+hash.slice(0,8)+'... stored='+String(found.passwordHash).slice(0,8)+'...)';
-      return;
-    }
-    resetLoginAttempts(uname);
-    errEl.textContent = '';
-    _startSession(found);
-  }).catch(e=>{
-    errEl.textContent = 'Ошибка хеширования: '+e.message;
-    console.error(e);
-  });
+  const ok = found.password === upass;
+  if(!ok){
+    recordFailedLogin(uname);
+    errEl.textContent = 'Неверный пароль.';
+    return;
+  }
+  resetLoginAttempts(uname);
+  errEl.textContent = '';
+  _startSession(found);
 }
 function _startSession(user){
   currentUser = user;
@@ -1012,6 +970,7 @@ const studentNav=[
   {id:'student-tests',     icon:'📋',label:'Тесты'},
   {id:'student-trial',     icon:'🎯', label:'Пробник'},
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
+  {id:'student-taskbank',  icon:'🎲', label:'Банк заданий'},
   {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
   {section:'Прочее'},
   {id:'student-payment',   icon:'💰',label:'Оплата и занятия'},
@@ -1105,6 +1064,7 @@ function renderPage(p){
   else if(p==='student-repeat') renderRepeatPage();
   else if(p==='student-tests') renderStudentTests();
   else if(p==='student-hw') renderStudentHW();
+  else if(p==='student-taskbank') renderStudentTaskBank();
   else if(p==='student-payment') renderStudentPayment();
   else if(p==='notif-settings-admin'){ renderNotifSettingsAdmin(); }
   else if(p==='student-notif-settings'){ renderNotifSettingsStudent(); }
@@ -3864,6 +3824,7 @@ function renderTaskBankAdmin(){
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
             ${t.subject?`<span style="font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">${t.subject}</span>`:''}
+            ${t.part?`<span style="font-size:0.7rem;font-weight:600;color:var(--green-mid);background:var(--green-xpale);padding:2px 8px;border-radius:6px">${t.part}</span>`:''}
             <span class="badge" style="background:var(--green-xpale);color:var(--green-deep);border:none;font-size:0.7rem">${typeLabel[t.answerType||'open']||'📝 Открытый'}</span>
             <span class="badge" style="background:#fef3cd;color:#856404;border:none;font-size:0.7rem">⭐ ${t.points||1} ${(t.points||1)===1?'балл':(t.points||1)<5?'балла':'баллов'}</span>
           </div>
@@ -3905,11 +3866,12 @@ function saveTask(){
   const text=document.getElementById('ntask-text').value.trim();
   if(!text){ showNotif('Введите текст задания'); return; }
   const type    = document.querySelector('input[name="ntask-type"]:checked')?.value||'open';
-  const subject = document.getElementById('ntask-subject').value.trim();
+  const subject = document.getElementById('ntask-subject').value;
+  const part = document.getElementById('ntask-part').value;
   const imgUrl  = document.getElementById('ntask-imgurl').value.trim()||_ntaskImgData;
   const editId  = document.getElementById('ntask-edit-id').value;
 
-  let taskData = { text, subject, imageUrl:imgUrl, answerType:type, points:Math.max(1,+document.getElementById('ntask-points').value||1) };
+  let taskData = { text, subject, part, imageUrl:imgUrl, answerType:type, points:Math.max(1,+document.getElementById('ntask-points').value||1) };
   if(type==='open'){
     taskData.answer = document.getElementById('ntask-answer').value.trim();
   } else if(type==='choice'){
@@ -3946,6 +3908,7 @@ function openEditTask(id){
   if(!t) return;
   document.getElementById('ntask-edit-id').value=t.id;
   document.getElementById('ntask-subject').value=t.subject||'';
+  document.getElementById('ntask-part').value=t.part||'';
   document.getElementById('ntask-text').value=t.text||'';
   document.getElementById('ntask-imgurl').value=t.imageUrl&&!t.imageUrl.startsWith('data:')?t.imageUrl:'';
   document.getElementById('ntask-answer').value=t.answer||'';
@@ -3969,6 +3932,367 @@ function deleteTask(id){
   if(!confirm('Удалить задание?')) return;
   save('taskbank',(load('taskbank')||[]).filter(t=>t.id!==id));
   renderTaskBankAdmin();
+}
+
+// ══════════════════════════════════════════════════════════
+// БАНК ЗАДАНИЙ — страница ученика
+// ══════════════════════════════════════════════════════════
+
+let _tbSubject = 'all';
+let _tbPart    = 'all';
+let _tbType    = 'all';
+let _tbQueue   = [];
+let _tbIdx     = 0;
+let _tbCorrect = 0;
+let _tbWrong   = 0;
+let _tbAnswer  = '';
+let _tbAnswered = false;
+
+function renderStudentTaskBank(){
+  const tasks = load('taskbank') || [];
+
+  const subjects = ['all', 'Химия ЕГЭ', 'Химия ОГЭ', 'Биология ЕГЭ', 'Биология ОГЭ'];
+  const subjectPills = document.getElementById('tb-subject-pills');
+  if(subjectPills){
+    subjectPills.innerHTML = subjects.map(s =>
+      `<div class="filter-pill ${_tbSubject===s?'active':''}" onclick="tbSetSubject('${esc(s)}',this)">${s==='all'?'📚 Все предметы':s}</div>`
+    ).join('');
+  }
+
+  const parts = ['all', 'Часть 1', 'Часть 2'];
+  const partPills = document.getElementById('tb-part-pills');
+  if(partPills){
+    partPills.innerHTML = parts.map(p =>
+      `<div class="filter-pill ${_tbPart===p?'active':''}" onclick="tbSetPart('${esc(p)}',this)">${p==='all'?'📋 Все части':p}</div>`
+    ).join('');
+  }
+
+  const typeLabels = {all:'🗂 Все типы', open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  const typePills = document.getElementById('tb-type-pills');
+  if(typePills){
+    typePills.innerHTML = Object.keys(typeLabels).map(t =>
+      `<div class="filter-pill ${_tbType===t?'active':''}" onclick="tbSetType('${t}',this)">${typeLabels[t]}</div>`
+    ).join('');
+  }
+
+  _tbRenderList();
+}
+
+function _tbGetFiltered(){
+  return (load('taskbank')||[]).filter(t => {
+    const subjOk = _tbSubject==='all' || (t.subject||'')===_tbSubject;
+    const partOk = _tbPart==='all' || (t.part||'')===_tbPart;
+    const typeOk = _tbType==='all' || (t.answerType||'open')===_tbType;
+    return subjOk && partOk && typeOk;
+  });
+}
+
+function _tbRenderList(){
+  const filtered = _tbGetFiltered();
+  const label = document.getElementById('tb-count-label');
+  if(label) label.textContent = `Найдено заданий: ${filtered.length}`;
+
+  const listEl  = document.getElementById('tb-task-list');
+  const emptyEl = document.getElementById('tb-empty-state');
+  if(!listEl||!emptyEl) return;
+
+  if(!filtered.length){
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  listEl.innerHTML = filtered.map((t,i)=>`
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+        <div style="width:30px;height:30px;border-radius:50%;background:var(--green-xpale);color:var(--green-deep);display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;flex-shrink:0">${i+1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            ${t.subject?`<span class="badge badge-green">${esc(t.subject)}</span>`:''}
+            ${t.part?`<span class="badge" style="background:var(--green-xpale);color:var(--green-mid);border:1px solid var(--green-pale)">${esc(t.part)}</span>`:''}
+            <span class="badge badge-blue">${typeLabel[t.answerType||'open']||'📝'}</span>
+            <span class="badge badge-gold">⭐ ${t.points||1} б.</span>
+          </div>
+          <div style="font-size:0.95rem;font-weight:600;color:var(--accent);line-height:1.5">${esc(t.text)}</div>
+          ${t.imageUrl?`<img src="${t.imageUrl}" style="max-width:180px;border-radius:8px;margin-top:8px;border:1px solid var(--green-xpale)" alt="">`:''}
+        </div>
+        <button class="btn btn-green btn-sm" style="flex-shrink:0" onclick="tbSolveSingle('${t.id}')">▶ Решить</button>
+      </div>
+      <div id="tb-single-${t.id}" style="display:none;margin-top:14px;border-top:1px solid var(--green-xpale);padding-top:14px"></div>
+    </div>`).join('');
+}
+
+function tbSetSubject(subject, el){
+  _tbSubject = subject;
+  document.querySelectorAll('#tb-subject-pills .filter-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  _tbRenderList();
+}
+
+function tbSetPart(part, el){
+  _tbPart = part;
+  document.querySelectorAll('#tb-part-pills .filter-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  _tbRenderList();
+}
+
+function tbSetType(type, el){
+  _tbType = type;
+  document.querySelectorAll('#tb-type-pills .filter-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  _tbRenderList();
+}
+
+function tbShuffleQueue(){
+  const filtered = _tbGetFiltered();
+  _tbQueue = [...filtered].sort(()=>Math.random()-0.5);
+  showNotif(`🔀 ${_tbQueue.length} заданий перемешано`);
+}
+
+function tbStartPractice(){
+  const filtered = _tbGetFiltered();
+  if(!filtered.length){ showNotif('Нет заданий по выбранным фильтрам'); return; }
+  if(!_tbQueue.length) _tbQueue = [...filtered].sort(()=>Math.random()-0.5);
+  _tbIdx = 0; _tbCorrect = 0; _tbWrong = 0;
+  document.getElementById('tb-list-wrap').style.display    = 'none';
+  document.getElementById('tb-practice-wrap').style.display = 'block';
+  _tbRenderCurrentQuestion();
+}
+
+function tbStopPractice(){
+  document.getElementById('tb-practice-wrap').style.display = 'none';
+  document.getElementById('tb-list-wrap').style.display     = '';
+  _tbQueue = [];
+  _tbRenderList();
+  showNotif(`Практика завершена · ✅ ${_tbCorrect} верно · ❌ ${_tbWrong} неверно`);
+}
+
+function _tbRenderCurrentQuestion(){
+  if(_tbIdx >= _tbQueue.length){ _tbShowFinish(); return; }
+  const q = _tbQueue[_tbIdx];
+  _tbAnswer = ''; _tbAnswered = false;
+
+  const pct = Math.round(_tbIdx / _tbQueue.length * 100);
+  document.getElementById('tb-progress-label').textContent = `Вопрос ${_tbIdx+1} из ${_tbQueue.length}`;
+  document.getElementById('tb-progress-bar').style.width   = pct+'%';
+  document.getElementById('tb-correct-count').textContent  = _tbCorrect;
+  document.getElementById('tb-wrong-count').textContent    = _tbWrong;
+
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  document.getElementById('tb-question-card').innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      ${q.subject?`<span class="badge badge-green">${esc(q.subject)}</span>`:''}
+      ${q.part?`<span class="badge" style="background:var(--green-xpale);color:var(--green-mid);border:1px solid var(--green-pale)">${esc(q.part)}</span>`:''}
+      <span class="badge badge-blue">${typeLabel[q.answerType||'open']||''}</span>
+      <span class="badge badge-gold">⭐ ${q.points||1} б.</span>
+    </div>
+    <div style="font-size:1.05rem;font-weight:600;color:var(--accent);line-height:1.6">${esc(q.text)}</div>
+    ${q.imageUrl?`<img src="${q.imageUrl}" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:10px;border:1px solid var(--green-xpale);object-fit:contain" alt="">` : ''}`;
+
+  const ansEl = document.getElementById('tb-answer-area');
+  const type = q.answerType||'open';
+  const qJson = JSON.stringify(q).replace(/"/g,'&quot;');
+  if(type==='choice' && q.options?.length){
+    ansEl.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px" id="tb-choice-opts">
+      ${q.options.map(o=>`
+        <div class="option-item" id="tbopt-${esc(o).replace(/\W/g,'_')}"
+          onclick="tbSelectChoice(this,'${o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${(q.correctOption||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
+          style="cursor:pointer;padding:12px 16px;border-radius:10px;border:1.5px solid var(--green-pale);background:var(--white);font-size:0.92rem;transition:all 0.15s">
+          ${esc(o)}
+        </div>`).join('')}
+    </div>`;
+  } else if(type==='short'){
+    ansEl.innerHTML = `
+      <input id="tb-short-inp" placeholder="Введите краткий ответ..."
+        style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.93rem;outline:none;background:var(--white);box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')tbSubmitCurrent()">
+      <button class="btn btn-green" style="margin-top:10px" onclick="tbSubmitCurrent()">📤 Проверить</button>`;
+  } else {
+    ansEl.innerHTML = `
+      <textarea id="tb-open-inp" rows="3" placeholder="Введите ваш ответ..."
+        style="width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.93rem;resize:vertical;outline:none;background:var(--white);box-sizing:border-box"></textarea>
+      <button class="btn btn-green" style="margin-top:10px" onclick="tbSubmitCurrent()">📤 Отправить</button>`;
+  }
+  document.getElementById('tb-result-area').style.display = 'none';
+  document.getElementById('tb-result-area').innerHTML     = '';
+  document.getElementById('tb-nav-buttons').innerHTML     = '';
+}
+
+function tbSelectChoice(el, val, correctOption){
+  if(_tbAnswered) return;
+  _tbAnswer = val;
+  _tbAnswered = true;
+
+  const isCorrect = val===correctOption;
+  if(isCorrect) _tbCorrect++; else _tbWrong++;
+  document.getElementById('tb-correct-count').textContent = _tbCorrect;
+  document.getElementById('tb-wrong-count').textContent   = _tbWrong;
+
+  const q = _tbQueue[_tbIdx];
+  (q.options||[]).forEach(o=>{
+    const optEl = document.getElementById('tbopt-'+esc(o).replace(/\W/g,'_'));
+    if(!optEl) return;
+    optEl.style.cursor='default'; optEl.onclick=null;
+    if(o===correctOption){ optEl.style.background='#e8f8f0'; optEl.style.borderColor='#27ae60'; }
+    else if(o===val){ optEl.style.background='#fdecea'; optEl.style.borderColor='var(--red)'; }
+  });
+
+  _tbShowResult(isCorrect, correctOption, q);
+}
+
+function tbSubmitCurrent(){
+  if(_tbAnswered) return;
+  const q = _tbQueue[_tbIdx];
+  const type = q.answerType||'open';
+  if(type==='short'){
+    _tbAnswer = (document.getElementById('tb-short-inp')||{}).value?.trim()||'';
+    if(!_tbAnswer){ showNotif('Введите ответ'); return; }
+  } else {
+    _tbAnswer = (document.getElementById('tb-open-inp')||{}).value?.trim()||'';
+    if(!_tbAnswer){ showNotif('Введите ответ'); return; }
+  }
+  _tbAnswered = true;
+
+  let isCorrect = null;
+  if(type==='short') isCorrect = _tbAnswer.toLowerCase()===(q.correctShort||'').trim().toLowerCase();
+
+  if(isCorrect===true) _tbCorrect++;
+  if(isCorrect===false) _tbWrong++;
+  document.getElementById('tb-correct-count').textContent = _tbCorrect;
+  document.getElementById('tb-wrong-count').textContent   = _tbWrong;
+
+  _tbShowResult(isCorrect, type==='short'?q.correctShort:null, q);
+}
+
+function _tbShowResult(isCorrect, correctAnswer, q){
+  const resultEl = document.getElementById('tb-result-area');
+  resultEl.style.display = 'block';
+  if(isCorrect===true){
+    resultEl.innerHTML = `<div style="background:#e8f8f0;border-radius:12px;padding:14px 16px;border-left:4px solid #27ae60">
+      <div style="font-weight:700;color:#27ae60;font-size:1rem;margin-bottom:4px">✅ Верно! +${q.points||1} б.</div>
+      ${q.explanation?`<div style="font-size:0.85rem;color:var(--text2);margin-top:4px">💡 ${esc(q.explanation)}</div>`:''}
+    </div>`;
+  } else if(isCorrect===false){
+    resultEl.innerHTML = `<div style="background:#fdecea;border-radius:12px;padding:14px 16px;border-left:4px solid var(--red)">
+      <div style="font-weight:700;color:var(--red);font-size:1rem;margin-bottom:6px">❌ Неверно</div>
+      <div style="font-size:0.88rem;color:var(--text2)">Ваш ответ: <b>${esc(_tbAnswer||'—')}</b></div>
+      <div style="font-size:0.88rem;color:var(--green-deep);margin-top:4px">Правильно: <b>${esc(correctAnswer||'')}</b></div>
+      ${q.explanation?`<div style="font-size:0.85rem;color:var(--text3);margin-top:6px">💡 ${esc(q.explanation)}</div>`:''}
+    </div>`;
+  } else {
+    resultEl.innerHTML = `<div style="background:#e8f4fd;border-radius:12px;padding:14px 16px;border-left:4px solid #1565c0">
+      <div style="font-weight:700;color:#1565c0;font-size:0.9rem;margin-bottom:4px">📝 Ответ записан</div>
+      <div style="font-size:0.85rem;color:var(--text2);margin-bottom:6px">Ваш ответ: <i>${esc(_tbAnswer)}</i></div>
+      ${q.answer?`<div style="font-size:0.85rem;background:var(--bg);border-radius:8px;padding:8px 12px;border-left:3px solid var(--green-mid);color:var(--text2)">💡 Образцовый ответ: ${esc(q.answer)}</div>`:''}
+    </div>`;
+  }
+  const hasNext = _tbIdx + 1 < _tbQueue.length;
+  document.getElementById('tb-nav-buttons').innerHTML = `
+    ${hasNext?`<button class="btn btn-green" onclick="tbNextQuestion()">Следующее ➜</button>`:`<button class="btn btn-green" onclick="_tbShowFinish()">🎉 Завершить</button>`}
+    <button class="btn btn-outline" onclick="tbStopPractice()">✕ Выйти</button>`;
+}
+
+function tbNextQuestion(){ _tbIdx++; _tbRenderCurrentQuestion(); }
+
+function _tbShowFinish(){
+  const total = _tbQueue.length;
+  const pct   = total ? Math.round(_tbCorrect/total*100) : 0;
+  document.getElementById('tb-question-card').innerHTML = `
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:3rem;margin-bottom:12px">${pct>=70?'🎉':pct>=50?'👍':'📚'}</div>
+      <div style="font-size:1.5rem;font-weight:900;color:var(--green-deep);font-family:'Playfair Display',serif;margin-bottom:8px">Практика завершена!</div>
+      <div style="font-size:1rem;color:var(--text2);margin-bottom:16px">Вы решили <b>${total}</b> заданий</div>
+      <div style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap">
+        <div style="text-align:center"><div style="font-size:2rem;font-weight:900;color:#27ae60">${_tbCorrect}</div><div style="font-size:0.78rem;color:var(--text3);text-transform:uppercase">Верно</div></div>
+        <div style="text-align:center"><div style="font-size:2rem;font-weight:900;color:var(--red)">${_tbWrong}</div><div style="font-size:0.78rem;color:var(--text3);text-transform:uppercase">Неверно</div></div>
+        <div style="text-align:center"><div style="font-size:2rem;font-weight:900;color:var(--green-deep)">${pct}%</div><div style="font-size:0.78rem;color:var(--text3);text-transform:uppercase">Результат</div></div>
+      </div>
+    </div>`;
+  document.getElementById('tb-answer-area').innerHTML = '';
+  document.getElementById('tb-result-area').style.display = 'none';
+  document.getElementById('tb-nav-buttons').innerHTML = `
+    <button class="btn btn-green" onclick="tbStartPractice()">🔄 Ещё раз</button>
+    <button class="btn btn-outline" onclick="tbStopPractice()">← К списку</button>`;
+  document.getElementById('tb-progress-label').textContent = `Завершено: ${total} заданий`;
+  document.getElementById('tb-progress-bar').style.width = '100%';
+}
+
+function tbSolveSingle(id){
+  const t = (load('taskbank')||[]).find(t=>t.id===id);
+  if(!t) return;
+  const wrap = document.getElementById('tb-single-'+id);
+  if(!wrap) return;
+  if(wrap.style.display !== 'none'){ wrap.style.display='none'; return; }
+  wrap.style.display = 'block';
+  const type = t.answerType||'open';
+  let answerHTML = '';
+  if(type==='choice' && t.options?.length){
+    answerHTML = `<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px" id="tbsl-opts-${id}">
+      ${t.options.map(o=>`
+        <div class="option-item" id="tbslopt-${id}-${esc(o).replace(/\W/g,'_')}"
+          onclick="tbSingleSelectChoice('${id}','${o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}','${(t.correctOption||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
+          style="cursor:pointer;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);background:var(--white);font-size:0.9rem;transition:all 0.15s">
+          ${esc(o)}
+        </div>`).join('')}
+    </div>`;
+  } else if(type==='short'){
+    answerHTML = `
+      <input id="tbsl-short-${id}" placeholder="Краткий ответ..."
+        style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;outline:none;background:var(--white);box-sizing:border-box;margin-bottom:10px"
+        onkeydown="if(event.key==='Enter')tbSingleSubmit('${id}')">
+      <button class="btn btn-green btn-sm" onclick="tbSingleSubmit('${id}')">Проверить</button>`;
+  } else {
+    answerHTML = `
+      <textarea id="tbsl-open-${id}" rows="3" placeholder="Ваш ответ..."
+        style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;background:var(--white);box-sizing:border-box;margin-bottom:10px"></textarea>
+      <button class="btn btn-green btn-sm" onclick="tbSingleSubmit('${id}')">Отправить</button>`;
+  }
+  wrap.innerHTML = `${answerHTML}<div id="tbsl-result-${id}" style="display:none;margin-top:10px"></div>`;
+}
+
+function tbSingleSelectChoice(taskId, val, correctOption){
+  const t = (load('taskbank')||[]).find(t=>t.id===taskId);
+  if(!t) return;
+  (t.options||[]).forEach(o=>{
+    const el = document.getElementById(`tbslopt-${taskId}-${esc(o).replace(/\W/g,'_')}`);
+    if(!el) return;
+    el.style.cursor='default'; el.onclick=null;
+    if(o===correctOption){ el.style.background='#e8f8f0'; el.style.borderColor='#27ae60'; }
+    else if(o===val && o!==correctOption){ el.style.background='#fdecea'; el.style.borderColor='var(--red)'; }
+  });
+  const ok = val===correctOption;
+  const resultEl = document.getElementById('tbsl-result-'+taskId);
+  resultEl.style.display='block';
+  resultEl.innerHTML = ok
+    ? `<div style="background:#e8f8f0;border-radius:10px;padding:10px 14px;border-left:3px solid #27ae60;font-size:0.85rem">✅ <b>Верно!</b>${t.explanation?' — '+esc(t.explanation):''}</div>`
+    : `<div style="background:#fdecea;border-radius:10px;padding:10px 14px;border-left:3px solid var(--red);font-size:0.85rem">❌ <b>Неверно.</b> Правильно: <b>${esc(correctOption)}</b>${t.explanation?' — '+esc(t.explanation):''}</div>`;
+}
+
+function tbSingleSubmit(taskId){
+  const t = (load('taskbank')||[]).find(t=>t.id===taskId);
+  if(!t) return;
+  const type = t.answerType||'open';
+  const resultEl = document.getElementById('tbsl-result-'+taskId);
+  let userAns = '';
+  if(type==='short'){
+    userAns = (document.getElementById('tbsl-short-'+taskId)||{}).value?.trim()||'';
+    if(!userAns){ showNotif('Введите ответ'); return; }
+    const ok = userAns.toLowerCase()===(t.correctShort||'').trim().toLowerCase();
+    resultEl.style.display='block';
+    resultEl.innerHTML = ok
+      ? `<div style="background:#e8f8f0;border-radius:10px;padding:10px 14px;border-left:3px solid #27ae60;font-size:0.85rem">✅ <b>Верно!</b>${t.explanation?' — '+esc(t.explanation):''}</div>`
+      : `<div style="background:#fdecea;border-radius:10px;padding:10px 14px;border-left:3px solid var(--red);font-size:0.85rem">❌ <b>Неверно.</b> Правильно: <b>${esc(t.correctShort)}</b>${t.explanation?' — '+esc(t.explanation):''}</div>`;
+  } else {
+    userAns = (document.getElementById('tbsl-open-'+taskId)||{}).value?.trim()||'';
+    if(!userAns){ showNotif('Введите ответ'); return; }
+    resultEl.style.display='block';
+    resultEl.innerHTML = `<div style="background:#e8f4fd;border-radius:10px;padding:10px 14px;border-left:3px solid #1565c0;font-size:0.85rem">
+      <b>Ответ записан.</b>
+      ${t.answer?`<div style="margin-top:6px;background:var(--bg);border-radius:8px;padding:8px 12px">💡 Образцовый ответ: ${esc(t.answer)}</div>`:''}
+    </div>`;
+  }
 }
 
 // ── DAILY TASK for student ──
