@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://meet.jit.si; frame-src https://meet.jit.si; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'">
 <title>BioХим — Платформа репетитора</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -2153,6 +2154,34 @@ textarea.q-input{resize:vertical;min-height:70px}
     </div>
 
     <hr class="divider">
+    <!-- AI Word Upload -->
+    <div style="background:linear-gradient(135deg,#e8f8f0,#d8f3dc);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1.5px dashed var(--green-light)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:1.3rem">🤖</span>
+        <div>
+          <div style="font-weight:700;font-size:0.9rem;color:var(--green-deep)">Создать вопросы из Word-файла</div>
+          <div style="font-size:0.75rem;color:var(--text3)">ИИ прочитает .docx и автоматически сгенерирует вопросы для теста</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input type="file" id="et-docx-input" accept=".docx" style="display:none" onchange="importDocxToTest(this)">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('et-docx-input').click()" style="border-color:var(--green-mid);color:var(--green-deep)">📄 Загрузить .docx</button>
+        <select id="et-docx-mode" style="padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white)">
+          <option value="mixed">Смешанные типы</option>
+          <option value="auto">Только тесты (выбор)</option>
+          <option value="open">Только открытые</option>
+          <option value="fillin">Вставить слово</option>
+        </select>
+        <select id="et-docx-count" style="padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white)">
+          <option value="5">5 вопросов</option>
+          <option value="10" selected>10 вопросов</option>
+          <option value="15">15 вопросов</option>
+          <option value="20">20 вопросов</option>
+        </select>
+      </div>
+      <div id="et-docx-status" style="margin-top:8px;font-size:0.8rem;color:var(--text3);display:none"></div>
+    </div>
+
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div class="card-title" style="margin:0"><span class="dot"></span>Вопросы <span id="et-total-hint" style="font-size:0.78rem;font-weight:400;color:var(--text3)"></span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -2199,6 +2228,34 @@ textarea.q-input{resize:vertical;min-height:70px}
     </div>
 
     <hr class="divider">
+    <!-- AI Word Upload -->
+    <div style="background:linear-gradient(135deg,#e8f8f0,#d8f3dc);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1.5px dashed var(--green-light)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:1.3rem">🤖</span>
+        <div>
+          <div style="font-weight:700;font-size:0.9rem;color:var(--green-deep)">Создать задания из Word-файла</div>
+          <div style="font-size:0.75rem;color:var(--text3)">ИИ прочитает .docx и автоматически сгенерирует вопросы для ДЗ</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input type="file" id="ehw-docx-input" accept=".docx" style="display:none" onchange="importDocxToHW(this)">
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('ehw-docx-input').click()" style="border-color:var(--green-mid);color:var(--green-deep)">📄 Загрузить .docx</button>
+        <select id="ehw-docx-mode" style="padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white)">
+          <option value="mixed">Смешанные типы</option>
+          <option value="auto">Только тесты (выбор)</option>
+          <option value="open">Только открытые</option>
+          <option value="fillin">Вставить слово</option>
+        </select>
+        <select id="ehw-docx-count" style="padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white)">
+          <option value="5">5 заданий</option>
+          <option value="10" selected>10 заданий</option>
+          <option value="15">15 заданий</option>
+          <option value="20">20 заданий</option>
+        </select>
+      </div>
+      <div id="ehw-docx-status" style="margin-top:8px;font-size:0.8rem;color:var(--text3);display:none"></div>
+    </div>
+
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div class="card-title" style="margin:0"><span class="dot"></span>Вопросы <span id="ehw-total-hint" style="font-size:0.78rem;font-weight:400;color:var(--text3)"></span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -2356,6 +2413,7 @@ textarea.q-input{resize:vertical;min-height:70px}
 </div>
 
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="script.js"></script>
 
 </body>
