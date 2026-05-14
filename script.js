@@ -339,9 +339,9 @@ function _renderLessonChatMsgs(chat, viewer){
     const time = new Date(m.ts).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
     return `<div class="lmsg ${isMe?'mine':''}">
       <div class="lmsg-row">
-        <div class="lmsg-bubble">${m.text}</div>
+        <div class="lmsg-bubble">${escHtml(m.text)}</div>
       </div>
-      <div class="lmsg-meta" style="${isMe?'text-align:right':''}">${isMe?'Вы':m.name} · ${time}</div>
+      <div class="lmsg-meta" style="${isMe?'text-align:right':''}">${isMe?'Вы':esc(m.name)} · ${esc(time)}</div>
     </div>`;
   }).join('');
 }
@@ -546,16 +546,25 @@ function lsSaveNote(text){
   // ученик видит обновление через poll
 }
 
+const _CHAT_MAX_MSG_LEN = 2000;  // символов на сообщение
+const _CHAT_MAX_HISTORY = 500;   // сообщений на комнату
+
 function lsSendMsg(who){
   const live = getLessonData();
   if(!live) return;
   const inp = document.getElementById('ls-chat-inp');
   if(!inp||!inp.value.trim()) return;
-  const text = inp.value.trim();
+  let text = inp.value.trim();
+  if(text.length > _CHAT_MAX_MSG_LEN){
+    text = text.slice(0, _CHAT_MAX_MSG_LEN);
+    showNotif(`⚠️ Сообщение обрезано до ${_CHAT_MAX_MSG_LEN} символов`);
+  }
   inp.value = '';
   const name = who==='admin' ? 'Преподаватель' : (currentUser?.name||'Ученик');
-  const chat = getLessonChat(live.code);
+  let chat = getLessonChat(live.code);
   chat.push({ who, name, text, ts: Date.now() });
+  // Не даём истории разрастись до бесконечности
+  if(chat.length > _CHAT_MAX_HISTORY) chat = chat.slice(-_CHAT_MAX_HISTORY);
   saveLessonChat(live.code, chat);
   _renderChatNow(live.code, who);
 }
@@ -577,7 +586,11 @@ function _startChatPoll(code, viewer){
       const noteEl = document.getElementById('ls-student-note');
       if(noteEl){
         const note = getLessonNote(code);
-        noteEl.innerHTML = note||'<span style="color:var(--text3)">Преподаватель ещё не написал конспект...</span>';
+        if(note){
+          noteEl.textContent = note;
+        } else {
+          noteEl.innerHTML = '<span style="color:var(--text3)">Преподаватель ещё не написал конспект...</span>';
+        }
       }
       // Check if lesson ended
       const live = getLessonData();
@@ -730,7 +743,15 @@ function load(k){
 }
 
 function save(k, v){
-  localStorage.setItem(LS_PREFIX + k, JSON.stringify(v));
+  try {
+    localStorage.setItem(LS_PREFIX + k, JSON.stringify(v));
+  } catch(e){
+    if(e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'){
+      alert('⚠️ Хранилище браузера переполнено. Удалите старые данные в разделе «Настройки» → «Сброс».');
+    }
+    console.error('[Storage] Ошибка записи ключа', k, e);
+    throw e;
+  }
 }
 
 async function preloadCache(){ /* данные уже в localStorage */ }
@@ -751,12 +772,16 @@ function esc(str){
 
 
 
-// 3. Защита от брутфорса
-const _loginAttempts = {};
+// 3. Защита от брутфорса (sessionStorage — переживает перезагрузку страницы)
+const _BF_SS_KEY = 'biohim_bf';
+function _bfLoad(){ try{ return JSON.parse(sessionStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
+function _bfSave(d){ try{ sessionStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
+
 function checkBruteForce(login){
   const now = Date.now();
-  if(!_loginAttempts[login]) _loginAttempts[login]={count:0,blockedUntil:0};
-  const rec = _loginAttempts[login];
+  const data = _bfLoad();
+  if(!data[login]) data[login]={count:0,blockedUntil:0};
+  const rec = data[login];
   if(rec.blockedUntil > now){
     const secs = Math.ceil((rec.blockedUntil-now)/1000);
     document.getElementById('login-err').textContent=`Слишком много попыток. Подождите ${secs} сек.`;
@@ -765,21 +790,27 @@ function checkBruteForce(login){
   return true;
 }
 function recordFailedLogin(login){
-  if(!_loginAttempts[login]) _loginAttempts[login]={count:0,blockedUntil:0};
-  const rec = _loginAttempts[login];
+  const data = _bfLoad();
+  if(!data[login]) data[login]={count:0,blockedUntil:0};
+  const rec = data[login];
   rec.count++;
   if(rec.count >= 5){
     rec.blockedUntil = Date.now() + 60000; // 1 минута
     rec.count = 0;
   }
+  _bfSave(data);
 }
 function resetLoginAttempts(login){
-  delete _loginAttempts[login];
+  const data = _bfLoad();
+  delete data[login];
+  _bfSave(data);
 }
 
 // 4. Проверка прав доступа
 const ADMIN_PAGES = ['students','tests-admin','hw-admin','content-admin',
-  'payments','schedule-admin','courses','analytics','settings'];
+  'payments','schedule-admin','courses','analytics','settings',
+  'reports-admin','taskbank-admin','notif-settings-admin',
+  'zoom-settings','attend-pay-admin','admin-lesson','dashboard'];
 const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'deleteStudent','saveTest','saveHW','addTheory','saveTrial',
   'saveSlot','deleteSlot','saveEditTest','saveEditHW','saveEditTrial',
@@ -815,24 +846,40 @@ function setAnswer(storeName, qId, val){
 function subscribeRealtime(){ /* не нужен polling для localStorage */ }
 
 // ══════════════════════════════════════════
+// ХЕШИРОВАНИЕ ПАРОЛЕЙ (Web Crypto API)
+// ══════════════════════════════════════════
+async function hashPassword(plain){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+// ══════════════════════════════════════════
 // DEFAULT DATA (записываются один раз)
 // ══════════════════════════════════════════
 async function initData(){
   try {
-    // Миграция: если хранились хеши — сбрасываем, пересоздаём с plain паролями
+    // Миграция plain-text паролей → SHA-256
     const existingUsers = load('users')||[];
-    if(existingUsers.length && existingUsers.some(u=>u.passwordHash && !u.password)){
-      existingUsers.forEach(u=>{ if(u.passwordHash){ u.password = null; delete u.passwordHash; } });
-      // Невозможно восстановить пароль из хеша — сбрасываем дефолтных пользователей
-      localStorage.removeItem('biohim_db_users');
+    const needsMigration = existingUsers.some(u => u.password && !u.passwordHash);
+    if(needsMigration){
+      const migrated = await Promise.all(existingUsers.map(async u => {
+        if(u.password && !u.passwordHash){
+          u.passwordHash = await hashPassword(u.password);
+          delete u.password;
+        }
+        return u;
+      }));
+      save('users', migrated);
     }
-  } catch(e){ console.warn('user-check error', e); }
+  } catch(e){ console.warn('password migration error', e); }
 
   if(!(load('users')||[]).length){
+    const adminHash = await hashPassword('admin123');
+    const stuHash   = await hashPassword('1234');
     save('users',[
-      {id:'admin', login:'admin', password:'admin123', name:'Преподаватель', role:'admin'},
-      {id:'anna',  login:'anna',  password:'1234',     name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-      {id:'dima',  login:'dima',  password:'1234',     name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
+      {id:'admin', login:'admin', passwordHash: adminHash, name:'Преподаватель', role:'admin'},
+      {id:'anna',  login:'anna',  passwordHash: stuHash,   name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
+      {id:'dima',  login:'dima',  passwordHash: stuHash,   name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
     ]);
   }
   if(!(load('courses')||[]).length){
@@ -875,7 +922,7 @@ async function resetAllData(){
 
 let currentUser = null;
 
-function doLogin(){
+async function doLogin(){
   const uname = document.getElementById('login-username').value.trim();
   const upass  = document.getElementById('login-password').value;
   const errEl  = document.getElementById('login-err');
@@ -895,7 +942,15 @@ function doLogin(){
     return;
   }
 
-  const ok = found.password === upass;
+  // Поддержка обоих форматов: хеш (новый) и plain (старый, до миграции)
+  let ok = false;
+  if(found.passwordHash){
+    const inputHash = await hashPassword(upass);
+    ok = found.passwordHash === inputHash;
+  } else {
+    ok = found.password === upass;
+  }
+
   if(!ok){
     recordFailedLogin(uname);
     errEl.textContent = 'Неверный пароль.';
@@ -1181,7 +1236,7 @@ function getPaymentStatusBadge(sid){
   const lbl={paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично'}[last.status];
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
-function addStudent(){
+async function addStudent(){
   const name=document.getElementById('ns-name').value.trim();
   const login=document.getElementById('ns-login').value.trim();
   const pass=document.getElementById('ns-pass').value;
@@ -1190,8 +1245,9 @@ function addStudent(){
   if(!document.getElementById('ns-oferta').checked){ showNotif('⚠️ Необходимо принять договор оферты'); return; }
   const users=load('users')||[];
   if(users.find(u=>u.login===login)){ showNotif('Логин уже занят'); return; }
+  const passwordHash = await hashPassword(pass);
   users.push({
-    id:login, login, password:pass, name, role:'student', subject, active:true,
+    id:login, login, passwordHash, name, role:'student', subject, active:true,
     birth:  document.getElementById('ns-birth').value||'',
     phone:  document.getElementById('ns-phone').value.trim(),
     email:  document.getElementById('ns-email').value.trim(),
@@ -2280,7 +2336,7 @@ function openEditStudent(id){
   document.getElementById('es-oferta').value=String(!!u.ofertaSigned);
   document.getElementById('modal-edit-student').classList.add('open');
 }
-function saveEditStudent(){
+async function saveEditStudent(){
   const id=document.getElementById('es-id').value;
   const name=document.getElementById('es-name').value.trim();
   const pass=document.getElementById('es-pass').value;
@@ -2301,7 +2357,10 @@ function saveEditStudent(){
   u.format=document.getElementById('es-format').value;
   u.notes=document.getElementById('es-notes').value.trim();
   u.ofertaSigned=document.getElementById('es-oferta').value==='true';
-  if(pass) u.password=pass;
+  if(pass){
+    u.passwordHash = await hashPassword(pass);
+    delete u.password; // убираем plain-text если был
+  }
   save('users',users);
   closeModal('modal-edit-student');
   renderStudents();
@@ -2785,6 +2844,175 @@ function addEditHWQuestion(type){
   renderEditHWBuilder();
 }
 function removeEditHWQ(i){ _editHWQuestions.splice(i,1); renderEditHWBuilder(); }
+
+// ═══════════════════════════════════════
+// 📄 DOCX → AI → Questions Import
+// ═══════════════════════════════════════
+
+async function extractTextFromDocx(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const result = await mammoth.extractRawText({ arrayBuffer: e.target.result });
+        resolve(result.value);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function callClaudeForQuestions(docText, mode, count, isHW) {
+  const modeDescriptions = {
+    mixed: 'смешанные типы: тесты с вариантами (auto), открытые вопросы (open), и вставить-слово (fillin)',
+    auto:  'только тесты с одним правильным вариантом ответа (auto)',
+    open:  'только открытые вопросы с развёрнутым ответом (open)',
+    fillin:'только вопросы типа «вставить слово» (fillin) — текст с пропуском ___ и правильный ответ',
+  };
+  const kind = isHW ? 'домашнего задания' : 'теста';
+  const prompt = `Ты — преподаватель биологии и химии. На основе следующего учебного текста составь РОВНО ${count} вопросов для ${kind}.
+
+Типы вопросов: ${modeDescriptions[mode]}.
+
+СТРУКТУРА JSON (верни ТОЛЬКО массив JSON, без markdown, без пояснений):
+[
+  {
+    "type": "auto",
+    "text": "Текст вопроса?",
+    "options": ["Вариант А", "Вариант Б", "Вариант В", "Вариант Г"],
+    "correct": "Вариант А",
+    "points": 1,
+    "hint": ""
+  },
+  {
+    "type": "open",
+    "text": "Текст открытого вопроса?",
+    "options": [],
+    "correct": "",
+    "points": 2,
+    "hint": "Необязательная подсказка"
+  },
+  {
+    "type": "fillin",
+    "text": "Предложение с ___ для вставки слова",
+    "options": [],
+    "correct": "правильное слово",
+    "points": 1,
+    "hint": ""
+  }
+]
+
+Правила:
+- Для "auto": options — массив из 4 вариантов, correct — один из вариантов
+- Для "fillin": text содержит ___ там где пропуск, correct — слово/фраза для вставки
+- Для "open": correct оставь пустым ""
+- Все вопросы строго по тексту, на русском языке
+- Верни ТОЛЬКО JSON массив
+
+ТЕКСТ ДОКУМЕНТА:
+${docText.slice(0, 8000)}`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!response.ok) throw new Error(`API error: ${response.status}`);
+  const data = await response.json();
+  const text = data.content.map(c => c.text || '').join('');
+  // strip possible markdown fences
+  const clean = text.replace(/```json|```/g, '').trim();
+  return JSON.parse(clean);
+}
+
+function setDocxStatus(elId, msg, isError) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.style.display = msg ? 'block' : 'none';
+  el.style.color = isError ? 'var(--red)' : 'var(--green-deep)';
+  el.textContent = msg;
+}
+
+async function importDocxToTest(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const mode = document.getElementById('et-docx-mode').value;
+  const count = parseInt(document.getElementById('et-docx-count').value) || 10;
+  const statusEl = 'et-docx-status';
+
+  setDocxStatus(statusEl, '📄 Читаю документ…');
+  try {
+    const text = await extractTextFromDocx(file);
+    if (!text.trim()) { setDocxStatus(statusEl, 'Документ пустой или не читается', true); return; }
+
+    setDocxStatus(statusEl, `🤖 ИИ генерирует ${count} вопросов… (~15 сек)`);
+    const questions = await callClaudeForQuestions(text, mode, count, false);
+
+    const newQs = questions.map(q => ({
+      id: 'q' + Date.now() + Math.random().toString(36).slice(2),
+      type: q.type || 'open',
+      text: q.text || '',
+      options: q.options || [],
+      correct: q.correct || '',
+      points: q.points || 1,
+      pairs: [],
+      items: q.type === 'order' ? (q.items || []) : [],
+      hint: q.hint || ''
+    }));
+
+    _editTestQuestions.push(...newQs);
+    renderEditTestBuilder();
+    setDocxStatus(statusEl, `✅ Добавлено ${newQs.length} вопросов из «${file.name}»`);
+  } catch(e) {
+    console.error(e);
+    setDocxStatus(statusEl, '❌ Ошибка: ' + (e.message || 'не удалось обработать файл'), true);
+  }
+}
+
+async function importDocxToHW(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const mode = document.getElementById('ehw-docx-mode').value;
+  const count = parseInt(document.getElementById('ehw-docx-count').value) || 10;
+  const statusEl = 'ehw-docx-status';
+
+  setDocxStatus(statusEl, '📄 Читаю документ…');
+  try {
+    const text = await extractTextFromDocx(file);
+    if (!text.trim()) { setDocxStatus(statusEl, 'Документ пустой или не читается', true); return; }
+
+    setDocxStatus(statusEl, `🤖 ИИ генерирует ${count} заданий… (~15 сек)`);
+    const questions = await callClaudeForQuestions(text, mode, count, true);
+
+    const newQs = questions.map(q => ({
+      id: 'q' + Date.now() + Math.random().toString(36).slice(2),
+      type: q.type || 'open',
+      text: q.text || '',
+      options: q.options || [],
+      correct: q.correct || '',
+      points: q.points || 1,
+      pairs: [],
+      items: q.type === 'order' ? (q.items || []) : [],
+      hint: q.hint || ''
+    }));
+
+    _editHWQuestions.push(...newQs);
+    renderEditHWBuilder();
+    setDocxStatus(statusEl, `✅ Добавлено ${newQs.length} заданий из «${file.name}»`);
+  } catch(e) {
+    console.error(e);
+    setDocxStatus(statusEl, '❌ Ошибка: ' + (e.message || 'не удалось обработать файл'), true);
+  }
+}
+
 function saveEditHW(){
   const id=document.getElementById('ehw-id').value;
   const title=document.getElementById('ehw-title').value.trim();
@@ -5761,6 +5989,12 @@ function showNotif(msg){
         return;
       }
       if(user){
+        // Проверяем что роль в сессии совпадает с ролью в базе (защита от ручного изменения)
+        if(savedUser.role && savedUser.role !== user.role){
+          console.warn('[Security] Session role mismatch — forced logout');
+          localStorage.removeItem('biohim_session');
+          return;
+        }
         currentUser = user;
         document.getElementById('login-screen').style.display='none';
         document.getElementById('app').style.display='block';
