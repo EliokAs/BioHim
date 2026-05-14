@@ -1067,18 +1067,84 @@ textarea.q-input{resize:vertical;min-height:70px}
     <!-- Task Bank Admin -->
     <div class="page" id="page-taskbank-admin">
       <div class="page-title">🎲 База заданий</div>
-      <div class="page-sub">Задания перемешиваются и выдаются ученикам каждый день по одному — без повторений</div>
+      <div class="page-sub">Задания перемешиваются и выдаются ученикам каждый день по одному — без повторений. Ученики могут решать задания самостоятельно в разделе «Банк заданий».</div>
       <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
           <div>
             <div class="card-title" style="margin:0"><span class="dot"></span>Все задания</div>
             <div style="font-size:0.8rem;color:var(--text3);margin-top:4px" id="taskbank-count-label"></div>
           </div>
           <button class="btn btn-green btn-sm" onclick="openModal('modal-add-task')">＋ Добавить задание</button>
         </div>
+        <div id="taskbank-admin-filter-bar" class="filter-bar" style="margin-bottom:0;flex-wrap:wrap"></div>
       </div>
       <div id="taskbank-list"></div>
     </div>
+
+    <!-- Student Task Bank -->
+    <div class="page" id="page-student-taskbank">
+      <div class="page-title">🎲 Банк заданий</div>
+      <div class="page-sub">Выбери предмет и тип задания — решай в своём темпе</div>
+
+      <!-- Filters -->
+      <div class="card" style="margin-bottom:18px">
+        <div style="display:flex;flex-wrap:wrap;gap:18px">
+          <div style="flex:1;min-width:160px">
+            <div style="font-size:0.78rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">📚 Предмет</div>
+            <div id="tb-subject-pills" class="filter-bar" style="margin-bottom:0;flex-wrap:wrap"></div>
+          </div>
+          <div style="flex:1;min-width:130px">
+            <div style="font-size:0.78rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">📋 Часть</div>
+            <div id="tb-part-pills" class="filter-bar" style="margin-bottom:0;flex-wrap:wrap"></div>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:0.78rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">🗂 Тип задания</div>
+            <div id="tb-type-pills" class="filter-bar" style="margin-bottom:0;flex-wrap:wrap"></div>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="font-size:0.82rem;color:var(--text3)" id="tb-count-label"></div>
+          <button class="btn btn-outline btn-sm" onclick="tbShuffleQueue()">🔀 Перемешать</button>
+          <button class="btn btn-green btn-sm" onclick="tbStartPractice()">▶ Начать практику</button>
+        </div>
+      </div>
+
+      <!-- Practice mode (hidden by default) -->
+      <div id="tb-practice-wrap" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+            <div>
+              <div style="font-size:0.78rem;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.08em" id="tb-progress-label"></div>
+              <div style="margin-top:4px;background:var(--bg2);border-radius:20px;height:6px;width:220px;overflow:hidden">
+                <div id="tb-progress-bar" style="height:100%;background:var(--green-mid);border-radius:20px;transition:width 0.3s;width:0%"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <div style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#27ae60;font-weight:700"><span>✅</span><span id="tb-correct-count">0</span></div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:var(--red);font-weight:700"><span>❌</span><span id="tb-wrong-count">0</span></div>
+              <button class="btn btn-outline btn-sm" onclick="tbStopPractice()">✕ Завершить</button>
+            </div>
+          </div>
+          <!-- Question card -->
+          <div id="tb-question-card"></div>
+          <!-- Answer area -->
+          <div id="tb-answer-area" style="margin-top:14px"></div>
+          <!-- Result area -->
+          <div id="tb-result-area" style="display:none;margin-top:14px"></div>
+          <!-- Nav buttons -->
+          <div id="tb-nav-buttons" style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+
+      <!-- Task list (browse mode) -->
+      <div id="tb-list-wrap">
+        <div id="tb-task-list"></div>
+        <div id="tb-empty-state" style="display:none" class="empty-state">
+          <div class="big">🗂</div>
+          <p>Нет заданий по выбранным фильтрам</p>
+        </div>
+      </div>
+    </div><!-- /page-student-taskbank -->
 
     <!-- Student Materials -->
     <div class="page" id="page-student-materials">
@@ -1639,8 +1705,22 @@ textarea.q-input{resize:vertical;min-height:70px}
     <span class="modal-close" onclick="closeModal('modal-add-task')">✕</span>
 
     <div class="form-group">
-      <label>Тема / предмет <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
-      <input id="ntask-subject" placeholder="Биология, Органика, Клетка...">
+      <label>Предмет</label>
+      <select id="ntask-subject">
+        <option value="">— Выберите предмет —</option>
+        <option value="Химия ЕГЭ">Химия ЕГЭ</option>
+        <option value="Химия ОГЭ">Химия ОГЭ</option>
+        <option value="Биология ЕГЭ">Биология ЕГЭ</option>
+        <option value="Биология ОГЭ">Биология ОГЭ</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Часть задания</label>
+      <select id="ntask-part">
+        <option value="">— Выберите часть —</option>
+        <option value="Часть 1">Часть 1</option>
+        <option value="Часть 2">Часть 2</option>
+      </select>
     </div>
     <div class="form-group">
       <label>Текст задания</label>
