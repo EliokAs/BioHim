@@ -2145,20 +2145,23 @@ function submitCheck(itemId,qId,itemType){
   const grade=document.getElementById('ca-grade').value;
   const examGradeEl=document.getElementById('ca-exam-grade');
   const examGrade=examGradeEl?examGradeEl.value:'';
-  const items=load(itemType==='test'?'tests':'hw')||[];
+  const storeKey=itemType==='test'?'tests':'hw';
+  const items=load(storeKey)||[];
   const item=items.find(t=>t.id===itemId);
   const q=item.questions.find(q=>q.id===qId);
   q.checked=true; q.grade=grade; q.comment=comment;
   if(examGrade!=='') q.examGrade=examGrade;
-  item.openChecked=true;
-  save(itemType==='test'?'tests':'hw',items);
-  // Add notification
+  // Only mark fully checked when ALL open questions are checked
+  const allOpenChecked=(item.questions||[]).filter(x=>x.type==='open').every(x=>x.checked);
+  item.openChecked=allOpenChecked;
+  save(storeKey,items);
   const notifs=load('notifs')||[];
-  notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ на вопрос "${q.text.substring(0,40)}..." в "${item.title}". Оценка: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
+  notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ в "${item.title}". Оценка: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
   save('notifs',notifs);
   closeModal('modal-check-answer');
-  renderOpenAnswers(); renderHWOpenAnswers();
-  showNotif('✅ Ответ проверен, уведомление отправлено');
+  if(itemType==='test'){ renderTestsAdmin(); renderOpenAnswers(); }
+  else { renderHWAdmin(); renderHWOpenAnswers(); }
+  showNotif('✅ Ответ проверен');
 }
 function addTestQuestion(type){
   const id='q'+Date.now();
@@ -2333,6 +2336,9 @@ function openAssignStudents(type, id){
   } else if(type==='hw'){
     const item=(load('hw')||[]).find(h=>h.id===id);
     if(item) existingStudentIds=[item.studentId];
+  } else if(type==='trial'){
+    const item=(load('trials')||[]).find(t=>t.id===id);
+    if(item) existingStudentIds=[item.studentId];
   }
   const el=document.getElementById('assign-students-list');
   el.innerHTML=students.map(s=>`
@@ -2377,6 +2383,17 @@ function confirmAssignStudents(){
     });
     save('hw',hws);
     renderHWAdmin();
+  } else if(_assignType==='trial'){
+    const trials=load('trials')||[];
+    const original=trials.find(t=>t.id===_assignId);
+    if(!original){ showNotif('Пробник не найден'); return; }
+    checked.forEach(sid=>{
+      if(trials.some(t=>t.title===original.title && t.studentId===sid)) return;
+      trials.push({...original, id:'tr_'+Date.now()+'_'+sid, studentId:sid, isLibrary:false, submitted:false, answers:{}, autoScore:0});
+      addNotif(sid,{type:'trial',text:`🧪 Новый пробник: ${original.title}`,nav:'student-trial'});
+    });
+    save('trials',trials);
+    renderTrialAdmin();
   }
   closeModal('modal-assign-students');
   showNotif(`✅ Отправлено ${checked.length} ученикам`);
@@ -4087,6 +4104,7 @@ function trialAdminItemHTML(t){
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTrialReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('trial','${t.id}')">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
@@ -4367,6 +4385,11 @@ function checkTrialOpenAnswer(tid,qid){
   const openScore=(t.sections||[]).flatMap(s=>s.questions).filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
   t.autoScore=(t.autoScore||0)+openScore;
   save('trials',trials);
+  if(t.studentId){
+    const notifs=load('notifs')||[];
+    notifs.push({id:'n'+Date.now(),studentId:t.studentId,text:`📬 Пробник «${t.title}» проверен. Итог: ${t.autoScore}/${t.autoTotal||t.maxPts} б.`,date:new Date().toLocaleDateString('ru'),read:false});
+    save('notifs',notifs);
+  }
   renderTrialAdmin();
   showNotif(`✅ Ответ засчитан: +${pts} б.`);
 }
