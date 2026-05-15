@@ -3,7 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://meet.jit.si; frame-src https://meet.jit.si; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://meet.jit.si; frame-src https://meet.jit.si; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2d6a4f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BioХим">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232d6a4f'/%3E%3Ctext x='90' y='130' text-anchor='middle' font-family='Georgia,serif' font-size='96' font-weight='700' fill='white'%3EB%3C/text%3E%3C/svg%3E">
+
 <title>BioХим — Платформа репетитора</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -29,6 +39,8 @@
   --radius: 16px;
   --radius2: 24px;
 }
+
+
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); }
@@ -110,8 +122,47 @@ html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--
 }
 .btn-logout:hover { background: rgba(255,255,255,0.16); }
 
+
+
+/* ─── ГЛОБАЛЬНЫЙ ПОИСК ─── */
+.global-search-bar {
+  background: var(--card);
+  border-radius: 0;
+  padding: 12px 40px;
+  margin-bottom: 0;
+  box-shadow: 0 2px 12px rgba(45,106,79,0.10);
+  border-bottom: 1px solid var(--green-xpale);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 240px;
+  right: 0;
+  z-index: 90;
+  backdrop-filter: blur(8px);
+}
+.global-search-bar input {
+  flex: 1;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1.5px solid var(--green-pale);
+  background: var(--bg);
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.93rem;
+  color: var(--text);
+  outline: none;
+  transition: border 0.2s;
+}
+.global-search-bar input:focus {
+  border-color: var(--green-mid);
+}
+.global-search-bar input::placeholder {
+  color: var(--text3);
+}
+
 /* ─── MAIN CONTENT ─── */
-.main { margin-left: 240px; min-height: 100vh; padding: 36px 40px; }
+.main { margin-left: 240px; min-height: 100vh; padding: 72px 40px 36px; }
 .page { display: none; animation: fadeIn 0.3s ease; }
 .page.active { display: block; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -628,6 +679,19 @@ textarea.q-input{resize:vertical;min-height:70px}
 .nb-type-item:hover { background:var(--green-xpale); }
 .nb-type-icon { width:28px; height:28px; border-radius:6px; background:var(--bg2); display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0; }
 
+/* ─── PRINT / PDF ─── */
+@media print {
+  .sidebar, .global-search-bar, #login-screen, .btn-main,
+  .btn-logout, .btn-green, .btn-outline, .btn-red,
+  #notif, .modal-bg, .cal-popup-bg { display: none !important; }
+  .main { margin-left: 0 !important; padding: 16px !important; }
+  #app { display: block !important; }
+  .page { display: none !important; }
+  #page-reports-admin { display: block !important; }
+  #report-output .card { box-shadow: none !important; border: 1px solid #d8f3dc !important; }
+  @page { margin: 1.2cm; size: A4; }
+}
+
 </style>
 </head>
 <body>
@@ -655,7 +719,8 @@ textarea.q-input{resize:vertical;min-height:70px}
     <div class="login-hint" style="margin-top:20px">
       <b>Администратор:</b> admin / admin123<br>
       <b>Ученик 1:</b> anna / 1234<br>
-      <b>Ученик 2:</b> dima / 1234
+      <b>Ученик 2:</b> dima / 1234<br>
+      <b>Родитель:</b> создайте через «✏️ Изменить» ученика
     </div>
   </div>
 </div>
@@ -673,6 +738,15 @@ textarea.q-input{resize:vertical;min-height:70px}
   </div>
 
   <div class="main">
+    <!-- ГЛОБАЛЬНЫЙ ПОИСК -->
+    <div class="global-search-bar">
+      <input type="text" id="global-search-input" placeholder="🔍 Поиск по платформе: материалы, тесты, ДЗ, пробники..." 
+             onkeypress="if(event.key==='Enter') performGlobalSearch(this.value)">
+      <button class="btn btn-green btn-sm" onclick="performGlobalSearch(document.getElementById('global-search-input').value)">
+        Найти
+      </button>
+    </div>
+    
     <!-- ── ADMIN PAGES ── -->
 
     <!-- Dashboard -->
@@ -694,6 +768,34 @@ textarea.q-input{resize:vertical;min-height:70px}
         <div class="card">
           <div class="card-title"><span class="dot"></span>Ближайшие занятия</div>
           <div id="upcoming-list"></div>
+        </div>
+      </div>
+
+      <!-- СРАВНЕНИЕ УЧЕНИКОВ -->
+      <div style="margin-top:20px">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:4px">
+            <span class="dot"></span>
+            📊 Сравнение учеников
+            <span style="margin-left:auto;font-size:0.72rem;color:var(--text3);font-family:'Nunito',sans-serif;font-weight:400">По выполнению ДЗ и среднему баллу · сортировка по ДЗ ↓</span>
+          </div>
+          <div id="dashboard-compare" style="margin-top:4px">
+            <div class="empty-state"><p>Загрузка...</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- СЛАБЫЕ ТЕМЫ -->
+      <div style="margin-top:20px">
+        <div class="card" style="border-left:4px solid #c0392b">
+          <div class="card-title" style="margin-bottom:6px">
+            <span class="dot" style="background:#c0392b"></span>
+            ⚠️ Слабые темы учеников
+            <span style="margin-left:auto;font-size:0.72rem;color:var(--text3);font-family:'Nunito',sans-serif;font-weight:400">Топ-3 тега с наибольшим % ошибок (мин. 2 попытки)</span>
+          </div>
+          <div id="dashboard-weak-topics" style="margin-top:8px">
+            <div class="empty-state"><p>Загрузка...</p></div>
+          </div>
         </div>
       </div>
 
@@ -784,7 +886,7 @@ textarea.q-input{resize:vertical;min-height:70px}
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Имя</th><th>Логин</th><th>Предмет</th><th>Статус</th><th>Оплата</th><th>Действия</th></tr></thead>
+            <thead><tr><th>Имя</th><th>Логин</th><th>Курсы</th><th>Статус</th><th>Оплата</th><th>Действия</th></tr></thead>
             <tbody id="students-table"></tbody>
           </table>
         </div>
@@ -1086,6 +1188,9 @@ textarea.q-input{resize:vertical;min-height:70px}
     <div class="page" id="page-student-taskbank">
       <div class="page-title">🎲 Банк заданий</div>
       <div class="page-sub">Выбери предмет и тип задания — решай в своём темпе</div>
+
+      <!-- Course filter banner -->
+      <div id="tb-course-banner" style="display:none;background:var(--green-xpale);border:1.5px solid var(--green-pale);border-radius:12px;padding:10px 16px;margin-bottom:14px"></div>
 
       <!-- Filters -->
       <div class="card" style="margin-bottom:18px">
@@ -1452,6 +1557,12 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="page-sub">Видео · Конспект в реальном времени · Чат с преподавателем</div>
       <div id="lesson-student-ui"></div>
     </div>
+
+    <!-- PARENT DASHBOARD PAGE -->
+    <div class="page" id="page-parent-dashboard">
+      <!-- Rendered by renderParentDashboard() -->
+    </div>
+
 </div><!-- /main -->
 </div><!-- /app -->
 
@@ -1478,13 +1589,20 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="form-group" style="margin:0"><label>Телефон родителя</label><input id="ns-parent-phone" placeholder="+7 900 000-00-00"></div>
       <div class="form-group" style="margin:0"><label>Email родителя</label><input id="ns-parent-email" type="email" placeholder="parent@mail.ru"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div class="form-group" style="margin:0"><label>Класс</label><input id="ns-grade" placeholder="10А"></div>
-      <div class="form-group" style="margin:0"><label>Предмет</label>
-        <select id="ns-subject"><option>Биология</option><option>Химия</option><option>Биология + Химия</option></select></div>
       <div class="form-group" style="margin:0"><label>Формат</label>
         <select id="ns-format"><option value="">—</option><option>Онлайн</option><option>Очно</option><option>Онлайн + Очно</option></select></div>
     </div>
+
+    <div class="form-group">
+      <label>📚 Курсы (подключить к курсам)</label>
+      <div style="font-size:0.75rem;color:var(--text3);margin-bottom:8px">Задание дня и банк заданий будут только по выбранным курсам</div>
+      <div id="ns-courses-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;padding:10px;background:var(--bg);border-radius:10px;border:1.5px solid var(--green-pale);min-height:44px">
+        <span style="font-size:0.82rem;color:var(--text3);line-height:2">Загрузка курсов...</span>
+      </div>
+    </div>
+
     <div class="form-group"><label>Заметки / цели</label><textarea id="ns-notes" rows="2" placeholder="Цель: ЕГЭ по биологии 2026, слабые места — генетика..."></textarea></div>
 
     <hr class="divider">
@@ -2047,12 +2165,17 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="form-group" style="margin:0"><label>Телефон родителя</label><input id="es-parent-phone" placeholder="+7 900 000-00-00"></div>
       <div class="form-group" style="margin:0"><label>Email родителя</label><input id="es-parent-email" type="email" placeholder="parent@mail.ru"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div class="form-group" style="margin:0"><label>Класс</label><input id="es-grade" placeholder="10А"></div>
-      <div class="form-group" style="margin:0"><label>Предмет</label>
-        <select id="es-subject"><option>Биология</option><option>Химия</option><option>Биология + Химия</option></select></div>
       <div class="form-group" style="margin:0"><label>Формат</label>
         <select id="es-format"><option value="">—</option><option>Онлайн</option><option>Очно</option><option>Онлайн + Очно</option></select></div>
+    </div>
+    <div class="form-group">
+      <label>📚 Курсы (подключить к курсам)</label>
+      <div style="font-size:0.75rem;color:var(--text3);margin-bottom:8px">Задание дня и банк заданий будут только по выбранным курсам</div>
+      <div id="es-courses-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;padding:10px;background:var(--bg);border-radius:10px;border:1.5px solid var(--green-pale);min-height:44px">
+        <span style="font-size:0.82rem;color:var(--text3);line-height:2">Загрузка курсов...</span>
+      </div>
     </div>
     <div class="form-group"><label>Заметки / цели</label><textarea id="es-notes" rows="2" placeholder="Цель: ЕГЭ по биологии 2026..."></textarea></div>
 
@@ -2069,11 +2192,26 @@ textarea.q-input{resize:vertical;min-height:70px}
         <select id="es-oferta"><option value="true">✅ Подписан</option><option value="false">❌ Не подписан</option></select></div>
     </div>
     <button class="btn btn-green" onclick="saveEditStudent()">💾 Сохранить</button>
+
+    <hr class="divider">
+    <div style="font-size:0.8rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">👨‍👩‍👧 Доступ для родителя</div>
+    <div style="background:var(--bg);border-radius:10px;padding:12px 14px;font-size:0.82rem;color:var(--text2);margin-bottom:12px;line-height:1.6">
+      Создайте или обновите аккаунт родителя — он сможет войти и видеть только посещаемость, оценки и статус оплаты.<br>
+      <span id="es-parent-login-val" style="font-weight:600;color:var(--green-deep)"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px">
+      <div class="form-group" style="margin:0">
+        <label>Логин родителя</label>
+        <input id="es-parent-login" placeholder="mama_anna">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Пароль родителя <span style="font-weight:400;color:var(--text3)">(пусто = не менять)</span></label>
+        <input id="es-parent-pass" type="password" placeholder="••••••">
+      </div>
+    </div>
+    <div style="font-size:0.75rem;color:var(--text3);margin-bottom:16px">💡 Введите логин и пароль, чтобы создать или обновить аккаунт. Чтобы привязать существующего пользователя-родителя — введите только его логин.</div>
   </div>
 </div>
-
-
-<!-- STUDENT PROFILE MODAL -->
 <div class="modal-bg" id="modal-student-profile">
   <div class="modal" style="max-width:560px">
     <div class="modal-title">👤 Профиль ученика</div>
@@ -2413,8 +2551,42 @@ textarea.q-input{resize:vertical;min-height:70px}
 </div>
 
 
+
+<!-- NOTIF TEMPLATES MODAL -->
+<div class="modal-bg" id="modal-notif-templates">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title" id="notif-tpl-title">🔔 Шаблоны уведомлений</div>
+    <span class="modal-close" onclick="closeModal('modal-notif-templates')">✕</span>
+    <div id="notif-tpl-body"></div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="script.js"></script>
+
+<script>
+// ── PWA: регистрация Service Worker ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        // Уведомляем если есть обновление
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+              // Показываем тост через существующую функцию showNotif если доступна
+              if (typeof showNotif === 'function') {
+                showNotif('🔄 Доступно обновление приложения. Обновите страницу.');
+              }
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
 
 </body>
 </html>
