@@ -139,8 +139,15 @@ html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--
   top: 0;
   left: 240px;
   right: 0;
-  z-index: 90;
+  z-index: 95;
   backdrop-filter: blur(8px);
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  will-change: transform;
+}
+.global-search-bar.hidden {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 .global-search-bar input {
   flex: 1;
@@ -930,6 +937,7 @@ textarea.q-input{resize:vertical;min-height:70px}
         </div>
         <div id="tests-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
+      <div id="tests-pending-banner" style="display:none"></div>
       <div id="tests-admin-list"></div>
       <div class="card" id="card-check-open" style="margin-top:16px">
         <div class="card-title"><span class="dot"></span>🔍 Проверка открытых ответов</div>
@@ -951,6 +959,7 @@ textarea.q-input{resize:vertical;min-height:70px}
         </div>
         <div id="hw-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
+      <div id="hw-pending-banner" style="display:none"></div>
       <div id="hw-admin-list"></div>
       <div class="card" style="margin-top:16px">
         <div class="card-title"><span class="dot"></span>🔍 Проверка открытых ответов ДЗ</div>
@@ -1321,6 +1330,7 @@ textarea.q-input{resize:vertical;min-height:70px}
         </div>
         <div id="trial-student-chips" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       </div>
+      <div id="trial-pending-banner" style="display:none"></div>
       <div id="trial-admin-list"></div>
       <div class="card" style="margin-top:16px">
         <div class="card-title"><span class="dot"></span>🔍 Проверка открытых ответов</div>
@@ -2563,6 +2573,26 @@ textarea.q-input{resize:vertical;min-height:70px}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="script.js"></script>
+
+<script>
+// ── Hide search bar on scroll down, show on scroll up ──
+(function(){
+  let lastY = 0;
+  const main = document.querySelector('.main');
+  if(!main) return;
+  main.addEventListener('scroll', function(){
+    const bar = document.querySelector('.global-search-bar');
+    if(!bar) return;
+    const y = main.scrollTop;
+    if(y > lastY && y > 60){
+      bar.classList.add('hidden');
+    } else {
+      bar.classList.remove('hidden');
+    }
+    lastY = y;
+  }, {passive: true});
+})();
+</script>
 
 <script>
 // ── PWA: регистрация Service Worker ──
