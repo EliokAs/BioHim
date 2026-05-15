@@ -2046,6 +2046,7 @@ function renderTestsAdmin(){
   // Update open answers for selected student (use first student if "all")
   _selectedStudent = _testsSelectedSid === 'all' ? (students[0]||{}).id : _testsSelectedSid;
   renderOpenAnswers();
+  renderPendingReviewBanner('test', 'tests-pending-banner');
   // Inject admin comment threads for submitted tests
   (load('tests')||[]).filter(t=>t.submitted).forEach(t=>{
     const el2 = document.getElementById(`adm-cmt-test-${t.id}`);
@@ -2060,7 +2061,12 @@ function renderTestsAdmin(){
 }
 function testItemHTML(t){
   const totalPts = (t.questions||[]).reduce((s,q)=>s+(+q.points||1),0);
-  return `<div class="content-item" style="flex-direction:column;align-items:stretch">
+  const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+  const needsReview = t.submitted && !t.openChecked && hasOpen;
+  const openUnchecked = needsReview
+    ? (t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
+    : [];
+  return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="content-icon">📋</div>
       <div class="content-info">
@@ -2068,16 +2074,16 @@ function testItemHTML(t){
         <div class="content-meta">${t.questions.length} вопросов · ${totalPts} ${ptWord(totalPts)} · Создан: ${t.date}</div>
         <div class="content-meta" style="margin-top:4px">
           ${(()=>{
-            const hasOpen=(t.questions||[]).some(q=>q.type==='open');
             if(!t.submitted) return '<span class="badge badge-gold">Не сдан</span>';
             const scoreStr = t.autoTotal ? ` ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}` : '';
             if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}`;
-            return `<span class="badge badge-gold">Ожидает проверки</span>${scoreStr}`;
+            return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>${scoreStr}`;
           })()}
           ${t.autoGrade?`<span class="grade-result-badge grade-${t.autoGrade}" style="font-size:0.72rem;padding:3px 10px">Оценка: ${t.autoGrade}</span>`:''}
         </div>
       </div>
       <div class="content-actions" style="flex-shrink:0">
+        ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTestReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('test','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
@@ -2085,6 +2091,15 @@ function testItemHTML(t){
       </div>
     </div>
     <div style="margin-top:2px">${availBadge(t)}</div>
+    ${needsReview ? `<div id="test-review-panel-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
+      <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
+      ${openUnchecked.map(q=>`
+        <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
+          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
+          <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${t.answers[q.id]||'—'}</div>
+          <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
+        </div>`).join('')}
+    </div>` : ''}
     ${t.submitted ? `<div id="adm-cmt-test-${t.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
 }
@@ -2367,6 +2382,62 @@ function confirmAssignStudents(){
   showNotif(`✅ Отправлено ${checked.length} ученикам`);
 }
 
+// ─── PENDING REVIEW BANNER ───
+function renderPendingReviewBanner(type, containerId){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  let items = [];
+  if(type==='hw'){
+    items = (load('hw')||[]).filter(h=>h.studentId && h.submitted && !h.openChecked && (h.questions||[]).some(q=>q.type==='open'));
+  } else if(type==='test'){
+    items = (load('tests')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked && (t.questions||[]).some(q=>q.type==='open'));
+  } else if(type==='trial'){
+    items = (load('trials')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked && (t.sections||[]).flatMap(s=>s.questions).some(q=>q.type==='open'));
+  }
+  const users = load('users')||[];
+  if(!items.length){ el.innerHTML=''; el.style.display='none'; return; }
+  el.style.display='block';
+  const typeLabel = {hw:'ДЗ',test:'тест',trial:'пробник'};
+  el.innerHTML=`<div style="background:linear-gradient(135deg,#fde8e6,#fff5f5);border:1.5px solid #f5c6c1;border-radius:14px;padding:16px 20px;margin-bottom:18px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="font-size:1.4rem">🔴</div>
+      <div style="font-weight:700;font-size:0.95rem;color:#c0392b">На проверке: ${items.length} ${typeLabel[type]||'работ'}</div>
+    </div>
+    ${items.map(item=>{
+      const u = users.find(u=>u.id===item.studentId);
+      const uname = u ? u.name : '—';
+      const allQ = type==='trial' ? (item.sections||[]).flatMap(s=>s.questions) : (item.questions||[]);
+      const openCount = allQ.filter(q=>q.type==='open' && item.answers && item.answers[q.id] && !q.checked).length;
+      const panelId = `${type}-review-panel-${item.id}`;
+      return `<div style="background:var(--white);border-radius:10px;padding:10px 14px;margin-bottom:8px;border:1px solid #f5c6c1;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-size:1rem">✏️</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:0.9rem;color:var(--accent)">${esc(item.title)}</div>
+          <div style="font-size:0.78rem;color:var(--text3)">👤 ${uname} · ${openCount} открытых ответа</div>
+        </div>
+        <button class="btn btn-green btn-sm" onclick="toggleReviewPanelFromBanner('${type}','${item.id}')" style="font-weight:700;white-space:nowrap">✅ Проверить</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function toggleReviewPanelFromBanner(type, itemId){
+  // Scroll to item and open its review panel
+  const panelId = `${type}-review-panel-${itemId}`;
+  let panel = document.getElementById(panelId);
+  if(!panel){
+    // Item might be in collapsed view - find and open it
+    if(type==='hw') { renderHWAdmin(); }
+    else if(type==='test') { renderTestsAdmin(); }
+    else if(type==='trial') { renderTrialAdmin(); }
+    panel = document.getElementById(panelId);
+  }
+  if(panel){
+    panel.style.display='block';
+    setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'center'}),100);
+  }
+}
+
 // ─── HW ADMIN ───
 let _tempHWQuestions=[];
 let _hwSelectedSid = 'all';
@@ -2409,6 +2480,7 @@ function renderHWAdmin(){
 
   _selectedStudent = _hwSelectedSid === 'all' ? (students[0]||{}).id : _hwSelectedSid;
   renderHWOpenAnswers();
+  renderPendingReviewBanner('hw', 'hw-pending-banner');
   // Inject admin comment threads for submitted HW
   (load('hw')||[]).filter(h=>h.submitted).forEach(h=>{
     const el2 = document.getElementById(`adm-cmt-hw-${h.id}`);
@@ -2422,7 +2494,12 @@ function renderHWAdmin(){
   }
 }
 function hwItemHTML(h){
-  return `<div class="content-item" style="flex-direction:column;align-items:stretch">
+  const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+  const needsReview = h.submitted && !h.openChecked && hasOpen;
+  const openUnchecked = needsReview
+    ? (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked)
+    : [];
+  return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="content-icon">✏️</div>
       <div class="content-info">
@@ -2430,14 +2507,14 @@ function hwItemHTML(h){
         <div class="content-meta">${h.desc||''} · Срок: ${h.due||'—'}</div>
         <div class="content-meta" style="margin-top:4px">
           ${(()=>{
-            const hasOpen=(h.questions||[]).some(q=>q.type==='open');
             if(!h.submitted) return '<span class="badge badge-gold">Ожидается</span>';
             if(h.openChecked || !hasOpen) return '<span class="badge badge-green">✓ Проверено</span>';
-            return '<span class="badge badge-gold">Ожидает проверки</span>';
+            return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
           })()}
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
+        ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openHWReviewPanel('${h.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('hw','${h.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
@@ -2445,8 +2522,32 @@ function hwItemHTML(h){
       </div>
     </div>
     <div style="margin-top:2px">${availBadge(h)}</div>
+    ${needsReview ? `<div id="hw-review-panel-${h.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
+      <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
+      ${openUnchecked.map(q=>`
+        <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
+          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
+          <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${h.answers[q.id]||'—'}</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-green btn-sm" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
     ${h.submitted ? `<div id="adm-cmt-hw-${h.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
+}
+
+function openHWReviewPanel(hwId){
+  const panel = document.getElementById(`hw-review-panel-${hwId}`);
+  if(panel) panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+}
+function openTestReviewPanel(testId){
+  const panel = document.getElementById(`test-review-panel-${testId}`);
+  if(panel) panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+}
+function openTrialReviewPanel(trialId){
+  const panel = document.getElementById(`trial-review-panel-${trialId}`);
+  if(panel) panel.style.display = panel.style.display==='none' ? 'block' : 'none';
 }
 function renderHWOpenAnswers(){
   const students = (load('users')||[]).filter(u=>u.role==='student');
@@ -3953,6 +4054,7 @@ function renderTrialAdmin(){
       ${st.length?st.map(t=>trialAdminItemHTML(t)).join(''):emptyHTML()}</div>`;
   }
   renderTrialOpenAnswers();
+  renderPendingReviewBanner('trial', 'trial-pending-banner');
   // Library
   const _libTrials=(load('trials')||[]).filter(t=>t.isLibrary);
   if(_libTrials.length){
@@ -3965,25 +4067,46 @@ function trialAdminItemHTML(t){
   const allQ = (t.sections||[]).flatMap(s=>s.questions);
   const hasOpen = allQ.some(q=>q.type==='open');
   const fullyChecked = t.submitted && (!hasOpen || t.openChecked);
+  const needsReview = t.submitted && hasOpen && !t.openChecked;
+  const openUnchecked = needsReview
+    ? allQ.filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
+    : [];
   const statusBadge = !t.submitted
     ? `<span class="badge badge-gold">⏳ Не пройден</span>`
     : fullyChecked
       ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%</span>`
-      : `<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке</span>`;
-  return `<div class="content-item">
-    <div class="content-icon">🎯</div>
-    <div class="content-info">
-      <div class="content-name">${esc(t.title)}</div>
-      <div class="content-meta">${t.subject||''} · ⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б. · ${t.date}</div>
-      <div style="margin-top:4px">${statusBadge}</div>
-    </div>
-    <div style="display:flex;gap:6px">
-      ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
-      <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
-      <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
-      <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
+      : `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
+  return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="content-icon">🎯</div>
+      <div class="content-info">
+        <div class="content-name">${esc(t.title)}</div>
+        <div class="content-meta">${t.subject||''} · ⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б. · ${t.date}</div>
+        <div style="margin-top:4px">${statusBadge}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
+        ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTrialReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
+        ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
+        <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
+      </div>
     </div>
     <div style="margin-top:2px">${availBadge(t)}</div>
+    ${needsReview ? `<div id="trial-review-panel-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
+      <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
+      ${openUnchecked.map(q=>`
+        <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
+          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
+          <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${t.answers[q.id]||'—'}</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
+              style="width:70px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem">
+            <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
+            <button class="btn btn-green btn-sm" onclick="checkTrialOpenAnswer('${t.id}','${q.id}')">✅ Зачесть</button>
+          </div>
+        </div>`).join('')}
+    </div>` : ''}
   </div>`;
 }
 function deleteTrial(id){ save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
@@ -4368,6 +4491,11 @@ function submitTrial(timeout=false){
   document.getElementById('modal-take-trial').classList.remove('open');
   renderStudentTrial();
   showNotif(timeout?`⏰ Время вышло! Авто: ${score}/${t.autoTotal} б.`:`✅ Пробник сдан! Авто: ${score}/${t.autoTotal} б. (${pct}%)`);
+  // notify admin
+  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`🧪 ${currentUser.name} сдал(а) пробник «${esc(t.title)}»${timeout?' (время вышло)':''}`, date:new Date().toLocaleDateString('ru'), read:false});
+  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  updateAdminBadge();
 }
 function viewTrialResultHTML(t){
   const allQ=(t.sections||[]).flatMap(s=>s.questions);
@@ -5417,6 +5545,187 @@ function renderStudentDashboard(){
   // Daily task
   renderStudentZoomBlock();
   renderDailyTaskBlock(sid);
+}
+
+// ═══════════════════════════════════════════════
+// PARENT DASHBOARD
+// ═══════════════════════════════════════════════
+function renderParentDashboard(){
+  const el = document.getElementById('page-parent-dashboard');
+  if(!el) return;
+
+  // Find linked student
+  const sid = currentUser.linkedStudentId;
+  const users = load('users')||[];
+  const student = users.find(u=>u.id===sid);
+
+  if(!student){
+    el.innerHTML = `<div class="page-title">👨‍👩‍👧 Дашборд родителя</div>
+      <div class="card"><div class="empty-state"><div class="big">👤</div><p>Ученик не привязан к аккаунту. Обратитесь к преподавателю.</p></div></div>`;
+    return;
+  }
+
+  const tests    = (load('tests')||[]).filter(t=>t.studentId===sid);
+  const hws      = (load('hw')||[]).filter(h=>h.studentId===sid);
+  const trials   = (load('trials')||[]).filter(t=>t.studentId===sid);
+  const content  = (load('content')||[]).filter(c=>c.studentId===sid && c.type==='theory');
+  const payments = (load('payments')||[]).filter(p=>p.studentId===sid);
+  const att      = (load('attendance')||[]).filter(a=>a.studentId===sid);
+
+  const initials = student.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
+
+  // ── Статистика
+  const statsHtml = `
+    <div class="grid-3" style="margin-bottom:24px">
+      <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${tests.filter(t=>t.submitted).length}/${tests.length}</div><div class="stat-label">Тестов сдано</div></div>
+      <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hws.filter(h=>h.submitted).length}/${hws.length}</div><div class="stat-label">ДЗ выполнено</div></div>
+      <div class="stat-card"><div class="stat-icon">🧪</div><div class="stat-num">${trials.filter(t=>t.submitted).length}/${trials.length}</div><div class="stat-label">Пробников пройдено</div></div>
+    </div>`;
+
+  // ── Оплаты
+  const paymentsHtml = payments.length
+    ? payments.slice().reverse().map(p=>{
+        const cls = {paid:'badge-green',unpaid:'badge-red',partial:'badge-gold'}[p.status]||'badge-red';
+        const icon = {paid:'✅',unpaid:'❌',partial:'⚠️'}[p.status]||'❌';
+        const lbl  = {paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично'}[p.status]||'';
+        return `<div class="payment-status ${p.status}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+          <div>
+            <b>${esc(p.period)}</b>
+            ${p.note?`<span style="font-size:0.8rem;color:var(--text3);margin-left:6px">${esc(p.note)}</span>`:''}
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-weight:700">${p.amount}₽</span>
+            <span class="badge ${cls}">${icon} ${lbl}</span>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>Нет записей об оплате</p></div>';
+
+  // ── Занятия
+  const lessonsHtml = att.length
+    ? att.slice().reverse().slice(0,10).map(a=>{
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
+          <div style="font-weight:600;font-size:0.88rem">📅 ${a.date}${a.time?' · '+a.time:''}</div>
+          <div style="font-size:0.8rem;color:var(--text3)">${a.topic?'📖 '+esc(a.topic):''}${a.duration?' · '+a.duration+' мин':''}</div>
+          <div style="margin-top:3px">
+            <span class="badge ${a.present?'badge-green':'badge-red'}" style="font-size:0.7rem">${a.present?'✅ Был на занятии':'❌ Отсутствовал'}</span>
+            ${a.present&&a.costPerStudent?`<span style="font-size:0.72rem;color:var(--text3);margin-left:8px">💰 ${a.costPerStudent}₽ · ${a.paid?'✅ Оплачено':'❌ Не оплачено'}</span>`:''}
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>Занятий пока нет</p></div>';
+
+  // ── Материалы (темы)
+  const topicsHtml = content.length
+    ? content.map(c=>{
+        const viewed = JSON.parse(localStorage.getItem('biohim_viewed_'+sid)||'{}');
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--green-xpale);display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.85rem">${viewed[c.id]?'✅':'🔵'}</span>
+          <span style="font-size:0.85rem;font-weight:500">${esc(c.title)}</span>
+          ${viewed[c.id]?'':'<span style="font-size:0.72rem;color:var(--green-mid)">Не просмотрено</span>'}
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>Нет материалов</p></div>';
+
+  // ── Тесты
+  const testsHtml = tests.length
+    ? tests.slice().reverse().map(t=>{
+        const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
+        const hasOpen = (t.questions||[]).some(q=>q.type==='open');
+        const statusBadge = !t.submitted
+          ? `<span class="badge badge-gold">⏳ Не сдан</span>`
+          : (t.openChecked||!hasOpen)
+            ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal} б. (${pct}%) · Оценка ${t.autoGrade||calcGrade(pct,t.gradeConfig)}</span>`
+            : `<span class="badge badge-gold">📝 Ожидает проверки · авто: ${t.autoScore||0}/${t.autoTotal} б.</span>`;
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
+          <div style="font-weight:600;font-size:0.88rem">${esc(t.title)}</div>
+          <div style="margin-top:4px">${statusBadge}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>Тестов нет</p></div>';
+
+  // ── ДЗ
+  const hwsHtml = hws.length
+    ? hws.slice().reverse().map(h=>{
+        const hasOpen = (h.questions||[]).some(q=>q.type==='open');
+        const statusBadge = !h.submitted
+          ? `<span class="badge badge-gold">⏳ Не сдано</span>`
+          : (h.openChecked||!hasOpen)
+            ? `<span class="badge badge-green">✅ Проверено</span>`
+            : `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
+        const overdue = !h.submitted&&h.due&&new Date(h.due.split('.').reverse().join('-'))<new Date();
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
+          <div style="font-weight:600;font-size:0.88rem">${esc(h.title)}</div>
+          ${h.due?`<div style="font-size:0.78rem;color:var(--text3);margin-top:2px">📅 Срок: ${h.due}${overdue&&!h.submitted?' <span style="color:#c0392b;font-weight:700">ПРОСРОЧЕНО</span>':''}</div>`:''}
+          <div style="margin-top:4px">${statusBadge}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>ДЗ нет</p></div>';
+
+  // ── Пробники
+  const trialsHtml = trials.length
+    ? trials.slice().reverse().map(t=>{
+        const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
+        const allQ = (t.sections||[]).flatMap(s=>s.questions);
+        const hasOpen = allQ.some(q=>q.type==='open');
+        const statusBadge = !t.submitted
+          ? `<span class="badge badge-gold">⏳ Не пройден</span>`
+          : (t.openChecked||!hasOpen)
+            ? `<span class="badge badge-green">✅ ${t.autoScore||0}/${t.autoTotal} б. · ${pct}% · Оценка ${calcGrade(pct,t.gradeConfig)}</span>`
+            : `<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal} б.</span>`;
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
+          <div style="font-weight:600;font-size:0.88rem">${esc(t.title)}${t.subject?` <span style="font-size:0.75rem;color:var(--text3)">· ${t.subject}</span>`:''}</div>
+          <div style="margin-top:4px">${statusBadge}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state"><p>Пробников нет</p></div>';
+
+  el.innerHTML = `
+    <div class="page-title">👨‍👩‍👧 Дашборд родителя</div>
+    <div class="page-sub">Информация об успехах ребёнка</div>
+
+    <div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,var(--green-xpale),var(--bg))">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--green-deep),var(--green-mid));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.3rem;font-weight:700;flex-shrink:0">${initials}</div>
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--accent);font-weight:700">${esc(student.name)}</div>
+          <div style="font-size:0.8rem;color:var(--text3)">${student.grade||''} ${student.subject?'· '+student.subject:''} ${student.format?'· '+student.format:''}</div>
+        </div>
+      </div>
+    </div>
+
+    ${statsHtml}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>💰 Оплата</div>
+        ${paymentsHtml}
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>📅 Занятия (последние 10)</div>
+        ${lessonsHtml}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title"><span class="dot"></span>📖 Материалы / Темы</div>
+      ${topicsHtml}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>📋 Тесты</div>
+        ${testsHtml}
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>✏️ Домашние задания</div>
+        ${hwsHtml}
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>🧪 Пробники</div>
+        ${trialsHtml}
+      </div>
+    </div>`;
 }
 
 let _materialFilter = 'all';
