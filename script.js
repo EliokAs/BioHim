@@ -2145,31 +2145,19 @@ function submitCheck(itemId,qId,itemType){
   const grade=document.getElementById('ca-grade').value;
   const examGradeEl=document.getElementById('ca-exam-grade');
   const examGrade=examGradeEl?examGradeEl.value:'';
-  const storeKey=itemType==='test'?'tests':'hw';
-  const items=load(storeKey)||[];
+  const items=load(itemType==='test'?'tests':'hw')||[];
   const item=items.find(t=>t.id===itemId);
-  if(!item) return;
-  // Mark checked question
   const q=item.questions.find(q=>q.id===qId);
   q.checked=true; q.grade=grade; q.comment=comment;
   if(examGrade!=='') q.examGrade=examGrade;
-  // Auto-mark unanswered open questions as 0 and checked
-  (item.questions||[]).forEach(qq=>{
-    if(qq.type==='open' && !qq.checked && !(item.answers&&item.answers[qq.id])){
-      qq.checked=true; qq.grade='0'; qq.comment='Не выполнено';
-    }
-  });
-  // Set openChecked only if all answered open questions are now checked
-  const stillUnchecked=(item.questions||[]).filter(qq=>qq.type==='open' && item.answers&&item.answers[qq.id] && !qq.checked);
-  item.openChecked = stillUnchecked.length === 0;
-  save(storeKey,items);
+  item.openChecked=true;
+  save(itemType==='test'?'tests':'hw',items);
   // Add notification
   const notifs=load('notifs')||[];
   notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ на вопрос "${q.text.substring(0,40)}..." в "${item.title}". Оценка: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
   save('notifs',notifs);
   closeModal('modal-check-answer');
   renderOpenAnswers(); renderHWOpenAnswers();
-  if(itemType==='test') renderTestsAdmin(); else renderHWAdmin();
   showNotif('✅ Ответ проверен, уведомление отправлено');
 }
 function addTestQuestion(type){
@@ -2345,6 +2333,10 @@ function openAssignStudents(type, id){
   } else if(type==='hw'){
     const item=(load('hw')||[]).find(h=>h.id===id);
     if(item) existingStudentIds=[item.studentId];
+  } else if(type==='trial'){
+    const sent=(load('trials')||[]).filter(t=>!t.isLibrary);
+    const orig=(load('trials')||[]).find(t=>t.id===id);
+    if(orig) existingStudentIds=sent.filter(t=>t.title===orig.title && t.studentId).map(t=>t.studentId);
   }
   const el=document.getElementById('assign-students-list');
   el.innerHTML=students.map(s=>`
@@ -2389,6 +2381,20 @@ function confirmAssignStudents(){
     });
     save('hw',hws);
     renderHWAdmin();
+  } else if(_assignType==='trial'){
+    const trials=load('trials')||[];
+    const original=trials.find(t=>t.id===_assignId);
+    if(!original){ showNotif('Пробник не найден'); return; }
+    checked.forEach(sid=>{
+      if(trials.some(t=>t.title===original.title && t.studentId===sid)) return;
+      const newSections=JSON.parse(JSON.stringify(original.sections||[]));
+      newSections.forEach(s=>(s.questions||[]).forEach(q=>{ q.checked=false; delete q.earnedPts; delete q.grade; }));
+      trials.push({...original, id:'tr_'+Date.now()+'_'+sid, studentId:sid, isLibrary:false,
+        submitted:false, answers:{}, autoScore:0, openChecked:false, sections:newSections});
+      addNotif(sid,{type:'trial',text:`🧪 Новый пробник: ${original.title}`,nav:'student-trial'});
+    });
+    save('trials',trials);
+    renderTrialAdmin();
   }
   closeModal('modal-assign-students');
   showNotif(`✅ Отправлено ${checked.length} ученикам`);
@@ -4102,6 +4108,7 @@ function trialAdminItemHTML(t){
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTrialReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('trial','${t.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
@@ -4376,20 +4383,11 @@ function checkTrialOpenAnswer(tid,qid){
   const trials=load('trials')||[];
   const t=trials.find(t=>t.id===tid); if(!t) return;
   const pts=+(document.getElementById(`pts-tr-${tid}-${qid}`)?.value)||0;
-  const allQ=(t.sections||[]).flatMap(s=>s.questions);
-  // Mark this question
-  allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; } });
-  // Auto-zero unanswered open questions
-  allQ.forEach(q=>{
-    if(q.type==='open' && !q.checked && !(t.answers&&t.answers[q.id])){
-      q.checked=true; q.earnedPts=0;
-    }
-  });
-  // openChecked = all answered open questions are checked
-  const stillUnchecked=allQ.filter(q=>q.type==='open' && t.answers&&t.answers[q.id] && !q.checked);
-  t.openChecked = stillUnchecked.length === 0;
-  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
-  t.autoScore=(t.autoScore||0)+pts;
+  (t.sections||[]).forEach(s=>s.questions.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; } }));
+  const openDone=(t.sections||[]).flatMap(s=>s.questions).filter(q=>q.type==='open').every(q=>q.checked);
+  t.openChecked=openDone;
+  const openScore=(t.sections||[]).flatMap(s=>s.questions).filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
+  t.autoScore=(t.autoScore||0)+openScore;
   save('trials',trials);
   renderTrialAdmin();
   showNotif(`✅ Ответ засчитан: +${pts} б.`);
@@ -6000,7 +5998,6 @@ function renderHWResults(h){
     }
   }).join('');
 }
-
 let _doingHW=null; let _hwAnswers={};
 function doHW(id){
   const hws=load('hw')||[];
@@ -7998,6 +7995,7 @@ function loadSendGroupItems(type){
     items = (load('trials')||[]).filter(t=>{ if(seen.has(t.title)) return false; seen.add(t.title); return true; });
   }
   else if(type==='slot') items = load('slots')||[];
+
   // De-duplicate by title for content/test/hw
   if(['content','test','hw'].includes(type)){
     const seen = new Set();
