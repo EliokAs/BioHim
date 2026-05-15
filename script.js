@@ -2062,10 +2062,10 @@ function renderTestsAdmin(){
 function testItemHTML(t){
   const totalPts = (t.questions||[]).reduce((s,q)=>s+(+q.points||1),0);
   const hasOpen=(t.questions||[]).some(q=>q.type==='open');
-  const needsReview = t.submitted && !t.openChecked && hasOpen;
-  const openUnchecked = needsReview
+  const openUnchecked = t.submitted
     ? (t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
     : [];
+  const needsReview = t.submitted && !t.openChecked && openUnchecked.length > 0;
   return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="content-icon">📋</div>
@@ -2076,7 +2076,7 @@ function testItemHTML(t){
           ${(()=>{
             if(!t.submitted) return '<span class="badge badge-gold">Не сдан</span>';
             const scoreStr = t.autoTotal ? ` ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}` : '';
-            if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}`;
+            if(t.openChecked || !hasOpen || openUnchecked.length === 0) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}`;
             return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>${scoreStr}`;
           })()}
           ${t.autoGrade?`<span class="grade-result-badge grade-${t.autoGrade}" style="font-size:0.72rem;padding:3px 10px">Оценка: ${t.autoGrade}</span>`:''}
@@ -2145,23 +2145,20 @@ function submitCheck(itemId,qId,itemType){
   const grade=document.getElementById('ca-grade').value;
   const examGradeEl=document.getElementById('ca-exam-grade');
   const examGrade=examGradeEl?examGradeEl.value:'';
-  const storeKey=itemType==='test'?'tests':'hw';
-  const items=load(storeKey)||[];
+  const items=load(itemType==='test'?'tests':'hw')||[];
   const item=items.find(t=>t.id===itemId);
   const q=item.questions.find(q=>q.id===qId);
   q.checked=true; q.grade=grade; q.comment=comment;
   if(examGrade!=='') q.examGrade=examGrade;
-  // Only mark fully checked when ALL open questions are checked
-  const allOpenChecked=(item.questions||[]).filter(x=>x.type==='open').every(x=>x.checked);
-  item.openChecked=allOpenChecked;
-  save(storeKey,items);
+  item.openChecked=true;
+  save(itemType==='test'?'tests':'hw',items);
+  // Add notification
   const notifs=load('notifs')||[];
-  notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ в "${item.title}". Оценка: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
+  notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ на вопрос "${q.text.substring(0,40)}..." в "${item.title}". Оценка: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
   save('notifs',notifs);
   closeModal('modal-check-answer');
-  if(itemType==='test'){ renderTestsAdmin(); renderOpenAnswers(); }
-  else { renderHWAdmin(); renderHWOpenAnswers(); }
-  showNotif('✅ Ответ проверен');
+  renderOpenAnswers(); renderHWOpenAnswers();
+  showNotif('✅ Ответ проверен, уведомление отправлено');
 }
 function addTestQuestion(type){
   const id='q'+Date.now();
@@ -2336,9 +2333,6 @@ function openAssignStudents(type, id){
   } else if(type==='hw'){
     const item=(load('hw')||[]).find(h=>h.id===id);
     if(item) existingStudentIds=[item.studentId];
-  } else if(type==='trial'){
-    const item=(load('trials')||[]).find(t=>t.id===id);
-    if(item) existingStudentIds=[item.studentId];
   }
   const el=document.getElementById('assign-students-list');
   el.innerHTML=students.map(s=>`
@@ -2383,17 +2377,6 @@ function confirmAssignStudents(){
     });
     save('hw',hws);
     renderHWAdmin();
-  } else if(_assignType==='trial'){
-    const trials=load('trials')||[];
-    const original=trials.find(t=>t.id===_assignId);
-    if(!original){ showNotif('Пробник не найден'); return; }
-    checked.forEach(sid=>{
-      if(trials.some(t=>t.title===original.title && t.studentId===sid)) return;
-      trials.push({...original, id:'tr_'+Date.now()+'_'+sid, studentId:sid, isLibrary:false, submitted:false, answers:{}, autoScore:0});
-      addNotif(sid,{type:'trial',text:`🧪 Новый пробник: ${original.title}`,nav:'student-trial'});
-    });
-    save('trials',trials);
-    renderTrialAdmin();
   }
   closeModal('modal-assign-students');
   showNotif(`✅ Отправлено ${checked.length} ученикам`);
@@ -2405,11 +2388,14 @@ function renderPendingReviewBanner(type, containerId){
   if(!el) return;
   let items = [];
   if(type==='hw'){
-    items = (load('hw')||[]).filter(h=>h.studentId && h.submitted && !h.openChecked && (h.questions||[]).some(q=>q.type==='open'));
+    items = (load('hw')||[]).filter(h=>h.studentId && h.submitted && !h.openChecked &&
+      (h.questions||[]).some(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked));
   } else if(type==='test'){
-    items = (load('tests')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked && (t.questions||[]).some(q=>q.type==='open'));
+    items = (load('tests')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked &&
+      (t.questions||[]).some(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked));
   } else if(type==='trial'){
-    items = (load('trials')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked && (t.sections||[]).flatMap(s=>s.questions).some(q=>q.type==='open'));
+    items = (load('trials')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked &&
+      (t.sections||[]).flatMap(s=>s.questions).some(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked));
   }
   const users = load('users')||[];
   if(!items.length){ el.innerHTML=''; el.style.display='none'; return; }
@@ -2512,10 +2498,10 @@ function renderHWAdmin(){
 }
 function hwItemHTML(h){
   const hasOpen=(h.questions||[]).some(q=>q.type==='open');
-  const needsReview = h.submitted && !h.openChecked && hasOpen;
-  const openUnchecked = needsReview
+  const openUnchecked = h.submitted
     ? (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked)
     : [];
+  const needsReview = h.submitted && !h.openChecked && openUnchecked.length > 0;
   return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="content-icon">✏️</div>
@@ -2525,7 +2511,7 @@ function hwItemHTML(h){
         <div class="content-meta" style="margin-top:4px">
           ${(()=>{
             if(!h.submitted) return '<span class="badge badge-gold">Ожидается</span>';
-            if(h.openChecked || !hasOpen) return '<span class="badge badge-green">✓ Проверено</span>';
+            if(h.openChecked || !hasOpen || openUnchecked.length === 0) return '<span class="badge badge-green">✓ Проверено</span>';
             return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
           })()}
         </div>
@@ -4083,11 +4069,11 @@ function trialAdminItemHTML(t){
   const pct = t.autoTotal ? Math.round(t.autoScore/t.autoTotal*100) : 0;
   const allQ = (t.sections||[]).flatMap(s=>s.questions);
   const hasOpen = allQ.some(q=>q.type==='open');
-  const fullyChecked = t.submitted && (!hasOpen || t.openChecked);
-  const needsReview = t.submitted && hasOpen && !t.openChecked;
-  const openUnchecked = needsReview
+  const openUnchecked = t.submitted
     ? allQ.filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
     : [];
+  const needsReview = t.submitted && !t.openChecked && openUnchecked.length > 0;
+  const fullyChecked = t.submitted && (!hasOpen || t.openChecked || openUnchecked.length === 0);
   const statusBadge = !t.submitted
     ? `<span class="badge badge-gold">⏳ Не пройден</span>`
     : fullyChecked
@@ -4104,7 +4090,6 @@ function trialAdminItemHTML(t){
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTrialReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
-        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('trial','${t.id}')">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
@@ -4385,11 +4370,6 @@ function checkTrialOpenAnswer(tid,qid){
   const openScore=(t.sections||[]).flatMap(s=>s.questions).filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
   t.autoScore=(t.autoScore||0)+openScore;
   save('trials',trials);
-  if(t.studentId){
-    const notifs=load('notifs')||[];
-    notifs.push({id:'n'+Date.now(),studentId:t.studentId,text:`📬 Пробник «${t.title}» проверен. Итог: ${t.autoScore}/${t.autoTotal||t.maxPts} б.`,date:new Date().toLocaleDateString('ru'),read:false});
-    save('notifs',notifs);
-  }
   renderTrialAdmin();
   showNotif(`✅ Ответ засчитан: +${pts} б.`);
 }
@@ -5655,9 +5635,10 @@ function renderParentDashboard(){
     ? tests.slice().reverse().map(t=>{
         const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
         const hasOpen = (t.questions||[]).some(q=>q.type==='open');
+        const openUncheckedT = t.submitted ? (t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked) : [];
         const statusBadge = !t.submitted
           ? `<span class="badge badge-gold">⏳ Не сдан</span>`
-          : (t.openChecked||!hasOpen)
+          : (t.openChecked||!hasOpen||openUncheckedT.length===0)
             ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal} б. (${pct}%) · Оценка ${t.autoGrade||calcGrade(pct,t.gradeConfig)}</span>`
             : `<span class="badge badge-gold">📝 Ожидает проверки · авто: ${t.autoScore||0}/${t.autoTotal} б.</span>`;
         return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
@@ -5671,9 +5652,10 @@ function renderParentDashboard(){
   const hwsHtml = hws.length
     ? hws.slice().reverse().map(h=>{
         const hasOpen = (h.questions||[]).some(q=>q.type==='open');
+        const openUncheckedH = h.submitted ? (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked) : [];
         const statusBadge = !h.submitted
           ? `<span class="badge badge-gold">⏳ Не сдано</span>`
-          : (h.openChecked||!hasOpen)
+          : (h.openChecked||!hasOpen||openUncheckedH.length===0)
             ? `<span class="badge badge-green">✅ Проверено</span>`
             : `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
         const overdue = !h.submitted&&h.due&&new Date(h.due.split('.').reverse().join('-'))<new Date();
