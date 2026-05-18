@@ -1206,6 +1206,9 @@ function _startSession(user){
   const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
   const lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
   navigateTo(lastPage);
+  if (currentUser?.role === 'student') {
+    GM.gmAutoMount(currentUser.id);
+  }
 }
 function doLogout(){
   _lessonActive=false;
