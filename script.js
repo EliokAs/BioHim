@@ -898,30 +898,51 @@ function lsStudentOpenVideo(code){
 // MAIN APPLICATION CODE
 // ═══════════════════════════════════════════════════════
 // ══════════════════════════════════════════
-// LOCAL STORAGE — замена Firebase
 // ══════════════════════════════════════════
-const LS_PREFIX = 'biohim_db_';
-const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs'];
+// FIREBASE REALTIME DATABASE
+// ══════════════════════════════════════════
+const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','trials','groups','attendance','taskbank'];
+
+const _fbConfig = {
+  apiKey: "AIzaSyAh_g-_X0bMd23YEh5r5dO3xLu4Awpb1ns",
+  authDomain: "biohim-a36ce.firebaseapp.com",
+  databaseURL: "https://biohim-a36ce-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "biohim-a36ce",
+  storageBucket: "biohim-a36ce.firebasestorage.app",
+  messagingSenderId: "797458613466",
+  appId: "1:797458613466:web:f2e734a65e4e84b7ce51e3"
+};
+
+// Firebase SDK (compat version — работает без сборщика)
+let _fbApp, _fbDB;
+function _fbInit(){
+  if(_fbDB) return _fbDB;
+  if(!firebase.apps.length) _fbApp = firebase.initializeApp(_fbConfig);
+  else _fbApp = firebase.apps[0];
+  _fbDB = firebase.database();
+  return _fbDB;
+}
+function _fbRef(k){ return _fbInit().ref('db/' + k); }
+
+// Синхронный кэш — заполняется при preloadCache
+const _cache = {};
 
 function load(k){
-  const raw = localStorage.getItem(LS_PREFIX + k);
-  if(raw == null) return null;
-  try { return JSON.parse(raw); } catch(e){ return null; }
+  return (k in _cache) ? _cache[k] : null;
 }
 
 function save(k, v){
-  try {
-    localStorage.setItem(LS_PREFIX + k, JSON.stringify(v));
-  } catch(e){
-    if(e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'){
-      alert('⚠️ Хранилище браузера переполнено. Удалите старые данные в разделе «Настройки» → «Сброс».');
-    }
-    console.error('[Storage] Ошибка записи ключа', k, e);
-    throw e;
-  }
+  _cache[k] = v;
+  // Асинхронно пишем в Firebase (не блокируем UI)
+  _fbRef(k).set(v === null ? null : v).catch(e => console.error('[Firebase] save error', k, e));
 }
 
-async function preloadCache(){ /* данные уже в localStorage */ }
+async function preloadCache(){
+  const db = _fbInit();
+  const snap = await db.ref('db').get();
+  const data = snap.val() || {};
+  COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+}
 
 // ══════════════════════════════════════════════════════
 // SECURITY CORE
@@ -1018,7 +1039,36 @@ function setAnswer(storeName, qId, val){
 
 
 
-function subscribeRealtime(){ /* не нужен polling для localStorage */ }
+function subscribeRealtime(){
+  const db = _fbInit();
+  COLLECTIONS.forEach(k => {
+    db.ref('db/' + k).on('value', snap => {
+      const val = snap.val();
+      _cache[k] = val !== undefined ? val : null;
+    });
+  });
+  db.ref('db/notifs').on('value', () => {
+    if(typeof updateNotifBadge === 'function') updateNotifBadge();
+    if(currentUser && currentUser.role === 'student'){
+      const el = document.getElementById('student-notifs-list');
+      if(el && typeof renderStudentNotifs === 'function') renderStudentNotifs();
+    }
+  });
+  ['content','tests','hw','trials'].forEach(k => {
+    db.ref('db/' + k).on('value', () => {
+      if(!currentUser) return;
+      if(currentUser.role === 'student'){
+        const pageMap = {content:'renderStudentContent',tests:'renderStudentTests',hw:'renderStudentHW',trials:'renderStudentTrials'};
+        const fnName = pageMap[k];
+        if(fnName && typeof window[fnName] === 'function'){
+          const idMap = {content:'student-content',tests:'student-tests',hw:'student-hw',trials:'student-trials'};
+          const page = document.getElementById('page-'+idMap[k]);
+          if(page && page.classList.contains('active')) window[fnName]();
+        }
+      }
+    });
+  });
+}
 
 // ══════════════════════════════════════════
 // ХЕШИРОВАНИЕ ПАРОЛЕЙ (Web Crypto API)
@@ -1089,7 +1139,8 @@ async function initData(){
 async function resetAllData(){
   requireAdmin('resetAllData');
   if(!confirm('Удалить ВСЕ данные платформы? Ученики, материалы, тесты, ДЗ — всё будет удалено безвозвратно.')) return;
-  COLLECTIONS.forEach(k => localStorage.removeItem(LS_PREFIX + k));
+  await _fbInit().ref('db').remove();
+  COLLECTIONS.forEach(k => { _cache[k] = null; });
   localStorage.removeItem('biohim_session');
   localStorage.removeItem('biohim_admin_notifs');
   location.reload();
