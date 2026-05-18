@@ -898,30 +898,35 @@ function lsStudentOpenVideo(code){
 // MAIN APPLICATION CODE
 // ═══════════════════════════════════════════════════════
 // ══════════════════════════════════════════
-// LOCAL STORAGE — замена Firebase
+// FIREBASE REALTIME DATABASE
 // ══════════════════════════════════════════
-const LS_PREFIX = 'biohim_db_';
-const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs'];
+// Firebase подключается через firebase-init.js (загружается раньше этого скрипта)
+// _db, ref, get, set, onValue доступны как глобальные переменные
 
+// In-memory кэш — все операции синхронные для совместимости с остальным кодом
+const _cache = {};
+const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','groups','attendance','trials'];
+
+// Синхронный load из кэша
 function load(k){
-  const raw = localStorage.getItem(LS_PREFIX + k);
-  if(raw == null) return null;
-  try { return JSON.parse(raw); } catch(e){ return null; }
+  return _cache[k] !== undefined ? _cache[k] : null;
 }
 
+// Синхронная запись в кэш + асинхронная запись в Firebase
 function save(k, v){
-  try {
-    localStorage.setItem(LS_PREFIX + k, JSON.stringify(v));
-  } catch(e){
-    if(e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'){
-      alert('⚠️ Хранилище браузера переполнено. Удалите старые данные в разделе «Настройки» → «Сброс».');
-    }
-    console.error('[Storage] Ошибка записи ключа', k, e);
-    throw e;
-  }
+  _cache[k] = v;
+  _fbSet(_fbRef(_db, 'data/' + k), v === null ? null : v)
+    .catch(e => console.error('[Firebase] save error', k, e));
 }
 
-async function preloadCache(){ /* данные уже в localStorage */ }
+// Загружаем все коллекции из Firebase в кэш при старте
+async function preloadCache(){
+  const snap = await _fbGet(_fbRef(_db, 'data'));
+  const data = snap.val() || {};
+  COLLECTIONS.forEach(k => {
+    _cache[k] = data[k] !== undefined ? data[k] : null;
+  });
+}
 
 // ══════════════════════════════════════════════════════
 // SECURITY CORE
@@ -1018,7 +1023,17 @@ function setAnswer(storeName, qId, val){
 
 
 
-function subscribeRealtime(){ /* не нужен polling для localStorage */ }
+function subscribeRealtime(){
+  // Слушаем изменения в Firebase — обновляем кэш и перерисовываем текущую страницу
+  _fbOnValue(_fbRef(_db, 'data'), snap => {
+    const data = snap.val() || {};
+    COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+    // Перерисовываем текущую страницу если приложение открыто
+    if(currentUser && typeof curPage !== 'undefined' && curPage){
+      try { renderPage(curPage); } catch(e){}
+    }
+  }, e => console.warn('[Firebase] realtime error', e));
+}
 
 // ══════════════════════════════════════════
 // ХЕШИРОВАНИЕ ПАРОЛЕЙ (Web Crypto API)
@@ -1749,13 +1764,12 @@ function openModal(id, extra){
 function populateModalStudents(containerId){
   const el=document.getElementById(containerId);
   if(!el) return;
-  const students=(load('users')||[]).filter(u=>u.role==='student'&&u.active!==false);
+  const students=(load('users')||[]).filter(u=>u.role==='student');
   if(!students.length){ el.innerHTML='<span style="font-size:0.82rem;color:var(--text3)">Нет учеников</span>'; return; }
-  // Если выбран конкретный ученик — отмечаем его, иначе отмечаем всех
-  const cur=_selectedStudent;
+  const cur=_selectedStudent||(students[0]||{}).id;
   el.innerHTML=students.map(s=>`
     <label class="chip-label">
-      <input type="checkbox" value="${s.id}" ${(!cur||s.id===cur)?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
+      <input type="checkbox" value="${s.id}" ${s.id===cur?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
     </label>`).join('');
 }
 function getCheckedModalStudents(containerId){
