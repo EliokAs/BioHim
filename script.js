@@ -898,35 +898,30 @@ function lsStudentOpenVideo(code){
 // MAIN APPLICATION CODE
 // ═══════════════════════════════════════════════════════
 // ══════════════════════════════════════════
-// FIREBASE REALTIME DATABASE
+// LOCAL STORAGE — замена Firebase
 // ══════════════════════════════════════════
-// Firebase подключается через firebase-init.js (загружается раньше этого скрипта)
-// _db, ref, get, set, onValue доступны как глобальные переменные
+const LS_PREFIX = 'biohim_db_';
+const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs'];
 
-// In-memory кэш — все операции синхронные для совместимости с остальным кодом
-const _cache = {};
-const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','groups','attendance','trials'];
-
-// Синхронный load из кэша
 function load(k){
-  return _cache[k] !== undefined ? _cache[k] : null;
+  const raw = localStorage.getItem(LS_PREFIX + k);
+  if(raw == null) return null;
+  try { return JSON.parse(raw); } catch(e){ return null; }
 }
 
-// Синхронная запись в кэш + асинхронная запись в Firebase
 function save(k, v){
-  _cache[k] = v;
-  _fbSet(_fbRef(_db, 'data/' + k), v === null ? null : v)
-    .catch(e => console.error('[Firebase] save error', k, e));
+  try {
+    localStorage.setItem(LS_PREFIX + k, JSON.stringify(v));
+  } catch(e){
+    if(e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'){
+      alert('⚠️ Хранилище браузера переполнено. Удалите старые данные в разделе «Настройки» → «Сброс».');
+    }
+    console.error('[Storage] Ошибка записи ключа', k, e);
+    throw e;
+  }
 }
 
-// Загружаем все коллекции из Firebase в кэш при старте
-async function preloadCache(){
-  const snap = await _fbGet(_fbRef(_db, 'data'));
-  const data = snap.val() || {};
-  COLLECTIONS.forEach(k => {
-    _cache[k] = data[k] !== undefined ? data[k] : null;
-  });
-}
+async function preloadCache(){ /* данные уже в localStorage */ }
 
 // ══════════════════════════════════════════════════════
 // SECURITY CORE
@@ -1023,17 +1018,7 @@ function setAnswer(storeName, qId, val){
 
 
 
-function subscribeRealtime(){
-  // Слушаем изменения в Firebase — обновляем кэш и перерисовываем текущую страницу
-  _fbOnValue(_fbRef(_db, 'data'), snap => {
-    const data = snap.val() || {};
-    COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
-    // Перерисовываем текущую страницу если приложение открыто
-    if(currentUser && typeof curPage !== 'undefined' && curPage){
-      try { renderPage(curPage); } catch(e){}
-    }
-  }, e => console.warn('[Firebase] realtime error', e));
-}
+function subscribeRealtime(){ /* не нужен polling для localStorage */ }
 
 // ══════════════════════════════════════════
 // ХЕШИРОВАНИЕ ПАРОЛЕЙ (Web Crypto API)
