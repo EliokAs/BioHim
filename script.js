@@ -1206,9 +1206,6 @@ function _startSession(user){
   const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
   const lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
   navigateTo(lastPage);
-  if (currentUser?.role === 'student') {
-    GM.gmAutoMount(currentUser.id);
-  }
 }
 function doLogout(){
   _lessonActive=false;
@@ -2157,12 +2154,14 @@ function testItemHTML(t){
       </div>
       <div class="content-actions" style="flex-shrink:0">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTestReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
+        ${t.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('test','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
       </div>
     </div>
+    ${t.teacherFeedback?`<div class="feedback-box" style="margin-top:6px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback.substring(0,100))}${t.teacherFeedback.length>100?'…':''}</div>`:''}
     <div style="margin-top:2px">${availBadge(t)}</div>
     ${needsReview ? `<div id="test-review-panel-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
@@ -2172,6 +2171,9 @@ function testItemHTML(t){
           <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${t.answers[q.id]||'—'}</div>
           <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
         </div>`).join('')}
+      <div style="margin-top:10px;border-top:1px solid var(--green-xpale);padding-top:10px">
+        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')">🎓 Поставить итоговую оценку и отзыв</button>
+      </div>
     </div>` : ''}
     ${t.submitted ? `<div id="adm-cmt-test-${t.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
@@ -2216,22 +2218,105 @@ function checkOpenAnswer(testId,qId){
 function submitCheck(itemId,qId,itemType){
   const comment=document.getElementById('ca-comment').value;
   const grade=document.getElementById('ca-grade').value;
+  const pointsEl=document.getElementById('ca-open-pts');
+  const openPts=pointsEl?+(pointsEl.value)||0:null;
   const examGradeEl=document.getElementById('ca-exam-grade');
   const examGrade=examGradeEl?examGradeEl.value:'';
-  const items=load(itemType==='test'?'tests':'hw')||[];
+  const storeKey=itemType==='test'?'tests':'hw';
+  const items=load(storeKey)||[];
   const item=items.find(t=>t.id===itemId);
   const q=item.questions.find(q=>q.id===qId);
   q.checked=true; q.grade=grade; q.comment=comment;
+  if(openPts!==null){ q.earnedPts=openPts; }
   if(examGrade!=='') q.examGrade=examGrade;
-  item.openChecked=true;
-  save(itemType==='test'?'tests':'hw',items);
-  // Add notification
+  const allQ=item.questions||[];
+  const allOpenChecked=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  item.openChecked=allOpenChecked;
+  // Recalculate overall score/grade if all open questions are now checked
+  if(allOpenChecked && item.autoTotal){
+    const base=item.autoScoreBase!=null?item.autoScoreBase:(item.autoScore||0);
+    const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
+    const total=base+openScore;
+    item.autoScore=total;
+    const pct=Math.round(total/item.autoTotal*100);
+    item.autoPct=pct;
+    item.autoGrade=calcGrade(pct,item.gradeConfig);
+  }
+  save(storeKey,items);
   const notifs=load('notifs')||[];
-  notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ на вопрос "${q.text.substring(0,40)}..." в "${item.title}". Оценка: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
+  notifs.push({id:'n'+Date.now(),studentId:item.studentId,text:`📬 Проверен ответ в «${item.title}». Оценка за вопрос: ${grade}`,date:new Date().toLocaleDateString('ru'),read:false});
   save('notifs',notifs);
   closeModal('modal-check-answer');
   renderOpenAnswers(); renderHWOpenAnswers();
-  showNotif('✅ Ответ проверен, уведомление отправлено');
+  showNotif('✅ Ответ проверен');
+}
+
+// ── OVERALL REVIEW for test / hw / trial ──
+function openItemOverallReview(itemId, itemType){
+  const storeKey=itemType==='test'?'tests':itemType==='hw'?'hw':'trials';
+  const items=load(storeKey)||[];
+  const item=items.find(t=>t.id===itemId); if(!item) return;
+  const pct=item.autoTotal?Math.round((item.autoScore||0)/item.autoTotal*100):0;
+  const grade=item.autoGrade||calcGrade(pct,item.gradeConfig)||'';
+  const labels={test:'теста',hw:'ДЗ',trial:'пробника'};
+  const body=document.getElementById('check-answer-body');
+  body.innerHTML=`
+    <div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:0.88rem;color:var(--text2)">
+      <b>${esc(item.title)}</b><br>
+      Автоматически: ${item.autoScore||0}/${item.autoTotal||0} б. (${pct}%)
+    </div>
+    <div class="form-group">
+      <label>Итоговый балл <span style="font-weight:400;color:var(--text3)">(можно скорректировать вручную)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" id="ca-total-score" value="${item.autoScore||0}" min="0" max="${item.autoTotal||100}"
+          style="width:90px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:1rem">
+        <span style="color:var(--text3);font-size:0.88rem">/ ${item.autoTotal||'—'} б.</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>🎓 Итоговая оценка</label>
+      <select id="ca-final-grade" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;background:var(--white)">
+        <option value="5" ${grade=='5'?'selected':''}>5 — Отлично</option>
+        <option value="4" ${grade=='4'?'selected':''}>4 — Хорошо</option>
+        <option value="3" ${grade=='3'?'selected':''}>3 — Удовлетворительно</option>
+        <option value="2" ${grade=='2'?'selected':''}>2 — Неудовлетворительно</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>📝 Отзыв для ученика <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+      <textarea id="ca-final-feedback" rows="4" placeholder="Общий комментарий по работе..."
+        style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;box-sizing:border-box">${item.teacherFeedback||''}</textarea>
+    </div>
+    <button class="btn btn-green" onclick="saveItemOverallReview('${itemId}','${itemType}')">💾 Сохранить оценку и отзыв</button>
+  `;
+  document.getElementById('modal-check-answer').querySelector('.modal-title').textContent=`📊 Итоговая оценка ${labels[itemType]||''}`;
+  openModal('modal-check-answer');
+}
+function saveItemOverallReview(itemId, itemType){
+  const storeKey=itemType==='test'?'tests':itemType==='hw'?'hw':'trials';
+  const items=load(storeKey)||[];
+  const item=items.find(t=>t.id===itemId); if(!item) return;
+  const score=+(document.getElementById('ca-total-score').value)||0;
+  const grade=document.getElementById('ca-final-grade').value;
+  const feedback=document.getElementById('ca-final-feedback').value.trim();
+  item.autoScore=score;
+  if(item.autoTotal){ item.autoPct=Math.round(score/item.autoTotal*100); }
+  item.autoGrade=grade;
+  item.teacherFeedback=feedback;
+  item.openChecked=true;
+  save(storeKey,items);
+  const navMap={test:'student-tests',hw:'student-hw',trial:'student-trial'};
+  const labelMap={test:'Тест',hw:'ДЗ',trial:'Пробник'};
+  const notifs=load('notifs')||[];
+  notifs.push({id:'n'+Date.now(),studentId:item.studentId,
+    text:`📊 ${labelMap[itemType]||''} «${item.title}» проверен. Оценка: ${grade}${feedback?'. Преподаватель оставил отзыв':''}`,
+    date:new Date().toLocaleDateString('ru'),read:false,nav:navMap[itemType]||''});
+  save('notifs',notifs);
+  closeModal('modal-check-answer');
+  if(itemType==='test'){ if(typeof renderOpenAnswers==='function') renderOpenAnswers(); if(typeof renderTestsAdmin==='function') renderTestsAdmin(); }
+  else if(itemType==='hw'){ if(typeof renderHWOpenAnswers==='function') renderHWOpenAnswers(); if(typeof renderHWAdmin==='function') renderHWAdmin(); }
+  else if(itemType==='trial'){ if(typeof renderTrialAdmin==='function') renderTrialAdmin(); }
+  showNotif(`✅ Оценка ${grade} сохранена`);
 }
 function addTestQuestion(type){
   const id='q'+Date.now();
@@ -2611,14 +2696,16 @@ function hwItemHTML(h){
           })()}
         </div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openHWReviewPanel('${h.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
+        ${h.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('hw','${h.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
       </div>
     </div>
+    ${h.teacherFeedback?`<div class="feedback-box" style="margin-top:6px"><strong>💬 Отзыв:</strong> ${esc(h.teacherFeedback.substring(0,100))}${h.teacherFeedback.length>100?'…':''}</div>`:''}
     <div style="margin-top:2px">${availBadge(h)}</div>
     ${needsReview ? `<div id="hw-review-panel-${h.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
@@ -2630,6 +2717,9 @@ function hwItemHTML(h){
             <button class="btn btn-green btn-sm" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
           </div>
         </div>`).join('')}
+      <div style="margin-top:10px;border-top:1px solid var(--green-xpale);padding-top:10px">
+        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')">🎓 Поставить итоговую оценку и отзыв</button>
+      </div>
     </div>` : ''}
     ${h.submitted ? `<div id="adm-cmt-hw-${h.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
@@ -4196,6 +4286,7 @@ function trialAdminItemHTML(t){
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTrialReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
+        ${t.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','trial')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
         ${t.submitted?`<button class="btn btn-outline btn-sm" onclick="viewTrialResult('${t.id}')">📊</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('trial','${t.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
@@ -4203,6 +4294,11 @@ function trialAdminItemHTML(t){
         <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
       </div>
     </div>
+    ${t.autoGrade?`<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="grade-result-badge grade-${t.autoGrade}">🎓 Оценка: ${t.autoGrade}</span>
+      ${t.autoPct!=null?`<span class="badge badge-green">${t.autoScore||0}/${t.autoTotal||0} б. · ${t.autoPct}%</span>`:''}
+      ${t.teacherFeedback?`<span style="font-size:0.8rem;color:var(--text2)">💬 ${esc(t.teacherFeedback.substring(0,60))}${t.teacherFeedback.length>60?'…':''}</span>`:''}
+    </div>`:''}
     <div style="margin-top:2px">${availBadge(t)}</div>
     ${needsReview ? `<div id="trial-review-panel-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
@@ -4217,7 +4313,11 @@ function trialAdminItemHTML(t){
             <button class="btn btn-green btn-sm" onclick="checkTrialOpenAnswer('${t.id}','${q.id}')">✅ Зачесть</button>
           </div>
         </div>`).join('')}
+      <div style="margin-top:10px;border-top:1px solid var(--green-xpale);padding-top:10px">
+        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','trial')">🎓 Поставить итоговую оценку и отзыв</button>
+      </div>
     </div>` : ''}
+
   </div>`;
 }
 function deleteTrial(id){ save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
@@ -4476,14 +4576,85 @@ function checkTrialOpenAnswer(tid,qid){
   const trials=load('trials')||[];
   const t=trials.find(t=>t.id===tid); if(!t) return;
   const pts=+(document.getElementById(`pts-tr-${tid}-${qid}`)?.value)||0;
-  (t.sections||[]).forEach(s=>s.questions.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; } }));
-  const openDone=(t.sections||[]).flatMap(s=>s.questions).filter(q=>q.type==='open').every(q=>q.checked);
+  const allQ=(t.sections||[]).flatMap(s=>s.questions);
+  // Mark this question checked
+  allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; } });
+  const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
   t.openChecked=openDone;
-  const openScore=(t.sections||[]).flatMap(s=>s.questions).filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
-  t.autoScore=(t.autoScore||0)+openScore;
+  // Recalculate total score from scratch: auto + all checked open
+  const autoBaseScore=allQ.filter(q=>q.type!=='open').reduce((a,q)=>a+(+q.earnedPts||0),0);
+  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
+  // t.autoScore was set at submit time for auto questions — keep it, just add open
+  // Recompute: store openScore separately to avoid double-adding
+  t.openScore=openScore;
+  const totalScore=(t.autoScoreBase||t.autoScore||0)+openScore;
+  t.autoScore=totalScore;
+  if(t.autoTotal){
+    const pct=Math.round(totalScore/t.autoTotal*100);
+    t.autoPct=pct;
+    t.autoGrade=calcGrade(pct,t.gradeConfig);
+  }
   save('trials',trials);
   renderTrialAdmin();
-  showNotif(`✅ Ответ засчитан: +${pts} б.`);
+  showNotif(`✅ Ответ засчитан: +${pts} б.${t.openChecked?' · Оценка: '+t.autoGrade:''}`);}
+
+// ── OVERALL TRIAL REVIEW (grade + feedback for whole trial) ──
+function openTrialOverallReview(tid){
+  const trials=load('trials')||[];
+  const t=trials.find(t=>t.id===tid); if(!t) return;
+  const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
+  const grade=t.autoGrade||calcGrade(pct,t.gradeConfig)||'';
+  const body=document.getElementById('check-answer-body');
+  body.innerHTML=`
+    <div style="background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:0.88rem;color:var(--text2)">
+      <b>${esc(t.title)}</b><br>
+      Автоматически: ${t.autoScore||0}/${t.autoTotal||0} б. (${pct}%)
+    </div>
+    <div class="form-group">
+      <label>Итоговый балл <span style="font-weight:400;color:var(--text3)">(можно скорректировать вручную)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" id="ca-total-score" value="${t.autoScore||0}" min="0" max="${t.autoTotal||100}"
+          style="width:90px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:1rem">
+        <span style="color:var(--text3);font-size:0.88rem">/ ${t.autoTotal||'—'} б.</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>🎓 Итоговая оценка</label>
+      <select id="ca-final-grade" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;background:var(--white)">
+        <option value="5" ${grade=='5'?'selected':''}>5 — Отлично</option>
+        <option value="4" ${grade=='4'?'selected':''}>4 — Хорошо</option>
+        <option value="3" ${grade=='3'?'selected':''}>3 — Удовлетворительно</option>
+        <option value="2" ${grade=='2'?'selected':''}>2 — Неудовлетворительно</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>📝 Отзыв для ученика <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+      <textarea id="ca-final-feedback" rows="4" placeholder="Напишите общий комментарий, что получилось хорошо, что нужно доработать..."
+        style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;box-sizing:border-box">${t.teacherFeedback||''}</textarea>
+    </div>
+    <button class="btn btn-green" onclick="saveTrialOverallReview('${tid}')">💾 Сохранить оценку и отзыв</button>
+  `;
+  document.getElementById('modal-check-answer').querySelector('.modal-title').textContent='📊 Итоговая оценка пробника';
+  openModal('modal-check-answer');
+}
+function saveTrialOverallReview(tid){
+  const trials=load('trials')||[];
+  const t=trials.find(t=>t.id===tid); if(!t) return;
+  const score=+(document.getElementById('ca-total-score').value)||0;
+  const grade=document.getElementById('ca-final-grade').value;
+  const feedback=document.getElementById('ca-final-feedback').value.trim();
+  t.autoScore=score;
+  if(t.autoTotal){ t.autoPct=Math.round(score/t.autoTotal*100); }
+  t.autoGrade=grade;
+  t.teacherFeedback=feedback;
+  t.openChecked=true;
+  save('trials',trials);
+  const notifs=load('notifs')||[];
+  notifs.push({id:'n'+Date.now(),studentId:t.studentId,text:`📊 Пробник «${t.title}» проверен. Оценка: ${grade}${feedback?'. Отзыв: '+feedback.substring(0,60)+'...':''}`,date:new Date().toLocaleDateString('ru'),read:false,nav:'student-trial'});
+  save('notifs',notifs);
+  closeModal('modal-check-answer');
+  renderTrialAdmin();
+  showNotif(`✅ Оценка ${grade} сохранена`);
 }
 
 // ── STUDENT RENDER ──
@@ -4509,7 +4680,7 @@ function renderStudentTrial(){
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
-        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore}/${t.autoTotal} б. · ${pct}% · Оценка ${calcGrade(pct,t.gradeConfig)}</span>`
+        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore}/${t.autoTotal} б. · ${pct}% · Оценка ${t.autoGrade||calcGrade(pct,t.gradeConfig)}</span>`
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore}/${t.autoTotal} б.</span>`;
     return `<div class="card">
       <div class="card-title"><span class="dot"></span>🎯 ${esc(t.title)}</div>
@@ -4600,6 +4771,7 @@ function submitTrial(timeout=false){
     if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
   }));
   t.autoScore=score; t.autoTotal=total||t.maxPts||total;
+  t.autoScoreBase=score; // store auto-only score for later open question addition
   const pct=t.autoTotal?Math.round(score/t.autoTotal*100):0;
   t.autoGrade=calcGrade(pct,t.gradeConfig); t.autoPct=pct;
   save('trials',trials);
@@ -4614,7 +4786,13 @@ function submitTrial(timeout=false){
 }
 function viewTrialResultHTML(t){
   const allQ=(t.sections||[]).flatMap(s=>s.questions);
+  const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
   return `<div style="margin-top:4px">
+    ${t.autoGrade?`<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="grade-result-badge grade-${t.autoGrade}">🎓 Оценка: ${t.autoGrade}</span>
+      <span class="badge badge-green">${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%</span>
+    </div>`:''}
+    ${t.teacherFeedback?`<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>`:''}
     ${allQ.map(q=>renderReviewQuestion(q,t.answers||{})).join('')}
   </div>`;
 }
@@ -5947,6 +6125,7 @@ function renderStudentTests(){
         ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
       </div>
       ${renderAttemptsHistory(t)}
+      ${t.submitted && t.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>` : ''}
       ${t.submitted ? renderTestResults(t) : availGate(t,'takeTest')}
       ${t.submitted && canRetry ? `<div style="margin-top:10px">${availGate(t,'takeTest','🔄 Пройти ещё раз')}</div>` : ''}
       ${t.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
@@ -6040,6 +6219,7 @@ function submitTest(){
   t.submitted=true;
   t.answers=finalAttempt.answers;
   t.autoScore=finalAttempt.score;
+  t.autoScoreBase=finalAttempt.score; // base auto-only score for open question addition
   t.autoTotal=finalAttempt.total||t.autoTotal||0;
   t.autoGrade=finalAttempt.grade;
   t.autoPct=finalAttempt.pct;
@@ -6101,6 +6281,8 @@ function renderStudentHW(){
         ${h.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
       </div>
       ${renderAttemptsHistory(h)}
+      ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
+      ${h.submitted && h.autoGrade ? `<div style="margin-bottom:10px"><span class="grade-result-badge grade-${h.autoGrade}">🎓 Оценка: ${h.autoGrade}</span>${h.autoTotal?` <span class="badge badge-blue">⭐ ${h.autoScore||0}/${h.autoTotal} б. (${Math.round((h.autoScore||0)/h.autoTotal*100)}%)</span>`:''}</div>` : ''}
       ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
       ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
       ${h.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
