@@ -270,7 +270,7 @@ function renderAdminLesson(){
             <label>Ученик</label>
             <select id="ls-student-sel" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem">
               <option value="">— Выберите ученика —</option>
-              ${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
+              ${students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
             </select>
           </div>
           <div class="form-group" style="margin-bottom:16px">
@@ -552,10 +552,10 @@ function lsOnSlotChange(){
     let whoText = '';
     if(groupId){
       const g = getGroups().find(x=>x.id===groupId);
-      whoText = g ? `👥 Группа: ${g.name}` : '';
+      whoText = g ? `👥 Группа: ${esc(g.name)}` : '';
     } else if(studentId){
       const u = allUsers.find(u=>u.id===studentId);
-      whoText = u ? `👤 Ученик: ${u.name}` : '';
+      whoText = u ? `👤 Ученик: ${esc(u.name)}` : '';
     }
     infoEl.style.display = '';
     infoEl.innerHTML = [
@@ -939,6 +939,14 @@ function esc(str){
 
 
 
+// 2. URL-санитайзер: блокирует javascript:, vbscript: и другие опасные схемы
+function safeUrl(url){
+  if(!url) return '#';
+  const s = String(url).trim();
+  if(/^(javascript|vbscript|data(?!:image))/i.test(s)) return '#';
+  return s;
+}
+
 // 3. Защита от брутфорса (sessionStorage — переживает перезагрузку страницы)
 const _BF_SS_KEY = 'biohim_bf';
 function _bfLoad(){ try{ return JSON.parse(sessionStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
@@ -977,7 +985,7 @@ function resetLoginAttempts(login){
 const ADMIN_PAGES = ['students','tests-admin','hw-admin','content-admin',
   'payments','schedule-admin','courses','analytics','settings',
   'reports-admin','taskbank-admin','notif-settings-admin',
-  'zoom-settings','attend-pay-admin','admin-lesson','dashboard'];
+  'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin'];
 const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'deleteStudent','saveTest','saveHW','addTheory','saveTrial',
   'saveSlot','deleteSlot','saveEditTest','saveEditHW','saveEditTrial',
@@ -1109,13 +1117,11 @@ async function doLogin(){
     return;
   }
 
-  // Поддержка обоих форматов: хеш (новый) и plain (старый, до миграции)
+  // Поддержка обоих форматов: только хеш (plain-text больше не принимается)
   let ok = false;
   if(found.passwordHash){
     const inputHash = await hashPassword(upass);
     ok = found.passwordHash === inputHash;
-  } else {
-    ok = found.password === upass;
   }
 
   if(!ok){
@@ -1174,6 +1180,7 @@ const adminNav=[
   {id:'hw-admin',     icon:'✏️', label:'Домашние задания'},
   {id:'trial-admin',  icon:'🎯', label:'Пробник'},
   {id:'taskbank-admin',icon:'🎲',label:'База заданий'},
+  {id:'grades-admin', icon:'🏅', label:'Оценки учеников'},
   {section:'Управление'},
   {id:'chat-admin',       icon:'💬', label:'Чат с учениками'},
   {id:'zoom-settings',    icon:'⚙️', label:'Настройки платформы'},
@@ -1192,6 +1199,7 @@ const studentNav=[
   {id:'student-tests',     icon:'📋',label:'Тесты'},
   {id:'student-trial',     icon:'🎯', label:'Пробник'},
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
+  {id:'student-grades',    icon:'🏅', label:'Мои оценки'},
   {id:'student-taskbank',  icon:'🎲', label:'Банк заданий'},
   {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
   {section:'Прочее'},
@@ -1296,6 +1304,8 @@ function renderPage(p){
   else if(p==='student-repeat') renderRepeatPage();
   else if(p==='student-tests') renderStudentTests();
   else if(p==='student-hw') renderStudentHW();
+  else if(p==='student-grades') renderStudentGrades();
+  else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
   else if(p==='student-payment') renderStudentPayment();
   else if(p==='notif-settings-admin'){ renderNotifSettingsAdmin(); }
@@ -1366,7 +1376,7 @@ function renderDashboard(){
   const ul=document.getElementById('upcoming-list');
   ul.innerHTML=slots.filter(s=>s.bookedBy).map(s=>{
     const u=(load('users')||[]).find(u=>u.id===s.bookedBy);
-    return `<div class="hw-item"><div class="hw-status-dot done"></div><div><div class="content-name" style="font-size:0.83rem">${s.day} ${s.time}</div><div class="content-meta">${u?u.name:s.bookedBy} · ${s.dur} мин</div></div></div>`;
+    return `<div class="hw-item"><div class="hw-status-dot done"></div><div><div class="content-name" style="font-size:0.83rem">${esc(s.day)} ${esc(s.time)}</div><div class="content-meta">${u?esc(u.name):esc(s.bookedBy)} · ${esc(String(s.dur))} мин</div></div></div>`;
   }).join('') || '<div class="empty-state"><p>Нет записей</p></div>';
   // Calendar & Todo
   renderCalendar();
@@ -1457,6 +1467,8 @@ async function addStudent(){
   if(!document.getElementById('ns-oferta').checked){ showNotif('⚠️ Необходимо принять договор оферты'); return; }
   const users=load('users')||[];
   if(users.find(u=>u.login===login)){ showNotif('Логин уже занят'); return; }
+  // Валидация логина
+  if(!/^[a-zA-Z0-9_]{2,32}$/.test(login)){ showNotif('Логин: только буквы, цифры, _ (2–32 символа)'); return; }
   const passwordHash = await hashPassword(pass);
   // Collect enrolled courses
   const enrolledCourses = [...document.querySelectorAll('#ns-courses-list input[type=checkbox]:checked')].map(cb=>cb.value);
@@ -1466,7 +1478,7 @@ async function addStudent(){
   const subjects = [...new Set(enrolledCourseObjs.map(c=>c.subject))];
   const subject = subjects.length===1 ? subjects[0] : subjects.length>1 ? subjects.join(' + ') : '';
   users.push({
-    id:login, login, passwordHash, name, role:'student', subject, enrolledCourses, active:true,
+    id:'s_'+Date.now(), login, passwordHash, name, role:'student', subject, enrolledCourses, active:true,
     birth:  document.getElementById('ns-birth').value||'',
     phone:  document.getElementById('ns-phone').value.trim(),
     email:  document.getElementById('ns-email').value.trim(),
@@ -1559,7 +1571,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   if(c.body && c.body.trim()){
     textBlock=`<div style="margin-bottom:18px">
       <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
-      <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${c.body}</div>
+      <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body)}</div>
     </div>`;
   }
   // images
@@ -1567,7 +1579,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   if(c.images && c.images.filter(Boolean).length){
     imgsBlock=`<div style="margin-bottom:18px;display:flex;flex-wrap:wrap;gap:10px">`;
     c.images.filter(Boolean).forEach(img=>{
-      imgsBlock+=`<img src="${img}" alt="" style="max-width:100%;border-radius:10px;border:1px solid var(--green-pale);max-height:260px;object-fit:contain">`;
+      imgsBlock+=`<img src="${safeUrl(img)}" alt="" style="max-width:100%;border-radius:10px;border:1px solid var(--green-pale);max-height:260px;object-fit:contain">`;
     });
     imgsBlock+=`</div>`;
   }
@@ -1578,10 +1590,10 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📎 Файлы</div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${files.map(f=>`
-          <a href="${f.url||'#'}" target="_blank" class="content-item" style="text-decoration:none;color:inherit">
+          <a href="${safeUrl(f.url)}" target="_blank" rel="noopener noreferrer" class="content-item" style="text-decoration:none;color:inherit">
             <div class="content-icon">${f.type==='pdf'?'📄':'📋'}</div>
             <div class="content-info">
-              <div class="content-name">${f.name||'Файл'}</div>
+              <div class="content-name">${esc(f.name||'Файл')}</div>
               <div class="content-meta">${f.type==='pdf'?'PDF-документ':'Word-документ'}</div>
             </div>
             <div style="color:var(--green-mid);font-size:0.85rem">⬇ Открыть</div>
@@ -1636,13 +1648,13 @@ function contentItemHTML(c, isAdmin){
     const embedUrl=getVideoEmbedUrl(c.url||'');
     const playerHtml=embedUrl
       ? `<div style="margin-top:10px;border-radius:10px;overflow:hidden;background:#000;position:relative;width:100%;height:260px"><iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe></div>`
-      : `<a href="${c.url||'#'}" target="_blank" class="btn btn-outline btn-sm" style="margin-top:8px">⬇ Открыть</a>`;
+      : `<a href="${safeUrl(c.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm" style="margin-top:8px">⬇ Открыть</a>`;
     return `<div class="content-item" style="flex-direction:column;align-items:flex-start">
       <div style="display:flex;align-items:center;gap:14px;width:100%">
         <div class="content-icon">${icons[c.type]||'📎'}</div>
         <div class="content-info">
           <div class="content-name">${esc(c.title)}</div>
-          <div class="content-meta">${c.desc||''}</div>
+          <div class="content-meta">${esc(c.desc||"")}</div>
         </div>
       </div>
       ${playerHtml}
@@ -1652,12 +1664,12 @@ function contentItemHTML(c, isAdmin){
     ? `<div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="openEditContent('${c.id}')">✏️</button><button class="btn btn-red btn-sm" onclick="deleteContent('${c.id}')">🗑</button></div>`
     : (c.type==='theory'||c.type==='article'
         ? `<button class="btn btn-outline btn-sm" onclick="viewTheory('${c.id}')">👁 Читать</button>`
-        : `<a href="${c.url||'#'}" target="_blank" class="btn btn-outline btn-sm">⬇ Открыть</a>`);
+        : `<a href="${safeUrl(c.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">⬇ Открыть</a>`);
   return `<div class="content-item">
     <div class="content-icon">${icons[c.type]||'📎'}</div>
     <div class="content-info">
       <div class="content-name">${esc(c.title)}</div>
-      <div class="content-meta">${c.desc||c.url||''}</div>
+      <div class="content-meta">${esc(c.desc||c.url||'')}</div>
       ${c.images&&c.images.length?`<div class="content-meta">🖼 ${c.images.length} изображ.</div>`:''}
       ${c.attachmentUrl?`<div class="content-meta">📎 Файл прикреплён</div>`:''}
     </div>
@@ -1845,7 +1857,7 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
     content.innerHTML='<hr class="nb-divider">';
   } else if(blk.type==='image'){
     content.innerHTML=`<div class="nb-img-block" style="padding:10px">
-      ${blk.url?`<img src="${blk.url}" alt="" style="max-width:100%;border-radius:8px;max-height:300px;object-fit:contain" onerror="this.style.display='none'">` : ''}
+      ${blk.url?`<img src="${safeUrl(blk.url)}" alt="" style="max-width:100%;border-radius:8px;max-height:300px;object-fit:contain" onerror="this.style.display='none'">` : ''}
       <input value="${(blk.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на изображение..."
         style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.83rem;background:var(--white);outline:none;margin-top:8px;box-sizing:border-box"
         oninput="${stateVar}[${idx}].url=this.value" onblur="nbRenderCanvas(${stateVar},'${stateVar}','${canvasId}')">
@@ -1854,7 +1866,7 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
     </div>`;
   } else if(blk.type==='image-upload'){
     content.innerHTML=`<div class="nb-img-block" style="padding:10px">
-      ${blk.url?`<img src="${blk.url}" alt="" style="max-width:100%;border-radius:8px;max-height:300px;object-fit:contain">` : ''}
+      ${blk.url?`<img src="${safeUrl(blk.url)}" alt="" style="max-width:100%;border-radius:8px;max-height:300px;object-fit:contain">` : ''}
       <input type="file" accept="image/*" style="font-size:0.83rem;width:100%;margin-top:8px"
         onchange="nbHandleUploadFor(this,${idx},'${stateVar}','${canvasId}')">
       <div contenteditable="true" class="nb-img-caption" data-ph="Подпись..."
@@ -2071,13 +2083,16 @@ function testItemHTML(t){
       <div class="content-icon">📋</div>
       <div class="content-info">
         <div class="content-name">${esc(t.title)}</div>
-        <div class="content-meta">${t.questions.length} вопросов · ${totalPts} ${ptWord(totalPts)} · Создан: ${t.date}</div>
+        <div class="content-meta">${t.questions.length} вопросов · ${totalPts} ${ptWord(totalPts)} · Создан: ${t.date}${t.maxAttempts>0?` · Лимит попыток: ${t.maxAttempts}`:''}</div>
         <div class="content-meta" style="margin-top:4px">
           ${(()=>{
             if(!t.submitted) return '<span class="badge badge-gold">Не сдан</span>';
-            const scoreStr = t.autoTotal ? ` ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}` : '';
-            if(t.openChecked || !hasOpen || openUnchecked.length === 0) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}`;
-            return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>${scoreStr}`;
+            const attemptsUsed=(t.attempts||[]).length;
+            const attemptsStr = attemptsUsed>0 ? ` · 🔁 ${attemptsUsed} поп.` : '';
+            const gradeStr = t.gradeMode==='last' ? ' [последний]' : t.gradeMode==='best' ? ' [лучший]' : '';
+            const scoreStr = t.autoTotal ? ` ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}${gradeStr}` : '';
+            if(t.openChecked || !hasOpen || openUnchecked.length === 0) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}${attemptsStr}`;
+            return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>${scoreStr}${attemptsStr}`;
           })()}
           ${t.autoGrade?`<span class="grade-result-badge grade-${t.autoGrade}" style="font-size:0.72rem;padding:3px 10px">Оценка: ${t.autoGrade}</span>`:''}
         </div>
@@ -2182,7 +2197,7 @@ function buildQuestionHTML(q,i,ctx){
   const imgTabId  = `img-tab-${ctx}-${i}`;
   const imgPreId  = `img-pre-${ctx}-${i}`;
   const imgPreview = q.imageUrl
-    ? `<img id="${imgPreId}" class="q-img-preview" src="${q.imageUrl}" alt="">`
+    ? `<img id="${imgPreId}" class="q-img-preview" src="${safeUrl(q.imageUrl)}" alt="">`
     : `<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`;
   const typeLabels={auto:'⚡ Один правильный',multi:'☑️ Несколько правильных',open:'📝 Открытый',fill:'🔤 Вставка слова',match:'🔗 Соответствие',pairs:'🧩 Найти пары',order:'📊 По порядку'};
   const IS = s => (q.type===s);
@@ -2297,18 +2312,22 @@ function saveTest(){
   const closeAt=document.getElementById('nt-close-at')?.value||'';
   const sids=getCheckedModalStudents('modal-test-students');
   const gradeConfig={5:+(document.getElementById('nt-g5').value)||90,4:+(document.getElementById('nt-g4').value)||75,3:+(document.getElementById('nt-g3').value)||55,2:0};
+  const maxAttempts=+(document.getElementById('nt-max-attempts')?.value)||0;
+  const gradeMode=document.getElementById('nt-grade-mode')?.value||'best';
   const autoTotal=_tempQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   const tests=load('tests')||[];
   if(sids.length){
-    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,openAt,closeAt}));
+    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
   } else {
-    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,isLibrary:true,openAt,closeAt});
+    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
   }
   save('tests',tests);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'test',text:`📝 Новый тест: ${title}`,nav:'student-tests'}));
   _tempQuestions=[];
   ['nt-questions-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['nt-title','nt-open-at','nt-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const ntMaxAttempts=document.getElementById('nt-max-attempts'); if(ntMaxAttempts) ntMaxAttempts.value='0';
+  const ntGradeMode=document.getElementById('nt-grade-mode'); if(ntGradeMode) ntGradeMode.value='best';
   const hint=document.getElementById('nt-total-pts'); if(hint) hint.textContent='';
   closeModal('modal-create-test');
   if(sids.length) _selectedStudent=sids[0];
@@ -2525,7 +2544,7 @@ function hwItemHTML(h){
       <div class="content-icon">✏️</div>
       <div class="content-info">
         <div class="content-name">${esc(h.title)}</div>
-        <div class="content-meta">${h.desc||''} · Срок: ${h.due||'—'}</div>
+        <div class="content-meta">${esc(h.desc||'')} · Срок: ${esc(h.due||'—')}</div>
         <div class="content-meta" style="margin-top:4px">
           ${(()=>{
             if(!h.submitted) return '<span class="badge badge-gold">Ожидается</span>';
@@ -2633,18 +2652,22 @@ function saveHW(){
   if(!title){ showNotif('Введите тему ДЗ'); return; }
   const openAt=document.getElementById('nhw-open-at')?.value||'';
   const closeAt=document.getElementById('nhw-close-at')?.value||'';
+  const maxAttempts=+(document.getElementById('nhw-max-attempts')?.value)||0;
+  const gradeMode=document.getElementById('nhw-grade-mode')?.value||'best';
   const sids=getCheckedModalStudents('modal-hw-students');
   const hws=load('hw')||[];
   if(sids.length){
-    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),openAt,closeAt}));
+    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
   } else {
-    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt});
+    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
   }
   save('hw',hws);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'hw',text:`✏️ Новое домашнее задание: ${title}`,nav:'student-hw'}));
   _tempHWQuestions=[];
   ['nhw-questions-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['nhw-title','nhw-desc','nhw-fileurl','nhw-open-at','nhw-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const nhwMaxAttempts=document.getElementById('nhw-max-attempts'); if(nhwMaxAttempts) nhwMaxAttempts.value='0';
+  const nhwGradeMode=document.getElementById('nhw-grade-mode'); if(nhwGradeMode) nhwGradeMode.value='best';
   closeModal('modal-create-hw');
   if(sids.length) _selectedStudent=sids[0];
   renderHWAdmin();
@@ -2894,7 +2917,7 @@ function nbBlockEl(blk, idx){
   } else if(blk.type === 'image'){
     content.innerHTML = `
       <div class="nb-img-block" style="padding:10px">
-        ${blk.url ? `<img src="${blk.url}" alt="" onerror="this.style.display='none'">` : ''}
+        ${blk.url ? `<img src="${safeUrl(blk.url)}" alt="" onerror="this.style.display='none'">` : ''}
         <div style="display:flex;gap:6px;margin-top:8px">
           <input value="${(blk.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на изображение (URL)..."
             style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.83rem;background:var(--white);outline:none"
@@ -2906,7 +2929,7 @@ function nbBlockEl(blk, idx){
   } else if(blk.type === 'image-upload'){
     content.innerHTML = `
       <div class="nb-img-block" style="padding:10px">
-        ${blk.url ? `<img src="${blk.url}" alt="">` : ''}
+        ${blk.url ? `<img src="${safeUrl(blk.url)}" alt="">` : ''}
         <div style="margin-top:8px">
           <label style="font-size:0.8rem;color:var(--text3);display:block;margin-bottom:4px">Загрузить изображение:</label>
           <input type="file" accept="image/*" style="font-size:0.83rem;width:100%"
@@ -3017,20 +3040,20 @@ function nbHandleImageUpload(input, idx){
 // Render блоков для просмотра (ученик + предпросмотр)
 function nbRenderView(blocks){
   return blocks.map(b=>{
-    if(b.type==='p') return `<p style="margin:0 0 10px;line-height:1.75;color:var(--text2)">${b.content.replace(/\n/g,'<br>')}</p>`;
-    if(b.type==='h1') return `<h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--accent);margin:20px 0 10px">${b.content}</h2>`;
-    if(b.type==='h2') return `<h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--green-deep);margin:16px 0 8px">${b.content}</h3>`;
-    if(b.type==='h3') return `<h4 style="font-size:1rem;font-weight:700;color:var(--text);margin:12px 0 6px">${b.content}</h4>`;
-    if(b.type==='quote') return `<blockquote style="border-left:3px solid var(--green-mid);padding:8px 16px;background:var(--bg2);border-radius:0 8px 8px 0;font-style:italic;color:var(--text2);margin:12px 0">${b.content}</blockquote>`;
-    if(b.type==='callout') return `<div style="background:#fffbeb;border:1px solid #fce98a;border-radius:10px;padding:12px 16px;color:#856404;margin:12px 0">💡 ${b.content}</div>`;
-    if(b.type==='code') return `<pre style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 18px;overflow-x:auto;font-size:0.85rem;margin:12px 0"><code>${b.content.replace(/</g,'&lt;')}</code></pre>`;
+    if(b.type==='p') return `<p style="margin:0 0 10px;line-height:1.75;color:var(--text2)">${esc(b.content).replace(/\n/g,'<br>')}</p>`;
+    if(b.type==='h1') return `<h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--accent);margin:20px 0 10px">${esc(b.content)}</h2>`;
+    if(b.type==='h2') return `<h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--green-deep);margin:16px 0 8px">${esc(b.content)}</h3>`;
+    if(b.type==='h3') return `<h4 style="font-size:1rem;font-weight:700;color:var(--text);margin:12px 0 6px">${esc(b.content)}</h4>`;
+    if(b.type==='quote') return `<blockquote style="border-left:3px solid var(--green-mid);padding:8px 16px;background:var(--bg2);border-radius:0 8px 8px 0;font-style:italic;color:var(--text2);margin:12px 0">${esc(b.content)}</blockquote>`;
+    if(b.type==='callout') return `<div style="background:#fffbeb;border:1px solid #fce98a;border-radius:10px;padding:12px 16px;color:#856404;margin:12px 0">💡 ${esc(b.content)}</div>`;
+    if(b.type==='code') return `<pre style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 18px;overflow-x:auto;font-size:0.85rem;margin:12px 0"><code>${esc(b.content)}</code></pre>`;
     if(b.type==='divider') return `<hr style="border:none;border-top:2px solid var(--green-xpale);margin:16px 0">`;
-    if(b.type==='image'||b.type==='image-upload') return b.url ? `<figure style="margin:16px 0;text-align:center"><img src="${b.url}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1)" alt="${b.caption||''}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${b.caption||''}</figcaption></figure>` : '';
+    if(b.type==='image'||b.type==='image-upload') return b.url ? `<figure style="margin:16px 0;text-align:center"><img src="${safeUrl(b.url)}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1)" alt="${esc(b.caption||'')}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${esc(b.caption||'')}</figcaption></figure>` : '';
     if(b.type==='video'){
       const embed=getVideoEmbedUrl(b.url||'');
       return embed ? `<div style="position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000;margin:16px 0"><iframe src="${embed}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen></iframe></div>` : '';
     }
-    if(b.type==='file') return b.url ? `<a href="${b.url}" target="_blank" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;text-decoration:none;color:var(--text);font-size:0.88rem;margin:8px 0">${b.content==='pdf'?'📄':b.content==='word'?'📋':'🔗'} ${b.name||b.url}</a>` : '';
+    if(b.type==='file') return b.url ? `<a href="${safeUrl(b.url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;text-decoration:none;color:var(--text);font-size:0.88rem;margin:8px 0">${b.content==='pdf'?'📄':b.content==='word'?'📋':'🔗'} ${esc(b.name||b.url)}</a>` : '';
     return '';
   }).join('');
 }
@@ -3099,6 +3122,8 @@ function openEditTest(id){
   document.getElementById('et-g5').value=gc[5]??85;
   document.getElementById('et-g4').value=gc[4]??67;
   document.getElementById('et-g3').value=gc[3]??45;
+  document.getElementById('et-max-attempts').value=t.maxAttempts??0;
+  document.getElementById('et-grade-mode').value=t.gradeMode||'best';
   renderEditTestBuilder();
   document.getElementById('modal-edit-test').classList.add('open');
 }
@@ -3192,7 +3217,7 @@ function renderEditTestBuilder(){
           <input type="file" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
             onchange="handleEditQImgUpload(this,'_editTestQuestions',${i},'etq-pre-${i}')">
         </div>
-        <img id="etq-pre-${i}" class="q-img-preview" src="${q.imageUrl||''}" style="${q.imageUrl?'':'display:none'}" alt="">
+        <img id="etq-pre-${i}" class="q-img-preview" src="${safeUrl(q.imageUrl||'')} "style="${q.imageUrl?'':'display:none'}" alt="">
       </div>
       <div style="margin-top:8px">
         <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
@@ -3232,6 +3257,8 @@ function saveEditTest(){
   t.due=document.getElementById('et-due').value;
   t.passThresh=+document.getElementById('et-pass').value||55;
   t.gradeConfig={5:+document.getElementById('et-g5').value||85, 4:+document.getElementById('et-g4').value||67, 3:+document.getElementById('et-g3').value||45, 2:0};
+  t.maxAttempts=+document.getElementById('et-max-attempts').value||0;
+  t.gradeMode=document.getElementById('et-grade-mode').value||'best';
   t.questions=_editTestQuestions;
   t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('tests',tests);
@@ -3255,6 +3282,8 @@ function openEditHW(id){
   document.getElementById('ehw-g5').value=gc[5]??85;
   document.getElementById('ehw-g4').value=gc[4]??67;
   document.getElementById('ehw-g3').value=gc[3]??45;
+  document.getElementById('ehw-max-attempts').value=h.maxAttempts??0;
+  document.getElementById('ehw-grade-mode').value=h.gradeMode||'best';
   renderEditHWBuilder();
   document.getElementById('modal-edit-hw').classList.add('open');
 }
@@ -3298,7 +3327,7 @@ function renderEditHWBuilder(){
           <input type="file" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
             onchange="handleEditQImgUpload(this,'_editHWQuestions',${i},'ehwq-pre-${i}')">
         </div>
-        <img id="ehwq-pre-${i}" class="q-img-preview" src="${q.imageUrl||''}" style="${q.imageUrl?'':'display:none'}" alt="">
+        <img id="ehwq-pre-${i}" class="q-img-preview" src="${safeUrl(q.imageUrl||'')} "style="${q.imageUrl?'':'display:none'}" alt="">
       </div>
       <div style="margin-top:8px">
         <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
@@ -3496,6 +3525,8 @@ function saveEditHW(){
   h.due=document.getElementById('ehw-due').value;
   h.fileUrl=document.getElementById('ehw-fileurl').value.trim();
   h.gradeConfig={5:+document.getElementById('ehw-g5').value||85, 4:+document.getElementById('ehw-g4').value||67, 3:+document.getElementById('ehw-g3').value||45, 2:0};
+  h.maxAttempts=+document.getElementById('ehw-max-attempts').value||0;
+  h.gradeMode=document.getElementById('ehw-grade-mode').value||'best';
   h.questions=_editHWQuestions;
   h.autoTotal=_editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('hw',hws);
@@ -3549,7 +3580,7 @@ function renderScheduleAdmin(){
   document.getElementById('slots-admin-list').innerHTML=slots.map(s=>{
     const u=s.bookedBy?users.find(u=>u.id===s.bookedBy):null;
     const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
-    const whoLabel = g ? `<b>👥 ${g.name}</b>` : (u?`<b>${u.name}</b>`:'<span style="color:var(--text3)">Свободно</span>');
+    const whoLabel = g ? `<b>👥 ${esc(g.name)}</b>` : (u?`<b>${esc(u.name)}</b>`:'<span style="color:var(--text3)">Свободно</span>');
     const courseLabel = s.courseId ? (load('courses')||[]).find(c=>c.id===s.courseId)?.title : null;
     return `<div class="content-item">
       <div class="content-icon">🕐</div>
@@ -3855,9 +3886,9 @@ function showRepeatCard(){
   const filesEl=document.getElementById('repeat-card-files');
   const files=c.files||[];
   filesEl.innerHTML=files.length?`<div style="display:flex;flex-direction:column;gap:6px">${files.map(f=>`
-    <a href="${f.url||'#'}" target="_blank" class="content-item" style="text-decoration:none;color:inherit">
+    <a href="${safeUrl(f.url)}" target="_blank" rel="noopener noreferrer" class="content-item" style="text-decoration:none;color:inherit">
       <div class="content-icon">${f.type==='pdf'?'📄':'📋'}</div>
-      <div class="content-info"><div class="content-name">${f.name||'Файл'}</div></div>
+      <div class="content-info"><div class="content-name">${esc(f.name||'Файл')}</div></div>
       <div style="color:var(--green-mid);font-size:0.85rem">⬇ Открыть</div>
     </a>`).join('')}</div>`:'';
 }
@@ -3959,7 +3990,7 @@ function trialQuestionBuilderHTML(si, qi, q){
     onchange="handleTrialQImgUpload(this,${si},${qi},'${imgPreId}')">`;
 
   const imgPreview = q.imageUrl
-    ? `<img id="${imgPreId}" class="q-img-preview" src="${q.imageUrl}" alt="">`
+    ? `<img id="${imgPreId}" class="q-img-preview" src="${safeUrl(q.imageUrl)}" alt="">`
     : `<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`;
 
   return `<div style="background:var(--white);border:1px solid var(--green-xpale);border-radius:10px;padding:12px;margin-bottom:8px">
@@ -4155,6 +4186,8 @@ function openEditTrial(id){
   document.getElementById('etr-g5').value = gc[5]??85;
   document.getElementById('etr-g4').value = gc[4]??67;
   document.getElementById('etr-g3').value = gc[3]??45;
+  document.getElementById('etr-max-attempts').value = t.maxAttempts??0;
+  document.getElementById('etr-grade-mode').value = t.gradeMode||'best';
 
   // Reset maxpts to readonly auto mode
   const maxEl = document.getElementById('etr-maxpts');
@@ -4317,7 +4350,7 @@ function editTrialQuestionHTML(si, qi, q){
         <input type="file" id="${imgTabId}-file-input" accept="image/*" style="width:100%;font-size:0.8rem"
           onchange="handleEditTrialQImgUpload(this,${si},${qi},'${imgPreId}')">
       </div>
-      ${q.imageUrl?`<img id="${imgPreId}" class="q-img-preview" src="${q.imageUrl}" alt="">`:`<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`}
+      ${q.imageUrl?`<img id="${imgPreId}" class="q-img-preview" src="${safeUrl(q.imageUrl)}" alt="">`:`<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`}
     </div>
   </div>`;
 }
@@ -4342,6 +4375,8 @@ function saveEditTrial(){
   t.passThresh=+(document.getElementById('etr-pass').value)||55;
   t.instruction=document.getElementById('etr-instruction').value.trim();
   t.gradeConfig={5:+(document.getElementById('etr-g5').value)||85, 4:+(document.getElementById('etr-g4').value)||67, 3:+(document.getElementById('etr-g3').value)||45, 2:0};
+  t.maxAttempts=+(document.getElementById('etr-max-attempts').value)||0;
+  t.gradeMode=document.getElementById('etr-grade-mode').value||'best';
   t.sections=JSON.parse(JSON.stringify(_editTrialSections));
   const allQ=_editTrialSections.flatMap(s=>s.questions);
   const autoPts=_editTrialMaxPtsManual
@@ -4555,7 +4590,7 @@ function renderTaskBankAdmin(){
             <span class="badge" style="background:#fef3cd;color:#856404;border:none;font-size:0.7rem">⭐ ${t.points||1} ${(t.points||1)===1?'балл':(t.points||1)<5?'балла':'баллов'}</span>
           </div>
           <div style="font-size:0.92rem;font-weight:600;color:var(--accent);margin-bottom:6px;line-height:1.5">${t.text}</div>
-          ${t.imageUrl?`<img src="${t.imageUrl}" style="max-width:200px;border-radius:8px;border:1px solid var(--green-xpale);margin-bottom:6px" alt="">`:''}
+          ${t.imageUrl?`<img src="${safeUrl(t.imageUrl)}" style="max-width:200px;border-radius:8px;border:1px solid var(--green-xpale);margin-bottom:6px" alt="">`:''}
           ${t.answerType==='choice'&&t.options?.length?`
             <div style="font-size:0.8rem;color:var(--text3);margin-bottom:4px">Варианты: ${t.options.join(' · ')}</div>
             <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctOption}</b>${t.explanation?` — ${t.explanation}`:''}</div>
@@ -4768,7 +4803,7 @@ function _tbRenderList(){
             <span class="badge badge-gold">⭐ ${t.points||1} б.</span>
           </div>
           <div style="font-size:0.95rem;font-weight:600;color:var(--accent);line-height:1.5">${esc(t.text)}</div>
-          ${t.imageUrl?`<img src="${t.imageUrl}" style="max-width:180px;border-radius:8px;margin-top:8px;border:1px solid var(--green-xpale)" alt="">`:''}
+          ${t.imageUrl?`<img src="${safeUrl(t.imageUrl)}" style="max-width:180px;border-radius:8px;margin-top:8px;border:1px solid var(--green-xpale)" alt="">`:''}
         </div>
         <button class="btn btn-green btn-sm" style="flex-shrink:0" onclick="tbSolveSingle('${t.id}')">▶ Решить</button>
       </div>
@@ -4841,7 +4876,7 @@ function _tbRenderCurrentQuestion(){
       <span class="badge badge-gold">⭐ ${q.points||1} б.</span>
     </div>
     <div style="font-size:1.05rem;font-weight:600;color:var(--accent);line-height:1.6">${esc(q.text)}</div>
-    ${q.imageUrl?`<img src="${q.imageUrl}" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:10px;border:1px solid var(--green-xpale);object-fit:contain" alt="">` : ''}`;
+    ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:10px;border:1px solid var(--green-xpale);object-fit:contain" alt="">` : ''}`;
 
   const ansEl = document.getElementById('tb-answer-area');
   const type = q.answerType||'open';
@@ -5396,7 +5431,7 @@ function buildProfileHTML(u, isAdmin){
         ${u.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase()}
       </div>
       <div>
-        <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--accent);font-weight:700">${u.name}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--accent);font-weight:700">${esc(u.name)}</div>
         <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">${u.format?u.format+'':''}${age?' · '+age+' лет':''}</div>
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <span class="badge ${u.active?'badge-green':'badge-red'}">${u.active?'Активен':'Неактивен'}</span>
@@ -5834,6 +5869,11 @@ function renderStudentTests(){
   el.innerHTML=tests.map(t=>{
     const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
     const grade = t.submitted && t.autoTotal ? (t.autoGrade || calcGrade(pct, t.gradeConfig)) : null;
+    const maxAttempts = t.maxAttempts||0;
+    const attemptsUsed = (t.attempts||[]).length;
+    const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
+    const canRetry = !t.submitted ? true : (maxAttempts===0 || attemptsLeft>0);
+    const gradeMode = t.gradeMode||'best';
     return `<div class="card" data-item-id="${t.id}">
       <div class="card-title"><span class="dot"></span>${esc(t.title)}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
@@ -5845,8 +5885,13 @@ function renderStudentTests(){
         })()}
         ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
         ${grade?`<span class="grade-result-badge grade-${grade}">Оценка: ${grade}</span>`:''}
+        ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
+        ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
       </div>
+      ${renderAttemptsHistory(t)}
       ${t.submitted ? renderTestResults(t) : availGate(t,'takeTest')}
+      ${t.submitted && canRetry ? `<div style="margin-top:10px">${availGate(t,'takeTest','🔄 Пройти ещё раз')}</div>` : ''}
+      ${t.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
       <div id="cmt-test-${t.id}"></div>
     </div>`;
   }).join('');
@@ -5863,9 +5908,15 @@ function renderTestResults(t){
 let _takingTest=null; let _testAnswers={};
 function takeTest(id){
   const tests=load('tests')||[];
-  _takingTest=tests.find(t=>t.id===id);
+  const t=tests.find(t=>t.id===id);
+  const maxAttempts=t.maxAttempts||0;
+  const attemptsUsed=(t.attempts||[]).length;
+  if(maxAttempts>0 && attemptsUsed>=maxAttempts){
+    showNotif(`❌ Исчерпано попыток: ${attemptsUsed}/${maxAttempts}`); return;
+  }
+  _takingTest=t;
   _testAnswers={};
-  document.getElementById('take-test-title').textContent=_takingTest.title;
+  document.getElementById('take-test-title').textContent=t.title;
   renderTakeTestBody();
   openModal('modal-take-test');
 }
@@ -5900,8 +5951,6 @@ function calcGrade(pct, gradeConfig){
 function submitTest(){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===_takingTest.id);
-  t.submitted=true;
-  t.answers=_testAnswers;
   let score=0, total=0;
   t.questions.forEach(q=>{
     const pts=+q.points||1;
@@ -5911,18 +5960,41 @@ function submitTest(){
       if(scoreQuestion(q,ans)) score+=pts;
     }
   });
-  t.autoScore=score;
-  t.autoTotal=total||t.autoTotal||0;
-  const pct = t.autoTotal ? Math.round(score/t.autoTotal*100) : 0;
-  t.autoGrade = calcGrade(pct, t.gradeConfig);
-  t.autoPct = pct;
+  const pct = (total||t.autoTotal||0) ? Math.round(score/(total||t.autoTotal||1)*100) : 0;
+  const grade = calcGrade(pct, t.gradeConfig);
+  // Save attempt to history
+  if(!t.attempts) t.attempts=[];
+  t.attempts.push({
+    n: t.attempts.length+1,
+    answers: {..._testAnswers},
+    score, total: total||t.autoTotal||0, pct, grade,
+    date: new Date().toLocaleDateString('ru'),
+    time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
+  });
+  // Calculate final result based on gradeMode
+  const gradeMode = t.gradeMode||'best';
+  let finalAttempt;
+  if(gradeMode==='best'){
+    finalAttempt = t.attempts.reduce((best,a)=>a.pct>=best.pct?a:best, t.attempts[0]);
+  } else {
+    finalAttempt = t.attempts[t.attempts.length-1];
+  }
+  t.submitted=true;
+  t.answers=finalAttempt.answers;
+  t.autoScore=finalAttempt.score;
+  t.autoTotal=finalAttempt.total||t.autoTotal||0;
+  t.autoGrade=finalAttempt.grade;
+  t.autoPct=finalAttempt.pct;
   save('tests',tests);
   closeModal('modal-take-test');
   renderStudentTests();
-  showNotif(`✅ Тест сдан! ${score}/${t.autoTotal} баллов (${pct}%) — оценка ${t.autoGrade}`);
+  const maxAttempts=t.maxAttempts||0;
+  const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - t.attempts.length;
+  const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
+  showNotif(`✅ Тест сдан! ${score}/${t.autoTotal||0} б. (${pct}%) — оценка ${grade}${attemptsMsg}`);
   // notify admin
   const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}»`, date:new Date().toLocaleDateString('ru'), read:false});
+  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}» (попытка ${t.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
   updateAdminBadge();
 }
@@ -5950,22 +6022,33 @@ function renderStudentHW(){
     el.innerHTML=`<div class="empty-state"><div class="big">${icons[_hwFilter]||'✏️'}</div><p>${msgs[_hwFilter]||'Нет ДЗ'}</p></div>`;
     return;
   }
-  el.innerHTML=hws.map(h=>`
-    <div class="card" data-item-id="${h.id}">
+  el.innerHTML=hws.map(h=>{
+    const maxAttempts = h.maxAttempts||0;
+    const attemptsUsed = (h.attempts||[]).length;
+    const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
+    const canRetry = !h.submitted ? true : (maxAttempts===0 || attemptsLeft>0);
+    const gradeMode = h.gradeMode||'best';
+    return `<div class="card" data-item-id="${h.id}">
       <div class="card-title"><span class="dot"></span>${esc(h.title)}</div>
-      <div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${h.desc}</div>
+      <div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>
       ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
-      <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
         ${(()=>{
           const hasOpen=(h.questions||[]).some(q=>q.type==='open');
           if(!h.submitted) return `<span class="badge badge-gold">⏳ Не сдано</span>`;
           if(h.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
           return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
         })()}
+        ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
+        ${h.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
       </div>
+      ${renderAttemptsHistory(h)}
       ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
+      ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
+      ${h.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
       <div id="cmt-hw-${h.id}"></div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   // Inject comment threads
   hws.filter(h=>h.submitted).forEach(h=>{
     const el2 = document.getElementById(`cmt-hw-${h.id}`);
@@ -5984,14 +6067,14 @@ function renderHWResults(h){
           <span style="font-size:0.78rem;color:${correct?'var(--green-mid)':'var(--red)'}">⭐ ${correct?pts:0}/${pts} б.</span>
         </div>
         <div class="question-text">${q.text}</div>
-        ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
+        ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
         <div class="option-item ${correct?'correct':'wrong'}">${ua||'—'} ${correct?'✅':'❌ '+q.correct}</div>
       </div>`;
     } else {
       return `<div class="question-block">
         <div class="question-num">📝 Открытый <span style="font-size:0.75rem;color:var(--text3)">(⭐ ${pts} б.)</span></div>
         <div class="question-text">${q.text}</div>
-        ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
+        ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
         <div class="feedback-box"><b>Ответ:</b> ${h.answers&&h.answers[q.id]||'—'}</div>
         ${q.checked?`<div class="feedback-box" style="border-color:var(--gold);margin-top:6px"><b>Оценка: ${q.grade}</b><br>${q.comment}</div>`:'<div style="font-size:0.8rem;color:var(--text3);margin-top:4px">⏳ Ожидает проверки</div>'}
       </div>`;
@@ -6001,7 +6084,13 @@ function renderHWResults(h){
 let _doingHW=null; let _hwAnswers={};
 function doHW(id){
   const hws=load('hw')||[];
-  _doingHW=hws.find(h=>h.id===id);
+  const h=hws.find(h=>h.id===id);
+  const maxAttempts=h.maxAttempts||0;
+  const attemptsUsed=(h.attempts||[]).length;
+  if(maxAttempts>0 && attemptsUsed>=maxAttempts){
+    showNotif(`❌ Исчерпано попыток: ${attemptsUsed}/${maxAttempts}`); return;
+  }
+  _doingHW=h;
   _hwAnswers={};
   const body=document.getElementById('take-test-body');
   document.getElementById('take-test-title').textContent=_doingHW.title;
@@ -6016,7 +6105,7 @@ function doHW(id){
           <span style="font-size:0.78rem;color:var(--text3)">⭐ ${+q.points||1} ${ptWord(+q.points||1)}</span>
         </div>
         <div class="question-text">${q.text}</div>
-        ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
+        ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
         ${q.type==='auto'?`<div class="option-list">${q.options.map(o=>`
           <div class="option-item" onclick="selectHWOption('${q.id}','${o.replace(/'/g,"\\'")}',this)">${o}</div>`).join('')}</div>`
         :`<textarea style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;min-height:80px" 
@@ -6039,19 +6128,315 @@ function selectHWOption(qId,opt,el){
 function submitHW(){
   const hws=load('hw')||[];
   const h=hws.find(h=>h.id===_doingHW.id);
-  h.submitted=true;
-  h.answers=_hwAnswers;
   const freeEl=document.getElementById('hw-free-answer');
-  if(freeEl) h.freeAnswer=freeEl.value;
+  const freeAnswer=freeEl?freeEl.value:'';
+  // Calculate score for auto questions
+  let score=0, total=0;
+  (h.questions||[]).forEach(q=>{
+    const pts=+q.points||1;
+    const ans=_hwAnswers[q.id]||'';
+    if(q.type!=='open'){
+      total+=pts;
+      if(scoreQuestion(q,ans)) score+=pts;
+    }
+  });
+  const pct = total ? Math.round(score/total*100) : 0;
+  // Save attempt to history
+  if(!h.attempts) h.attempts=[];
+  h.attempts.push({
+    n: h.attempts.length+1,
+    answers: {..._hwAnswers},
+    freeAnswer, score, total, pct,
+    date: new Date().toLocaleDateString('ru'),
+    time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
+  });
+  // Calculate final result based on gradeMode
+  const gradeMode = h.gradeMode||'best';
+  let finalAttempt;
+  if(gradeMode==='best'){
+    finalAttempt = h.attempts.reduce((best,a)=>a.pct>=best.pct?a:best, h.attempts[0]);
+  } else {
+    finalAttempt = h.attempts[h.attempts.length-1];
+  }
+  h.submitted=true;
+  h.answers=finalAttempt.answers;
+  if(finalAttempt.freeAnswer) h.freeAnswer=finalAttempt.freeAnswer;
   save('hw',hws);
   closeModal('modal-take-test');
   renderStudentHW();
-  showNotif('✅ ДЗ отправлено на проверку!');
+  const maxAttempts=h.maxAttempts||0;
+  const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - h.attempts.length;
+  const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
+  showNotif(`✅ ДЗ отправлено!${attemptsMsg}`);
   // notify admin
   const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}»`, date:new Date().toLocaleDateString('ru'), read:false});
+  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
   updateAdminBadge();
+}
+
+// ─── GRADES — STUDENT VIEW ───
+function renderStudentGrades(){
+  const sid = currentUser.id;
+  const el = document.getElementById('student-grades-content');
+  if(!el) return;
+
+  const tests   = (load('tests')||[]).filter(t=>t.studentId===sid && !t.isLibrary);
+  const hws     = (load('hw')||[]).filter(h=>h.studentId===sid && !h.isLibrary);
+  const trials  = (load('trials')||[]).filter(t=>t.studentId===sid && !t.isLibrary);
+
+  // Build unified timeline of all submissions
+  const items = [];
+  tests.forEach(t=>{
+    const attempts = t.attempts||[];
+    if(attempts.length){
+      attempts.forEach(a=>{
+        items.push({type:'test', icon:'📋', title:t.title, date:a.date, time:a.time||'',
+          score:a.score, total:a.total, pct:a.pct, grade:a.grade, attemptN:a.n, totalAttempts:attempts.length,
+          isFinal: t.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct))});
+      });
+    } else if(t.submitted){
+      const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+      items.push({type:'test', icon:'📋', title:t.title, date:t.date, time:'',
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true});
+    }
+  });
+  hws.forEach(h=>{
+    const attempts = h.attempts||[];
+    if(attempts.length){
+      attempts.forEach(a=>{
+        items.push({type:'hw', icon:'✏️', title:h.title, date:a.date, time:a.time||'',
+          score:a.score, total:a.total, pct:a.pct, grade:a.grade, attemptN:a.n, totalAttempts:attempts.length,
+          isFinal: h.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct))});
+      });
+    } else if(h.submitted){
+      items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
+        score:null, total:null, pct:null, grade:null, attemptN:1, totalAttempts:1, isFinal:true, pending:true});
+    }
+  });
+  trials.forEach(t=>{
+    if(t.submitted){
+      const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+      items.push({type:'trial', icon:'🎯', title:t.title, date:t.date, time:'',
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true});
+    }
+  });
+
+  if(!items.length){
+    el.innerHTML=`<div class="empty-state"><div class="big">🏅</div><p>Ещё нет сданных работ</p></div>`;
+    return;
+  }
+
+  // Summary stats
+  const graded = items.filter(i=>i.grade && i.isFinal);
+  const avgPct = graded.length ? Math.round(graded.reduce((s,i)=>s+(i.pct||0),0)/graded.length) : null;
+  const gradeCounts = {5:0,4:0,3:0,2:0};
+  graded.forEach(i=>{ if(i.grade) gradeCounts[i.grade]=(gradeCounts[i.grade]||0)+1; });
+
+  const statsHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px">
+    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${tests.filter(t=>t.submitted).length}</div><div class="stat-label">Тестов сдано</div></div>
+    <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hws.filter(h=>h.submitted).length}</div><div class="stat-label">ДЗ выполнено</div></div>
+    <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num">${trials.filter(t=>t.submitted).length}</div><div class="stat-label">Пробников сдано</div></div>
+    ${avgPct!==null?`<div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num">${avgPct}%</div><div class="stat-label">Средний балл</div></div>`:''}
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+    ${[5,4,3,2].map(g=>`<div style="flex:1;min-width:80px;text-align:center;padding:12px;border-radius:12px;border:2px solid" class="grade-${g}">
+      <div style="font-size:1.5rem;font-weight:800">${gradeCounts[g]||0}</div>
+      <div style="font-size:0.75rem;margin-top:2px">Оценка «${g}»</div>
+    </div>`).join('')}
+  </div>`;
+
+  // Group by type tabs
+  const typeLabel = {test:'📋 Тесты', hw:'✏️ ДЗ', trial:'🎯 Пробники'};
+
+  const renderItems = (filterType) => {
+    const filtered = filterType==='all' ? items : items.filter(i=>i.type===filterType);
+    if(!filtered.length) return `<div class="empty-state"><p>Нет данных</p></div>`;
+    // Sort by date desc (approximate)
+    return filtered.map(i=>{
+      const gradeHTML = i.grade
+        ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">Оценка: ${i.grade}</span>`
+        : (i.pending ? `<span class="badge badge-gold" style="font-size:0.72rem">⏳ На проверке</span>` : '');
+      const scoreHTML = (i.pct!=null)
+        ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
+        : '';
+      const attemptBadge = i.totalAttempts>1
+        ? `<span class="badge" style="font-size:0.68rem;background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">Попытка ${i.attemptN}/${i.totalAttempts}</span>`
+        : '';
+      const finalBadge = i.totalAttempts>1 && i.isFinal
+        ? `<span style="font-size:0.68rem;color:var(--green-mid);font-weight:700">✓ зачтено</span>`
+        : '';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:${i.isFinal&&i.totalAttempts>1?'var(--green-xpale)':'var(--white)'};border:1.5px solid ${i.isFinal&&i.totalAttempts>1?'var(--green-pale)':'var(--green-xpale)'};margin-bottom:8px">
+        <div style="font-size:1.4rem;flex-shrink:0">${i.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:0.9rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(i.title)}</div>
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">${i.date}${i.time?' · '+i.time:''}</div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end">
+          ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  el.innerHTML = statsHTML + `
+  <div class="card">
+    <div class="tabs" style="margin-bottom:14px" id="grades-tab-bar">
+      <div class="tab active" onclick="switchGradesTab('all',this)">📑 Все</div>
+      <div class="tab" onclick="switchGradesTab('test',this)">📋 Тесты</div>
+      <div class="tab" onclick="switchGradesTab('hw',this)">✏️ ДЗ</div>
+      <div class="tab" onclick="switchGradesTab('trial',this)">🎯 Пробники</div>
+    </div>
+    <div id="grades-items-list">${renderItems('all')}</div>
+  </div>`;
+
+  // Store items for tab switching
+  window._gradesItems = items;
+}
+
+function switchGradesTab(type, el){
+  document.querySelectorAll('#grades-tab-bar .tab').forEach(t=>t.className='tab');
+  el.className='tab active';
+  const items = window._gradesItems||[];
+  const filtered = type==='all' ? items : items.filter(i=>i.type===type);
+  const listEl = document.getElementById('grades-items-list');
+  if(!listEl) return;
+  if(!filtered.length){ listEl.innerHTML=`<div class="empty-state"><p>Нет данных</p></div>`; return; }
+  listEl.innerHTML = filtered.map(i=>{
+    const gradeHTML = i.grade
+      ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">Оценка: ${i.grade}</span>`
+      : (i.pending ? `<span class="badge badge-gold" style="font-size:0.72rem">⏳ На проверке</span>` : '');
+    const scoreHTML = (i.pct!=null)
+      ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
+      : '';
+    const attemptBadge = i.totalAttempts>1
+      ? `<span class="badge" style="font-size:0.68rem;background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">Попытка ${i.attemptN}/${i.totalAttempts}</span>`
+      : '';
+    const finalBadge = i.totalAttempts>1 && i.isFinal
+      ? `<span style="font-size:0.68rem;color:var(--green-mid);font-weight:700">✓ зачтено</span>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:${i.isFinal&&i.totalAttempts>1?'var(--green-xpale)':'var(--white)'};border:1.5px solid ${i.isFinal&&i.totalAttempts>1?'var(--green-pale)':'var(--green-xpale)'};margin-bottom:8px">
+      <div style="font-size:1.4rem;flex-shrink:0">${i.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:0.9rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(i.title)}</div>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">${i.date}${i.time?' · '+i.time:''}</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end">
+        ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── GRADES — ADMIN VIEW ───
+let _gradesAdminSid = null;
+function renderGradesAdmin(){
+  const students = (load('users')||[]).filter(u=>u.role==='student');
+  const chipsEl = document.getElementById('grades-admin-chips');
+  const contentEl = document.getElementById('grades-admin-content');
+  if(!chipsEl || !contentEl) return;
+
+  if(!_gradesAdminSid && students.length) _gradesAdminSid = students[0].id;
+
+  chipsEl.innerHTML = students.map(s=>
+    `<div class="student-chip ${_gradesAdminSid===s.id?'active':''}" onclick="_gradesAdminSid='${s.id}';renderGradesAdmin()">${esc(s.name)}</div>`
+  ).join('');
+
+  if(!_gradesAdminSid){ contentEl.innerHTML=`<div class="empty-state"><p>Нет учеников</p></div>`; return; }
+
+  const sid = _gradesAdminSid;
+  const student = students.find(s=>s.id===sid);
+  const tests   = (load('tests')||[]).filter(t=>t.studentId===sid && !t.isLibrary);
+  const hws     = (load('hw')||[]).filter(h=>h.studentId===sid && !h.isLibrary);
+  const trials  = (load('trials')||[]).filter(t=>t.studentId===sid && !t.isLibrary);
+
+  const items = [];
+  tests.forEach(t=>{
+    const attempts = t.attempts||[];
+    if(attempts.length){
+      attempts.forEach(a=>{
+        items.push({type:'test', icon:'📋', title:t.title, date:a.date, time:a.time||'',
+          score:a.score, total:a.total, pct:a.pct, grade:a.grade, attemptN:a.n, totalAttempts:attempts.length,
+          isFinal: t.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct)),
+          maxAttempts:t.maxAttempts||0, gradeMode:t.gradeMode||'best'});
+      });
+    } else if(t.submitted){
+      const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+      items.push({type:'test', icon:'📋', title:t.title, date:t.date, time:'',
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
+    }
+  });
+  hws.forEach(h=>{
+    const attempts = h.attempts||[];
+    if(attempts.length){
+      attempts.forEach(a=>{
+        items.push({type:'hw', icon:'✏️', title:h.title, date:a.date, time:a.time||'',
+          score:a.score, total:a.total, pct:a.pct, grade:a.grade, attemptN:a.n, totalAttempts:attempts.length,
+          isFinal: h.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct)),
+          maxAttempts:h.maxAttempts||0, gradeMode:h.gradeMode||'best'});
+      });
+    } else if(h.submitted){
+      items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
+        score:null, total:null, pct:null, grade:null, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best', pending:true});
+    }
+  });
+  trials.forEach(t=>{
+    if(t.submitted){
+      const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+      items.push({type:'trial', icon:'🎯', title:t.title, date:t.date, time:'',
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
+    }
+  });
+
+  const graded = items.filter(i=>i.grade && i.isFinal);
+  const avgPct = graded.length ? Math.round(graded.reduce((s,i)=>s+(i.pct||0),0)/graded.length) : null;
+  const gradeCounts = {5:0,4:0,3:0,2:0};
+  graded.forEach(i=>{ if(i.grade) gradeCounts[i.grade]=(gradeCounts[i.grade]||0)+1; });
+
+  if(!items.length){
+    contentEl.innerHTML=`<div class="card"><div class="empty-state"><div class="big">🏅</div><p>${esc(student?.name||'—')} ещё не сдавал(а) работ</p></div></div>`;
+    return;
+  }
+
+  const statsHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px">
+    <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${tests.filter(t=>t.submitted).length}</div><div class="stat-label">Тестов</div></div>
+    <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hws.filter(h=>h.submitted).length}</div><div class="stat-label">ДЗ</div></div>
+    <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num">${trials.filter(t=>t.submitted).length}</div><div class="stat-label">Пробников</div></div>
+    ${avgPct!==null?`<div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num">${avgPct}%</div><div class="stat-label">Средний %</div></div>`:''}
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    ${[5,4,3,2].map(g=>`<div style="flex:1;min-width:80px;text-align:center;padding:12px;border-radius:12px;border:2px solid" class="grade-${g}">
+      <div style="font-size:1.5rem;font-weight:800">${gradeCounts[g]||0}</div>
+      <div style="font-size:0.75rem;margin-top:2px">Оценка «${g}»</div>
+    </div>`).join('')}
+  </div>`;
+
+  const rowsHTML = items.map(i=>{
+    const gradeHTML = i.grade
+      ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">Оценка: ${i.grade}</span>`
+      : (i.pending ? `<span class="badge badge-gold" style="font-size:0.72rem">⏳ На проверке</span>` : '');
+    const scoreHTML = (i.pct!=null)
+      ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
+      : '';
+    const attemptBadge = i.totalAttempts>1
+      ? `<span class="badge" style="font-size:0.68rem;background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">Попытка ${i.attemptN}/${i.totalAttempts}${i.maxAttempts>0?' (лим: '+i.maxAttempts+')':''}</span>`
+      : '';
+    const finalBadge = i.totalAttempts>1 && i.isFinal
+      ? `<span style="font-size:0.68rem;color:var(--green-mid);font-weight:700">✓ ${i.gradeMode==='best'?'лучший':'последний'}</span>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:${i.isFinal&&i.totalAttempts>1?'var(--green-xpale)':'var(--white)'};border:1.5px solid ${i.isFinal&&i.totalAttempts>1?'var(--green-pale)':'var(--green-xpale)'};margin-bottom:8px">
+      <div style="font-size:1.4rem;flex-shrink:0">${i.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:0.9rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(i.title)}</div>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">${i.date}${i.time?' · '+i.time:''}</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end">
+        ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}
+      </div>
+    </div>`;
+  }).join('');
+
+  contentEl.innerHTML = statsHTML + `<div class="card">${rowsHTML}</div>`;
 }
 
 // STUDENT PAYMENT — history tab only (wallet/lessons are handled by new functions)
@@ -6067,7 +6452,7 @@ function renderStudentPaymentHistory(){
     const icon={paid:'✅',unpaid:'❌',partial:'⚠️'}[p.status];
     const label={paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично оплачено'}[p.status];
     return `<div class="payment-status ${cls}">
-      <div><b>${p.period}</b>${p.note?` <span style="font-size:0.8rem;opacity:0.7">${p.note}</span>`:''}</div>
+      <div><b>${esc(p.period)}</b>${p.note?` <span style="font-size:0.8rem;opacity:0.7">${esc(p.note)}</span>`:''}</div>
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-weight:700">${p.amount}₽</span>
         <span class="badge ${cls==='paid'?'badge-green':cls==='unpaid'?'badge-red':'badge-gold'}">${icon} ${label}</span>
@@ -6109,7 +6494,7 @@ function renderStudentSchedule(){
       </div>
       <div class="course-body">
         <div class="course-name">${esc(c.title)}</div>
-        <div class="content-meta" style="margin-bottom:8px">${c.desc}</div>
+        <div class="content-meta" style="margin-bottom:8px">${esc(c.desc)}</div>
         <div class="course-formats"><span class="badge badge-green">${formatLabel[c.format]||c.format}</span><span class="badge badge-blue">${c.subject}</span></div>
         <div class="course-price">${c.price}₽<span style="font-size:0.75rem;font-weight:400;color:var(--text3)">/занятие</span></div>
         <button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%" onclick="showBookSlot('${c.id}')">📅 Записаться</button>
@@ -6140,7 +6525,7 @@ function renderStudentSchedule(){
       <div class="content-info">
         <div class="content-name" style="display:flex;align-items:center;gap:8px">
           ${c?c.title:'Занятие'}
-          ${g?`<span class="badge badge-blue" style="font-size:0.7rem">👥 ${g.name}</span>`:''}
+          ${g?`<span class="badge badge-blue" style="font-size:0.7rem">👥 ${esc(g.name)}</span>`:''}
         </div>
         <div class="content-meta">${s.day} ${s.time} · ${s.dur} мин</div>
         <span class="badge badge-green" style="margin-top:4px">✅ Записан</span>
@@ -7884,7 +8269,7 @@ function renderGroups(){
       <div style="display:flex;align-items:center;gap:12px">
         <div class="content-icon">${icon}</div>
         <div class="content-info" style="flex:1">
-          <div class="content-name">${g.name}</div>
+          <div class="content-name">${esc(g.name)}</div>
           <div class="content-meta">${label} · ${members.length} уч.: ${members.map(m=>m.name).join(', ')||'нет участников'}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -8101,7 +8486,7 @@ function openModal_addSlot(){
   // Populate groups
   const gSel = document.getElementById('nsl-group');
   gSel.innerHTML = '<option value="">— Выберите группу —</option>' +
-    getGroups().map(g=>`<option value="${g.id}">${g.name}</option>`).join('');
+    getGroups().map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('');
   // Reset
   document.getElementById('nsl-assigntype').value = '';
   document.getElementById('nsl-student-wrap').style.display = 'none';
@@ -8211,6 +8596,19 @@ function renderNotifSettingsStudent(){
     if(chatIdInput)    chatIdInput.value = '';
   }
 
+  // Web Push block
+  const wpOn    = document.getElementById('wp-on-block');
+  const wpOff   = document.getElementById('wp-off-block');
+  const wpBadge = document.getElementById('wp-status-badge');
+  if (wpOn && wpOff) {
+    const enabled = wpIsEnabled(sid);
+    wpOn.style.display  = enabled ? 'block' : 'none';
+    wpOff.style.display = enabled ? 'none'  : 'block';
+    if (wpBadge) wpBadge.innerHTML = enabled
+      ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">✅ Включён</span>`
+      : `<span style="background:var(--bg);color:var(--text3);font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">Выкл.</span>`;
+  }
+
   // Types toggles
   const typesEl = document.getElementById('notif-types-toggles');
   if(typesEl){
@@ -8226,7 +8624,7 @@ function renderNotifSettingsStudent(){
       <div class="toggle-row">
         <div class="toggle-info">
           <div class="toggle-name">${t.icon} ${t.name}</div>
-          <div class="toggle-desc">${t.desc}</div>
+          <div class="toggle-desc">${esc(t.desc)}</div>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="notif-type-${t.key}" ${settings.types[t.key]!==false?'checked':''}>
@@ -8793,13 +9191,39 @@ function availLockBanner(item){
   return `<div style="background:${bg};border-radius:10px;padding:10px 14px;font-size:0.84rem;font-weight:600;color:${col};margin-bottom:8px">${msg}</div>`;
 }
 /** Renders a start button OR a lock/countdown banner for student view */
-function availGate(item, fnName){
+function renderAttemptsHistory(item){
+  const attempts = item.attempts||[];
+  if(!attempts.length) return '';
+  const gradeMode = item.gradeMode||'best';
+  const gradeModeLabel = gradeMode==='best' ? '🏆 Засчитывается лучший' : '🕐 Засчитывается последний';
+  const maxAttempts = item.maxAttempts||0;
+  const header = `<div style="margin-bottom:8px;font-size:0.8rem;font-weight:700;color:var(--text2)">
+    📋 История попыток · ${gradeModeLabel}${maxAttempts>0?' · Лимит: '+maxAttempts:''}
+  </div>`;
+  const rows = attempts.map((a,i)=>{
+    const isFinal = gradeMode==='best'
+      ? a.pct===Math.max(...attempts.map(x=>x.pct))
+      : i===attempts.length-1;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:8px;margin-bottom:4px;background:${isFinal?'var(--green-xpale)':'var(--bg)'};border:1px solid ${isFinal?'var(--green-pale)':'var(--green-xpale)'}">
+      <span style="font-size:0.75rem;color:var(--text3);min-width:60px">Попытка ${a.n}</span>
+      ${a.total ? `<span class="badge badge-blue" style="font-size:0.7rem">⭐ ${a.score}/${a.total} б. (${a.pct}%)</span>` : ''}
+      ${a.total ? `<span class="grade-result-badge grade-${a.grade}" style="font-size:0.68rem;padding:2px 8px">Оценка: ${a.grade}</span>` : ''}
+      ${isFinal ? `<span style="font-size:0.7rem;color:var(--green-mid);margin-left:auto;font-weight:700">← зачтено</span>` : ''}
+      <span style="font-size:0.7rem;color:var(--text3);margin-left:auto">${a.date} ${a.time||''}</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-bottom:12px;padding:10px 12px;background:var(--bg2,#f8f9fa);border-radius:10px;border:1px solid var(--green-xpale)">
+    ${header}${rows}
+  </div>`;
+}
+
+function availGate(item, fnName, customLabel){
   const st=availStatus(item);
   if(st==='not-open') return `<div style="background:#fffbea;border-radius:10px;padding:10px 14px;font-size:0.84rem;font-weight:600;color:#b45309">⏳ Откроется ${fmtDt(item.openAt)}</div>`;
   if(st==='closed')   return `<div style="background:#fff0f0;border-radius:10px;padding:10px 14px;font-size:0.84rem;font-weight:600;color:var(--red)">🔒 Срок истёк ${fmtDt(item.closeAt)}</div>`;
   const labels={takeTest:'▶️ Пройти тест',doHW:'✏️ Выполнить',startTrial:'▶ Начать пробник'};
   const btnClass=fnName==='startTrial'?'btn btn-green':'btn btn-green';
-  return `<button class="${btnClass}" onclick="${fnName}('${item.id}')">${labels[fnName]||'▶ Начать'}</button>`;
+  return `<button class="${btnClass}" onclick="${fnName}('${item.id}')">${customLabel||labels[fnName]||'▶ Начать'}</button>`;
 }
 /** Shared library section HTML */
 function libSection(label, count, inner){
@@ -8980,7 +9404,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       <span style="font-size:0.78rem;color:var(--text3)">⭐ ${pts} б.</span>
     </div>
     ${q.type!=='fill'?`<div class="question-text">${q.text}</div>`:''}
-    ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
+    ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
     ${body}
     ${q.hint?`<div style="margin-top:10px">
       <button onclick="toggleHint('hint-${q.id}')" style="background:none;border:1.5px solid var(--green-pale);border-radius:8px;padding:5px 12px;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.78rem;color:var(--text3);display:inline-flex;align-items:center;gap:5px;transition:all 0.15s" onmouseover="this.style.borderColor='var(--green-mid)';this.style.color='var(--green-deep)'" onmouseout="this.style.borderColor='var(--green-pale)';this.style.color='var(--text3)'">💡 Показать подсказку</button>
@@ -9026,7 +9450,7 @@ function renderReviewQuestion(q, answers){
     return `<div class="question-block">
       <div class="question-num">📝 Открытый · <span style="font-size:0.75rem;color:var(--text3)">⭐ ${pts} б.</span></div>
       <div class="question-text">${q.text}</div>
-      ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
+      ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
       <div class="feedback-box"><strong>Ваш ответ:</strong> ${ans||'—'}</div>
       ${q.checked?`<div class="feedback-box" style="border-left-color:var(--gold);margin-top:8px"><strong>Оценка: ${q.grade}</strong><br>${q.comment||''}</div>`:`<div style="color:var(--text3);font-size:0.8rem;margin-top:6px">⏳ Ожидает проверки</div>`}
     </div>`;
@@ -9055,7 +9479,7 @@ function renderReviewQuestion(q, answers){
       <span style="font-size:0.78rem;font-weight:700;color:${correct?'var(--green-mid)':'var(--red)'}">⭐ ${correct?pts:0}/${pts} б.</span>
     </div>
     <div class="question-text">${q.text}</div>
-    ${q.imageUrl?`<img src="${q.imageUrl}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
+    ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
     ${detail}
   </div>`;
 }
@@ -9326,4 +9750,162 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initTheme);
 } else {
   initTheme();
+}
+
+// ═══════════════════════════════════════════════
+// WEB PUSH — VAPID + Vercel Function
+// ═══════════════════════════════════════════════
+
+const WP_VAPID_PUB   = 'BBTKTldG8YMiwcYTPPv9Y4n5lQiVC-xBSEbIyMVYYLdjvAUho9mNsQf_uO9wwA0GhNk8ij32YWy0iAPspPEIbOY';
+const WP_SUB_KEY     = 'biohim_wp_sub_';     // + studentId → JSON подписки
+const WP_ENABLED_KEY = 'biohim_wp_on_';      // + studentId → '1'
+const WP_SEND_URL    = '/api/send-push';
+
+function wpSubKey(sid)     { return WP_SUB_KEY + sid; }
+function wpEnabledKey(sid) { return WP_ENABLED_KEY + sid; }
+function wpIsEnabled(sid)  { return !!localStorage.getItem(wpEnabledKey(sid)); }
+
+function wpSupported() {
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
+
+async function wpGetReg() {
+  return navigator.serviceWorker.ready;
+}
+
+// ── Подписка ──
+async function wpSubscribe() {
+  if (!wpSupported()) {
+    showNotif('⚠️ Браузер не поддерживает Web Push');
+    return;
+  }
+  const sid = currentUser?.id;
+  if (!sid) return;
+
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') {
+    showNotif('⚠️ Разрешите уведомления в браузере и попробуйте снова');
+    renderNotifSettingsStudent();
+    return;
+  }
+
+  try {
+    const reg = await wpGetReg();
+    // Отписываем старую если есть
+    const old = await reg.pushManager.getSubscription();
+    if (old) await old.unsubscribe();
+
+    // Конвертируем VAPID public key из base64url в Uint8Array
+    const appKey = wpB64uToUint8(WP_VAPID_PUB);
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: appKey,
+    });
+
+    const subJson = JSON.parse(JSON.stringify(sub));
+    localStorage.setItem(wpSubKey(sid), JSON.stringify(subJson));
+    localStorage.setItem(wpEnabledKey(sid), '1');
+
+    showNotif('✅ Web Push включён!');
+    renderNotifSettingsStudent();
+
+    // Показываем тест через SW напрямую
+    setTimeout(() => wpShowDirect('BioХим', '🔔 Web Push подключён! Уведомления придут даже при закрытом сайте.', ''), 600);
+
+  } catch (err) {
+    console.warn('wpSubscribe error:', err);
+    showNotif('❌ Ошибка подписки: ' + err.message);
+  }
+}
+
+// ── Отписка ──
+async function wpUnsubscribe() {
+  const sid = currentUser?.id;
+  if (!sid) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) await sub.unsubscribe();
+  } catch {}
+  localStorage.removeItem(wpSubKey(sid));
+  localStorage.removeItem(wpEnabledKey(sid));
+  showNotif('Web Push отключён');
+  renderNotifSettingsStudent();
+}
+
+// ── Показать уведомление через SW напрямую (страница открыта/фон) ──
+async function wpShowDirect(title, body, nav) {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title || 'BioХим', {
+      body,
+      icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232d6a4f'/%3E%3Ctext x='90' y='130' text-anchor='middle' font-family='Georgia,serif' font-size='96' font-weight='700' fill='white'%3EB%3C/text%3E%3C/svg%3E",
+      tag: nav || 'biohim',
+      renotify: true,
+      data: { nav: nav || '' },
+      vibrate: [200, 100, 200],
+    });
+  } catch (e) { console.warn('wpShowDirect:', e); }
+}
+
+// ── Отправить push через Vercel API (вызывается на стороне репетитора) ──
+async function wpSendToStudent(sid, title, body, nav) {
+  const subRaw = localStorage.getItem(wpSubKey(sid));
+  if (!subRaw) return;  // нет подписки — тихо пропускаем
+  try {
+    const subscription = JSON.parse(subRaw);
+    if (subscription.direct) return; // прямой режим, не используем API
+
+    await fetch(WP_SEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscription,
+        payload: JSON.stringify({ title: title || 'BioХим', body, nav: nav || '' })
+      })
+    });
+  } catch (e) { console.warn('wpSend error:', e); }
+}
+
+// ── helper: base64url → Uint8Array (для applicationServerKey) ──
+function wpB64uToUint8(b64u) {
+  const s = b64u.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - s.length % 4);
+  const bin = atob(s + pad);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+// ── Патчим addNotif: добавляем Web Push ──
+const _origAddNotif = addNotif;
+function addNotif(studentId, opts) {
+  _origAddNotif(studentId, opts);
+  if (wpIsEnabled(studentId)) {
+    // Если ученик сейчас онлайн и страница в фоне — показываем напрямую
+    if (document.visibilityState === 'hidden') {
+      wpShowDirect('BioХим', opts.text, opts.nav);
+    }
+    // Если репетитор отправляет уведомление другому пользователю — через API
+    if (currentUser && currentUser.role === 'admin') {
+      wpSendToStudent(studentId, 'BioХим', opts.text, opts.nav);
+    }
+  }
+}
+
+// ── Тест ──
+async function testWebPush() {
+  const sid = currentUser?.id;
+  if (!wpIsEnabled(sid)) { showNotif('Web Push не включён'); return; }
+  await wpShowDirect('BioХим — тест', '🔔 Web Push работает! Уведомления приходят. ✅', '');
+  showNotif('✅ Тестовое уведомление отправлено');
+}
+
+// ── Навигация по клику на уведомление ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'navigate' && e.data.nav && typeof navigateTo === 'function') {
+      navigateTo(e.data.nav);
+    }
+  });
 }
