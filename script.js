@@ -938,8 +938,11 @@ function save(k, v){
 }
 
 async function preloadCache(){
+  const timeout = new Promise((_, rej) =>
+    setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), 10000)
+  );
   const db = _fbInit();
-  const snap = await db.ref('db').get();
+  const snap = await Promise.race([db.ref('db').get(), timeout]);
   const data = snap.val() || {};
   COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
 }
