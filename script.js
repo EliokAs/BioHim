@@ -1749,12 +1749,13 @@ function openModal(id, extra){
 function populateModalStudents(containerId){
   const el=document.getElementById(containerId);
   if(!el) return;
-  const students=(load('users')||[]).filter(u=>u.role==='student');
+  const students=(load('users')||[]).filter(u=>u.role==='student'&&u.active!==false);
   if(!students.length){ el.innerHTML='<span style="font-size:0.82rem;color:var(--text3)">Нет учеников</span>'; return; }
-  const cur=_selectedStudent||(students[0]||{}).id;
+  // Если выбран конкретный ученик — отмечаем его, иначе отмечаем всех
+  const cur=_selectedStudent;
   el.innerHTML=students.map(s=>`
     <label class="chip-label">
-      <input type="checkbox" value="${s.id}" ${s.id===cur?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
+      <input type="checkbox" value="${s.id}" ${(!cur||s.id===cur)?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
     </label>`).join('');
 }
 function getCheckedModalStudents(containerId){
