@@ -324,46 +324,31 @@ function gmAutoMount(userId) {
 
   gmCheckIn(userId);
 
-  // Не монтировать повторно
+  // Если виджет уже есть — просто обновить
   if (document.getElementById('gm-widget')) {
     gmUpdateWidget(userId);
     return;
   }
 
-  // Явный якорь
+  // Явный якорь #gm-mount (добавлен в HTML)
   const mount = document.getElementById('gm-mount');
   if (mount) {
     mount.innerHTML = gmRenderWidget(userId);
     return;
   }
 
-  // Вставить перед первой .card на активной странице
-  const page = document.getElementById('page-student-dashboard') || document.getElementById('page-dashboard') || document.querySelector('.page.active');
+  // Fallback — вставить в начало страницы ученика
+  const page = document.getElementById('page-student-dashboard');
   if (page) {
-    if (page.querySelector('#gm-widget')) return;
-    const firstCard = page.querySelector('.card');
-    if (firstCard) {
-      const div = document.createElement('div');
-      div.innerHTML = gmRenderWidget(userId);
-      firstCard.parentNode.insertBefore(div.firstElementChild, firstCard);
+    const div = document.createElement('div');
+    div.innerHTML = gmRenderWidget(userId);
+    const ref = page.querySelector('.grid-3, .card, .welcome-banner + *');
+    if (ref) {
+      ref.parentNode.insertBefore(div.firstElementChild, ref.nextSibling);
+    } else {
+      page.appendChild(div.firstElementChild);
     }
-    return;
   }
-
-  // Если страница ещё не отрисована — ждём
-  const observer = new MutationObserver(() => {
-    const pg = document.getElementById('page-student-dashboard') || document.querySelector('.page.active');
-    if (!pg) return;
-    if (pg.querySelector('#gm-widget')) { observer.disconnect(); return; }
-    const firstCard = pg.querySelector('.card');
-    if (firstCard) {
-      const div = document.createElement('div');
-      div.innerHTML = gmRenderWidget(userId);
-      firstCard.parentNode.insertBefore(div.firstElementChild, firstCard);
-      observer.disconnect();
-    }
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 // ══════════════════════════════════════════
