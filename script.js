@@ -2186,17 +2186,36 @@ function renderOpenAnswers(){
   const el=document.getElementById('open-answers-list');
   let html='';
   tests.forEach(t=>{
-    const openQs=t.questions.filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked);
-    openQs.forEach(q=>{
-      html+=`<div class="question-block">
-        <div class="question-num">Тест: ${esc(t.title)}</div>
-        <div class="question-text">${q.text}</div>
-        <div class="feedback-box"><strong>Ответ ученика:</strong> ${t.answers[q.id]||'—'}</div>
-        <div class="inline-actions">
-          <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
+    const openQs=(t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id]);
+    if(!openQs.length) return;
+    const unchecked=openQs.filter(q=>!q.checked);
+    const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
+    const studentName=(load('users')||[]).find(u=>u.id===t.studentId)?.name||'Ученик';
+    html+=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--green-xpale)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">📋 ${esc(t.title)}</div>
+          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">👤 ${esc(studentName)}${t.autoTotal?' · Авто: '+(t.autoScore||0)+'/'+t.autoTotal+' б.':''}${t.autoGrade?' · Оценка: '+t.autoGrade:''}</div>
         </div>
+        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')">🎓 Итоговая оценка и отзыв</button>
       </div>`;
-    });
+    if(unchecked.length){
+      unchecked.forEach(q=>{
+        html+=`<div class="question-block" style="margin-bottom:8px">
+          <div class="question-text">${q.text}</div>
+          <div class="feedback-box"><strong>Ответ ученика:</strong> ${t.answers[q.id]||'—'}</div>
+          <div class="inline-actions">
+            <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      html+=`<div style="font-size:0.83rem;color:#27ae60;margin-bottom:8px">✅ Все открытые ответы проверены</div>`;
+    }
+    if(t.teacherFeedback){
+      html+=`<div class="feedback-box" style="margin-top:8px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback)}</div>`;
+    }
+    html+=`</div>`;
   });
   el.innerHTML=html||'<div class="empty-state"><p>Нет ответов для проверки</p></div>';
 }
@@ -2744,14 +2763,35 @@ function renderHWOpenAnswers(){
   const el=document.getElementById('hw-open-answers-list');
   let html='';
   hws.forEach(h=>{
-    (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked).forEach(q=>{
-      html+=`<div class="question-block">
-        <div class="question-num">ДЗ: ${esc(h.title)}</div>
-        <div class="question-text">${q.text}</div>
-        <div class="feedback-box"><strong>Ответ:</strong> ${h.answers[q.id]||'—'}</div>
-        <button class="btn btn-green btn-sm" style="margin-top:8px" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
+    const openQs=(h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id]);
+    if(!openQs.length) return;
+    const unchecked=openQs.filter(q=>!q.checked);
+    const studentName=(load('users')||[]).find(u=>u.id===h.studentId)?.name||'Ученик';
+    html+=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--green-xpale)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">✏️ ${esc(h.title)}</div>
+          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">👤 ${esc(studentName)}${h.autoTotal?' · Авто: '+(h.autoScore||0)+'/'+h.autoTotal+' б.':''}${h.autoGrade?' · Оценка: '+h.autoGrade:''}</div>
+        </div>
+        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')">🎓 Итоговая оценка и отзыв</button>
       </div>`;
-    });
+    if(unchecked.length){
+      unchecked.forEach(q=>{
+        html+=`<div class="question-block" style="margin-bottom:8px">
+          <div class="question-text">${q.text}</div>
+          <div class="feedback-box"><strong>Ответ:</strong> ${h.answers[q.id]||'—'}</div>
+          <div style="margin-top:8px">
+            <button class="btn btn-green btn-sm" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      html+=`<div style="font-size:0.83rem;color:#27ae60;margin-bottom:8px">✅ Все открытые ответы проверены</div>`;
+    }
+    if(h.teacherFeedback){
+      html+=`<div class="feedback-box" style="margin-top:8px"><strong>💬 Отзыв:</strong> ${esc(h.teacherFeedback)}</div>`;
+    }
+    html+=`</div>`;
   });
   el.innerHTML=html||'<div class="empty-state"><p>Нет ответов для проверки</p></div>';
 }
@@ -4556,19 +4596,39 @@ function renderTrialOpenAnswers(){
   let html='';
   trials.forEach(t=>{
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
-    allQ.filter(q=>q.type==='open'&&t.answers&&t.answers[q.id]&&!q.checked).forEach(q=>{
-      html+=`<div class="question-block">
-        <div class="question-num">Пробник: ${esc(t.title)}</div>
-        <div class="question-text">${q.text}</div>
-        <div class="feedback-box"><strong>Ответ:</strong> ${t.answers[q.id]||'—'}</div>
-        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
-          <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
-            style="width:80px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center">
-          <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
-          <button class="btn btn-green btn-sm" onclick="checkTrialOpenAnswer('${t.id}','${q.id}')">✅ Зачесть</button>
+    const openQ=allQ.filter(q=>q.type==='open');
+    const unchecked=openQ.filter(q=>t.answers&&t.answers[q.id]&&!q.checked);
+    if(!unchecked.length && !openQ.length) return;
+    const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
+    const studentName=(load('users')||[]).find(u=>u.id===t.studentId)?.name||'Ученик';
+    html+=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--green-xpale)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">🎯 ${esc(t.title)}</div>
+          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">👤 ${esc(studentName)} · Авто: ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoGrade?' · Оценка: '+t.autoGrade:''}</div>
         </div>
+        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','trial')">🎓 Итоговая оценка и отзыв</button>
       </div>`;
-    });
+    if(unchecked.length){
+      unchecked.forEach(q=>{
+        html+=`<div class="question-block" style="margin-bottom:8px">
+          <div class="question-text">${q.text}</div>
+          <div class="feedback-box"><strong>Ответ:</strong> ${t.answers[q.id]||'—'}</div>
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+            <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
+              style="width:80px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center">
+            <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
+            <button class="btn btn-green btn-sm" onclick="checkTrialOpenAnswer('${t.id}','${q.id}')">✅ Зачесть</button>
+          </div>
+        </div>`;
+      });
+    } else {
+      html+=`<div style="font-size:0.83rem;color:#27ae60;margin-bottom:8px">✅ Все открытые ответы зачтены</div>`;
+    }
+    if(t.teacherFeedback){
+      html+=`<div class="feedback-box" style="margin-top:8px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback)}</div>`;
+    }
+    html+=`</div>`;
   });
   el.innerHTML=html||'<div class="empty-state"><p>Нет ответов для проверки</p></div>';
 }
