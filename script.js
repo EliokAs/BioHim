@@ -1,4 +1,63 @@
 // ═══════════════════════════════════════════════
+// УТИЛИТЫ ПРОИЗВОДИТЕЛЬНОСТИ
+// ═══════════════════════════════════════════════
+
+/** Дебаунс: откладывает вызов fn на delay мс после последнего вызова */
+function debounce(fn, delay) {
+  let t;
+  return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), delay); };
+}
+
+/**
+ * VirtualList — рендерит только видимые строки большого списка.
+ * Работает с любым контейнером (div, tbody и т.д.).
+ * @param {HTMLElement} container  — прокручиваемый контейнер
+ * @param {number}      itemHeight — высота одного элемента в px
+ * @param {Function}    renderItem — (item) => HTML-строка
+ * @param {number}      [buffer=5] — запас строк выше/ниже viewport
+ */
+class VirtualList {
+  constructor(container, itemHeight, renderItem, buffer = 5) {
+    this.container  = container;
+    this.itemHeight = itemHeight;
+    this.renderItem = renderItem;
+    this.buffer     = buffer;
+    this.items      = [];
+    this._onScroll  = debounce(() => this._render(), 16);
+    this.container.addEventListener('scroll', this._onScroll);
+  }
+
+  setItems(items) {
+    this.items = items;
+    const totalH = items.length * this.itemHeight;
+    this.container.style.overflowY = 'auto';
+    this.container.style.position  = 'relative';
+    // Максимальная высота контейнера — 600px или меньше если строк мало
+    this.container.style.maxHeight = '600px';
+    this._totalH = totalH;
+    this._render();
+  }
+
+  _render() {
+    const scrollTop  = this.container.scrollTop;
+    const viewH      = this.container.clientHeight || 600;
+    const startIdx   = Math.max(0, Math.floor(scrollTop / this.itemHeight) - this.buffer);
+    const endIdx     = Math.min(this.items.length, Math.ceil((scrollTop + viewH) / this.itemHeight) + this.buffer);
+    const padTop     = startIdx * this.itemHeight;
+    const padBot     = Math.max(0, this._totalH - endIdx * this.itemHeight);
+
+    this.container.innerHTML =
+      `<div style="height:${padTop}px;pointer-events:none"></div>` +
+      this.items.slice(startIdx, endIdx).map(this.renderItem).join('') +
+      `<div style="height:${padBot}px;pointer-events:none"></div>`;
+  }
+
+  destroy() {
+    this.container.removeEventListener('scroll', this._onScroll);
+  }
+}
+
+// ═══════════════════════════════════════════════
 // ТЁМНАЯ ТЕМА
 // ═══════════════════════════════════════════════
 const THEME_KEY = 'biohim_theme';
@@ -10,6 +69,10 @@ function updateThemeToggle() { /* dark theme removed */ }
 // ═══════════════════════════════════════════════
 // ГЛОБАЛЬНЫЙ ПОИСК
 // ═══════════════════════════════════════════════
+
+// Дебаунс для живого поиска при вводе (300мс)
+const performGlobalSearchDebounced = debounce(q => performGlobalSearch(q), 300);
+
 function performGlobalSearch(query) {
   if (!query || query.length < 2) {
     showNotif('⚠️ Введите минимум 2 символа для поиска');
@@ -1078,18 +1141,38 @@ function subscribeRealtime(){
       if(el && typeof renderStudentNotifs === 'function') renderStudentNotifs();
     }
   });
-  ['content','tests','hw','trials'].forEach(k => {
+
+  // Дебаунсированные рендеры — не чаще 1 раза в 300мс, только на активной странице
+  const _debouncedRender = {};
+  const studentPageMap = {
+    content: { pageId: 'student-content', fn: 'renderStudentContent' },
+    tests:   { pageId: 'student-tests',   fn: 'renderStudentTests'   },
+    hw:      { pageId: 'student-hw',      fn: 'renderStudentHW'      },
+    trials:  { pageId: 'student-trials',  fn: 'renderStudentTrials'  },
+  };
+  const adminPageMap = {
+    users:    { pageId: 'students',     fn: 'renderStudents'    },
+    payments: { pageId: 'students',     fn: 'renderStudents'    },
+    tests:    { pageId: 'tests-admin',  fn: 'renderTestsAdmin'  },
+    hw:       { pageId: 'hw-admin',     fn: 'renderHWAdmin'     },
+    content:  { pageId: 'content-admin',fn: 'renderContentAdmin'},
+    trials:   { pageId: 'trial-admin',  fn: 'renderTrialAdmin'  },
+  };
+
+  Object.keys({...studentPageMap, ...adminPageMap}).forEach(k => {
+    if (_debouncedRender[k]) return; // одна подписка на ключ
+    _debouncedRender[k] = debounce(() => {
+      if (!currentUser) return;
+      const map = currentUser.role === 'student' ? studentPageMap : adminPageMap;
+      const m   = map[k];
+      if (!m) return;
+      // Рендерим только если соответствующая страница сейчас активна
+      if (curPage !== m.pageId) return;
+      if (typeof window[m.fn] === 'function') window[m.fn]();
+    }, 300);
+
     db.ref('db/' + k).on('value', () => {
-      if(!currentUser) return;
-      if(currentUser.role === 'student'){
-        const pageMap = {content:'renderStudentContent',tests:'renderStudentTests',hw:'renderStudentHW',trials:'renderStudentTrials'};
-        const fnName = pageMap[k];
-        if(fnName && typeof window[fnName] === 'function'){
-          const idMap = {content:'student-content',tests:'student-tests',hw:'student-hw',trials:'student-trials'};
-          const page = document.getElementById('page-'+idMap[k]);
-          if(page && page.classList.contains('active')) window[fnName]();
-        }
-      }
+      if (_debouncedRender[k]) _debouncedRender[k]();
     });
   });
 }
@@ -1527,9 +1610,27 @@ function renderDashboard(){
 function renderStudents(){
   const students=getStudents();
   const courses=load('courses')||[];
+
+  // Индекс платежей: O(n) один раз вместо O(n) на каждого студента
+  const payByStudent = new Map();
+  (load('payments')||[]).forEach(p => {
+    // Перезаписываем — в итоге остаётся последний платёж каждого студента
+    payByStudent.set(p.studentId, p);
+  });
+  const _payBadge = sid => {
+    const p = payByStudent.get(sid);
+    if (!p) return '<span class="badge badge-red">Нет данных</span>';
+    const cls = {paid:'badge-green',unpaid:'badge-red',partial:'badge-gold'}[p.status] || 'badge-red';
+    const lbl = {paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично'}[p.status] || p.status;
+    return `<span class="badge ${cls}">${lbl}</span>`;
+  };
+
+  // Индекс курсов: O(m) один раз
+  const courseMap = new Map(courses.map(c => [c.id, c]));
+
   const tb=document.getElementById('students-table');
   tb.innerHTML=students.map(s=>{
-    const enrolled=(s.enrolledCourses||[]).map(id=>courses.find(c=>c.id===id)).filter(Boolean);
+    const enrolled=(s.enrolledCourses||[]).map(id=>courseMap.get(id)).filter(Boolean);
     const coursesBadges = enrolled.length
       ? enrolled.map(c=>`<span class="badge badge-green" style="font-size:0.68rem;margin-right:2px">${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'} ${esc(c.title)}</span>`).join('')
       : s.subject
@@ -1555,7 +1656,7 @@ function renderStudents(){
           ?`<div style="font-size:0.7rem;color:var(--green-mid);margin-top:3px">📄 Договор ✅</div>`
           :`<div style="font-size:0.7rem;color:var(--red);margin-top:3px">📄 Договор ❌</div>`}
       </td>
-      <td>${getPaymentStatusBadge(s.id)}</td>
+      <td>${_payBadge(s.id)}</td>
       <td>
         <button class="btn btn-outline btn-sm" onclick="openStudentProfileModal('${s.id}')">👤 Профиль</button>
         <button class="btn btn-outline btn-sm" onclick="openEditStudent('${s.id}')">✏️ Изменить</button>
@@ -4738,28 +4839,20 @@ function renderStudentTrial(){
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
     const hasOpen=allQ.some(q=>q.type==='open');
     const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
-    const statusIcon = !t.submitted ? '⏳' : fullyChecked ? '✅' : '🔍';
-    const grade = fullyChecked && t.autoTotal ? (t.autoGrade||calcGrade(pct,t.gradeConfig)) : null;
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
         ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.autoTotal?(' · Оценка '+(t.autoGrade||calcGrade(pct,t.gradeConfig))):''}</span>`
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
-    return `<div class="card collapsible-card">
-      <div class="card-title collapsible" onclick="toggleCollapse('tr_${t.id}', this)">
-        <span class="dot"></span>${statusIcon} 🎯 ${esc(t.title)}
-        ${grade?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
-        <span class="collapse-arrow">▼</span>
+    return `<div class="card">
+      <div class="card-title"><span class="dot"></span>🎯 ${esc(t.title)}</div>
+      <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
+        ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
+        ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
       </div>
-      <div class="card-collapse-body" id="cb-tr_${t.id}">
-        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
-          ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
-          ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
-        </div>
-        <div style="margin-bottom:12px">${statusBadge}</div>
-        ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
-        <div id="cmt-trial-${t.id}"></div>
-      </div>
+      <div style="margin-bottom:12px">${statusBadge}</div>
+      ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
+      <div id="cmt-trial-${t.id}"></div>
     </div>`;
   }).join('');
   // Inject comment threads
