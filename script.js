@@ -4275,7 +4275,7 @@ function trialAdminItemHTML(t){
   const statusBadge = !t.submitted
     ? `<span class="badge badge-gold">⏳ Не пройден</span>`
     : fullyChecked
-      ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%</span>`
+      ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoTotal?' · '+pct+'%':''}</span>`
       : `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
   return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
@@ -4681,8 +4681,8 @@ function renderStudentTrial(){
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
-        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore}/${t.autoTotal} б. · ${pct}% · Оценка ${t.autoGrade||calcGrade(pct,t.gradeConfig)}</span>`
-        :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore}/${t.autoTotal} б.</span>`;
+        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.autoTotal?(' · Оценка '+(t.autoGrade||calcGrade(pct,t.gradeConfig))):''}</span>`
+        :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
     return `<div class="card">
       <div class="card-title"><span class="dot"></span>🎯 ${esc(t.title)}</div>
       <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
@@ -4788,9 +4788,10 @@ function submitTrial(timeout=false){
 function viewTrialResultHTML(t){
   const allQ=(t.sections||[]).flatMap(s=>s.questions);
   const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
+  const _trialGrade = t.autoGrade || (t.autoTotal ? calcGrade(pct, t.gradeConfig) : null);
   return `<div style="margin-top:4px">
-    ${t.autoGrade?`<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span class="grade-result-badge grade-${t.autoGrade}">🎓 Оценка: ${t.autoGrade}</span>
+    ${_trialGrade?`<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="grade-result-badge grade-${_trialGrade}">🎓 Оценка: ${_trialGrade}</span>
       <span class="badge badge-green">${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%</span>
     </div>`:''}
     ${t.teacherFeedback?`<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>`:''}
@@ -4997,7 +4998,6 @@ function renderStudentTaskBank(){
 
   _tbRenderList();
 }
-
 function _tbGetFiltered(){
   const sid = currentUser && currentUser.role==='student' ? currentUser.id : null;
   const subjectFilter = sid ? getStudentSubjectFilter(sid) : null;
@@ -9457,7 +9457,7 @@ function renderAttemptsHistory(item){
     return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:8px;margin-bottom:4px;background:${isFinal?'var(--green-xpale)':'var(--bg)'};border:1px solid ${isFinal?'var(--green-pale)':'var(--green-xpale)'}">
       <span style="font-size:0.75rem;color:var(--text3);min-width:60px">Попытка ${a.n}</span>
       ${a.total ? `<span class="badge badge-blue" style="font-size:0.7rem">⭐ ${a.score}/${a.total} б. (${a.pct}%)</span>` : ''}
-      ${a.total ? `<span class="grade-result-badge grade-${a.grade}" style="font-size:0.68rem;padding:2px 8px">Оценка: ${a.grade}</span>` : ''}
+      ${a.total && (a.grade || a.pct!=null) ? `<span class="grade-result-badge grade-${a.grade||calcGrade(a.pct,null)}" style="font-size:0.68rem;padding:2px 8px">Оценка: ${a.grade||calcGrade(a.pct,null)}</span>` : ''}
       ${isFinal ? `<span style="font-size:0.7rem;color:var(--green-mid);margin-left:auto;font-weight:700">← зачтено</span>` : ''}
       <span style="font-size:0.7rem;color:var(--text3);margin-left:auto">${a.date} ${a.time||''}</span>
     </div>`;
