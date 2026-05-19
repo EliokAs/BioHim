@@ -4771,10 +4771,11 @@ function submitTrial(timeout=false){
     const ans=_trialAnswers[q.id]||'';
     if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
   }));
-  t.autoScore=score; t.autoTotal=total||t.maxPts||total;
+  t.autoScore=score;
+  t.autoTotal=t.maxPts||total; // maxPts = full trial max (auto+open), used as denominator
   t.autoScoreBase=score; // store auto-only score for later open question addition
   const pct=t.autoTotal?Math.round(score/t.autoTotal*100):0;
-  t.autoGrade=calcGrade(pct,t.gradeConfig); t.autoPct=pct;
+  t.autoGrade=pct!=null?calcGrade(pct,t.gradeConfig):null; t.autoPct=pct;
   save('trials',trials);
   document.getElementById('modal-take-trial').classList.remove('open');
   renderStudentTrial();
@@ -4998,6 +4999,7 @@ function renderStudentTaskBank(){
 
   _tbRenderList();
 }
+
 function _tbGetFiltered(){
   const sid = currentUser && currentUser.role==='student' ? currentUser.id : null;
   const subjectFilter = sid ? getStudentSubjectFilter(sid) : null;
