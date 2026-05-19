@@ -4846,12 +4846,12 @@ function renderStudentTrial(){
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
     const grade=t.autoGrade||(t.autoTotal?calcGrade(pct,t.gradeConfig):null);
     return `<div class="card collapsible-card" data-item-id="${t.id}">
-      <div class="card-title collapsible" onclick="toggleCollapse('tr_${t.id}',this)">
+      <div class="card-title collapsible collapsed" onclick="toggleCollapse('tr_${t.id}',this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
         ${grade&&t.submitted?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body" id="cb-tr_${t.id}">
+      <div class="card-collapse-body collapsed" id="cb-tr_${t.id}">
         <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
           ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
           ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
@@ -6295,12 +6295,12 @@ function renderStudentTests(){
     const gradeMode = t.gradeMode||'best';
     const statusIcon = !t.submitted ? '⏳' : (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
     return `<div class="card collapsible-card" data-item-id="${t.id}">
-      <div class="card-title collapsible" onclick="toggleCollapse('t_${t.id}', this)">
+      <div class="card-title collapsible collapsed" onclick="toggleCollapse('t_${t.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
         ${grade?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body" id="cb-t_${t.id}">
+      <div class="card-collapse-body collapsed" id="cb-t_${t.id}">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
           ${(()=>{
             const hasOpen=(t.questions||[]).some(q=>q.type==='open');
@@ -6458,13 +6458,13 @@ function renderStudentHW(){
     const gradeMode = h.gradeMode||'best';
     const statusIcon = !h.submitted ? '⏳' : (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
     return `<div class="card collapsible-card" data-item-id="${h.id}">
-      <div class="card-title collapsible" onclick="toggleCollapse('hw_${h.id}', this)">
+      <div class="card-title collapsible collapsed" onclick="toggleCollapse('hw_${h.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(h.title)}
         ${h.autoGrade?`<span class="grade-result-badge grade-${h.autoGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.autoGrade}</span>`:''}
         ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body" id="cb-hw_${h.id}">
+      <div class="card-collapse-body collapsed" id="cb-hw_${h.id}">
         ${h.desc?`<div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>`:''}
         ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
