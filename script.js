@@ -998,6 +998,7 @@ function toggleCollapse(id, btn){
   const collapsed = body.classList.toggle('collapsed');
   if(title) title.classList.toggle('collapsed', collapsed);
 }
+
 function toggleNotifExpand(btn, extraCount){
   const list = btn.closest('#student-notifs-list') || btn.parentElement;
   const hidden = list.querySelectorAll('[data-notif-idx]');
@@ -1056,8 +1057,8 @@ function safeUrl(url){
 
 // 3. Защита от брутфорса (sessionStorage — переживает перезагрузку страницы)
 const _BF_SS_KEY = 'biohim_bf';
-function _bfLoad(){ try{ return JSON.parse(localStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
-function _bfSave(d){ try{ localStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
+function _bfLoad(){ try{ return JSON.parse(sessionStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
+function _bfSave(d){ try{ sessionStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
 
 function checkBruteForce(login){
   const now = Date.now();
@@ -1453,15 +1454,6 @@ function navigateTo(page){
     console.warn('Route guard blocked:', page, 'for role:', currentUser.role);
     return;
   }
-  // Admin cannot navigate to student-only pages
-  const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
-    'student-hw','student-trial','student-chat','student-grades','student-taskbank',
-    'student-payment','student-schedule','student-repeat','student-lesson',
-    'student-notif-settings'];
-  if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
-    console.warn('Admin blocked from student page:', page);
-    return;
-  }
   // Parent role: block all pages except parent-dashboard
   if(currentUser && currentUser.role === 'parent' && page !== 'parent-dashboard'){
     showNotif('⛔ Нет доступа');
@@ -1497,7 +1489,7 @@ function renderPage(p){
   else if(p==='hw-admin'){ renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='trial-admin'){ renderTrialAdmin(); }
   else if(p==='taskbank-admin'){ renderTaskBankAdmin(); }
-  else if(p==='student-trial'){ if(currentUser&&currentUser.role==='student') renderStudentTrial(); }
+  else if(p==='student-trial'){ renderStudentTrial(); }
   else if(p==='chat-admin'){ renderChatAdmin(); }
   else if(p==='student-chat'){ renderStudentChat(); }
   else if(p==='attend-pay-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); }
@@ -1505,10 +1497,10 @@ function renderPage(p){
   else if(p==='schedule-admin') renderScheduleAdmin();
   else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
-  else if(p==='student-materials'){ if(currentUser&&currentUser.role==='student') renderStudentMaterials(); }
+  else if(p==='student-materials') renderStudentMaterials();
   else if(p==='student-repeat') renderRepeatPage();
-  else if(p==='student-tests'){ if(currentUser&&currentUser.role==='student') renderStudentTests(); }
-  else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student') renderStudentHW(); }
+  else if(p==='student-tests') renderStudentTests();
+  else if(p==='student-hw') renderStudentHW();
   else if(p==='student-grades') renderStudentGrades();
   else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
@@ -1986,18 +1978,14 @@ function getCheckedModalStudents(containerId){
   if(!el) return [];
   return [...el.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
 }
-function closeModal(id, force){
-  // Редакторы — через guard с подтверждением
-  if (_DIRTY_MODALS && _DIRTY_MODALS.includes(id)) {
-    _safeClose(id, force);
-    return;
-  }
+function closeModal(id){
   const el=document.getElementById(id);
   if(el) el.classList.remove('open');
   if(id==='modal-add-theory'){
     _theoryFiles=[];
   }
 }
+
 function getVideoEmbedUrl(url){
   if(!url) return null;
   url = url.trim();
@@ -2426,7 +2414,6 @@ function submitCheck(itemId,qId,itemType){
 
 // ── OVERALL REVIEW for test / hw / trial ──
 function openItemOverallReview(itemId, itemType){
-  requireAdmin('openItemOverallReview');
   const storeKey=itemType==='test'?'tests':itemType==='hw'?'hw':'trials';
   const items=load(storeKey)||[];
   const item=items.find(t=>t.id===itemId); if(!item) return;
@@ -2656,7 +2643,6 @@ function deleteTest(id){ requireAdmin('deleteTest'); save('tests',(load('tests')
 // ─── ASSIGN STUDENTS TO EXISTING ITEM ───
 let _assignType=null, _assignId=null;
 function openAssignStudents(type, id){
-  requireAdmin('openAssignStudents');
   _assignType=type; _assignId=id;
   const students=(load('users')||[]).filter(u=>u.role==='student');
   // Find which students already have this item
@@ -3431,24 +3417,6 @@ let _editTheoryFiles=[];
 // ─── TEST EDITOR ───
 let _editTestId='';
 let _editTestQuestions=[];
-
-// ── Защита от потери несохранённых изменений ──
-const _DIRTY_MODALS = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial'];
-let _editorDirty = false;
-
-function _setDirty(val) {
-  _editorDirty = !!val;
-}
-
-function _safeClose(id, force) {
-  if (!force && _DIRTY_MODALS.includes(id) && _editorDirty) {
-    if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
-  }
-  _editorDirty = false;
-  const el = document.getElementById(id);
-  if (el) el.classList.remove('open');
-  if (id === 'modal-add-theory') { _theoryFiles = []; }
-}
 // ── EDIT TEST ──
 function openEditTest(id){
   const t=(load('tests')||[]).find(t=>t.id===id);
@@ -3467,7 +3435,6 @@ function openEditTest(id){
   document.getElementById('et-max-attempts').value=t.maxAttempts??0;
   document.getElementById('et-grade-mode').value=t.gradeMode||'best';
   renderEditTestBuilder();
-  _setDirty(false);
   document.getElementById('modal-edit-test').classList.add('open');
 }
 function qTypeLabel(type){
@@ -3585,12 +3552,10 @@ function handleEditQImgUpload(input, store, idx, previewId){
 }
 function addEditTestQuestion(type){
   _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
-  _setDirty(true);
   renderEditTestBuilder();
 }
-function removeEditQ(i){ _editTestQuestions.splice(i,1); _setDirty(true); renderEditTestBuilder(); }
+function removeEditQ(i){ _editTestQuestions.splice(i,1); renderEditTestBuilder(); }
 function saveEditTest(){
-  requireAdmin('saveEditTest');
   const title=document.getElementById('et-title').value.trim();
   if(!title){ showNotif('Введите название теста'); return; }
   if(!_editTestQuestions.length){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -3607,8 +3572,7 @@ function saveEditTest(){
   t.questions=_editTestQuestions;
   t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('tests',tests);
-  _setDirty(false);
-  closeModal('modal-edit-test', true);
+  closeModal('modal-edit-test');
   renderTestsAdmin();
   showNotif('✅ Тест обновлён');
 }
@@ -3631,7 +3595,6 @@ function openEditHW(id){
   document.getElementById('ehw-max-attempts').value=h.maxAttempts??0;
   document.getElementById('ehw-grade-mode').value=h.gradeMode||'best';
   renderEditHWBuilder();
-  _setDirty(false);
   document.getElementById('modal-edit-hw').classList.add('open');
 }
 function renderEditHWBuilder(){
@@ -3687,11 +3650,10 @@ function renderEditHWBuilder(){
   }).join('');
 }
 function addEditHWQuestion(type){
-  _setDirty(true);
   _editHWQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
   renderEditHWBuilder();
 }
-function removeEditHWQ(i){ _editHWQuestions.splice(i,1); _setDirty(true); renderEditHWBuilder(); }
+function removeEditHWQ(i){ _editHWQuestions.splice(i,1); renderEditHWBuilder(); }
 
 // ═══════════════════════════════════════
 // 📄 DOCX → AI → Questions Import
@@ -3862,7 +3824,6 @@ async function importDocxToHW(input) {
 }
 
 function saveEditHW(){
-  requireAdmin('saveEditHW');
   const id=document.getElementById('ehw-id').value;
   const title=document.getElementById('ehw-title').value.trim();
   if(!title){ showNotif('Введите тему'); return; }
@@ -3879,8 +3840,7 @@ function saveEditHW(){
   h.questions=_editHWQuestions;
   h.autoTotal=_editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('hw',hws);
-  _setDirty(false);
-  closeModal('modal-edit-hw', true);
+  closeModal('modal-edit-hw');
   renderHWAdmin();
   showNotif('✅ ДЗ обновлено');
 }
@@ -4522,8 +4482,7 @@ function trialAdminItemHTML(t){
 
   </div>`;
 }
-function deleteTrial(id){
-  requireAdmin('deleteTrial'); save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
+function deleteTrial(id){ save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
 
 // ── EDIT TRIAL ──
 let _editTrialSections = [];
@@ -4560,7 +4519,6 @@ function openEditTrial(id){
   if(hint) hint.textContent='(считается автоматически из вопросов)';
 
   renderEditTrialBuilder();
-  _setDirty(false);
   document.getElementById('modal-edit-trial').classList.add('open');
 }
 
@@ -4585,22 +4543,18 @@ function toggleEditTrialMaxPts(){
 }
 
 function addEditTrialSection(){
-  _setDirty(true);
   _editTrialSections.push({id:'ts_'+Date.now(), title:'Часть '+(+_editTrialSections.length+1), questions:[]});
   renderEditTrialBuilder();
 }
 function removeEditTrialSection(idx){
-  _setDirty(true);
   _editTrialSections.splice(idx,1);
   renderEditTrialBuilder();
 }
 function addEditTrialQuestion(sIdx, type){
-  _setDirty(true);
   _editTrialSections[sIdx].questions.push(initQuestion('tq_'+Date.now(), type));
   renderEditTrialBuilder();
 }
 function removeEditTrialQuestion(sIdx, qIdx){
-  _setDirty(true);
   _editTrialSections[sIdx].questions.splice(qIdx,1);
   renderEditTrialBuilder();
 }
@@ -4729,7 +4683,6 @@ function handleEditTrialQImgUpload(input, si, qi, previewId){
 }
 
 function saveEditTrial(){
-  try{ requireAdmin('saveEditTrial'); } catch(e){ return; }
   const title=document.getElementById('etr-title').value.trim();
   if(!title){ showNotif('Введите название'); return; }
   if(!_editTrialSections.some(s=>s.questions.length)){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -4752,8 +4705,7 @@ function saveEditTrial(){
   t.maxPts=autoPts;
   t.autoTotal=allQ.filter(q=>q.type==='auto').reduce((a,q)=>a+(+q.points||1),0)||autoPts;
   save('trials',trials);
-  _setDirty(false);
-  closeModal('modal-edit-trial', true);
+  closeModal('modal-edit-trial');
   renderTrialAdmin();
   showNotif('✅ Пробник обновлён');
 }
@@ -4887,28 +4839,20 @@ function renderStudentTrial(){
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
     const hasOpen=allQ.some(q=>q.type==='open');
     const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
-    const statusIcon=!t.submitted?'⏳':fullyChecked?'✅':'🔍';
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
         ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.autoTotal?(' · Оценка '+(t.autoGrade||calcGrade(pct,t.gradeConfig))):''}</span>`
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
-    const grade=t.autoGrade||(t.autoTotal?calcGrade(pct,t.gradeConfig):null);
-    return `<div class="card collapsible-card" data-item-id="${t.id}">
-      <div class="card-title collapsible collapsed" onclick="toggleCollapse('tr_${t.id}',this)">
-        <span class="dot"></span>${statusIcon} ${esc(t.title)}
-        ${grade&&t.submitted?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
-        <span class="collapse-arrow">▼</span>
+    return `<div class="card">
+      <div class="card-title"><span class="dot"></span>🎯 ${esc(t.title)}</div>
+      <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
+        ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
+        ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
       </div>
-      <div class="card-collapse-body collapsed" id="cb-tr_${t.id}">
-        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
-          ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
-          ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
-        </div>
-        <div style="margin-bottom:12px">${statusBadge}</div>
-        ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
-        <div id="cmt-trial-${t.id}"></div>
-      </div>
+      <div style="margin-bottom:12px">${statusBadge}</div>
+      ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
+      <div id="cmt-trial-${t.id}"></div>
     </div>`;
   }).join('');
   // Inject comment threads
@@ -4923,9 +4867,6 @@ let _activeTrial=null, _trialAnswers={}, _trialTimerInterval=null, _trialSeconds
 function startTrial(id){
   const t=(load('trials')||[]).find(t=>t.id===id);
   if(!t) return;
-  if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
-    showNotif('⛔ Нет доступа к этому пробнику'); console.warn('IDOR attempt startTrial',id); return;
-  }
   _activeTrial=t;
   _trialAnswers={};
   _trialSecondsLeft=t.timeMins*60;
@@ -4984,7 +4925,6 @@ function submitTrial(timeout=false){
   clearInterval(_trialTimerInterval);
   const trials=load('trials')||[];
   const t=trials.find(t=>t.id===_activeTrial.id);
-  if(!t){ showNotif('Ошибка: пробник не найден'); return; }
   t.submitted=true; t.answers={..._trialAnswers};
   let score=0, total=0;
   (t.sections||[]).forEach(s=>s.questions.forEach(q=>{
@@ -6083,10 +6023,10 @@ function renderParentDashboard(){
   const el = document.getElementById('page-parent-dashboard');
   if(!el) return;
 
-  // Find linked student — verify it's actually a student role (not admin)
+  // Find linked student
   const sid = currentUser.linkedStudentId;
   const users = load('users')||[];
-  const student = users.find(u=>u.id===sid && u.role==='student');
+  const student = users.find(u=>u.id===sid);
 
   if(!student){
     el.innerHTML = `<div class="page-title">👨‍👩‍👧 Дашборд родителя</div>
@@ -6348,12 +6288,12 @@ function renderStudentTests(){
     const gradeMode = t.gradeMode||'best';
     const statusIcon = !t.submitted ? '⏳' : (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
     return `<div class="card collapsible-card" data-item-id="${t.id}">
-      <div class="card-title collapsible collapsed" onclick="toggleCollapse('t_${t.id}', this)">
+      <div class="card-title collapsible" onclick="toggleCollapse('t_${t.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
         ${grade?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body collapsed" id="cb-t_${t.id}">
+      <div class="card-collapse-body" id="cb-t_${t.id}">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
           ${(()=>{
             const hasOpen=(t.questions||[]).some(q=>q.type==='open');
@@ -6389,10 +6329,6 @@ let _takingTest=null; let _testAnswers={};
 function takeTest(id){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===id);
-  if(!t){ showNotif('Тест не найден'); return; }
-  if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
-    showNotif('⛔ Нет доступа к этому тесту'); console.warn('IDOR attempt takeTest',id); return;
-  }
   const maxAttempts=t.maxAttempts||0;
   const attemptsUsed=(t.attempts||[]).length;
   if(maxAttempts>0 && attemptsUsed>=maxAttempts){
@@ -6435,7 +6371,6 @@ function calcGrade(pct, gradeConfig){
 function submitTest(){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===_takingTest.id);
-  if(!t){ showNotif('Ошибка: тест не найден'); return; }
   let score=0, total=0;
   t.questions.forEach(q=>{
     const pts=+q.points||1;
@@ -6516,13 +6451,13 @@ function renderStudentHW(){
     const gradeMode = h.gradeMode||'best';
     const statusIcon = !h.submitted ? '⏳' : (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
     return `<div class="card collapsible-card" data-item-id="${h.id}">
-      <div class="card-title collapsible collapsed" onclick="toggleCollapse('hw_${h.id}', this)">
+      <div class="card-title collapsible" onclick="toggleCollapse('hw_${h.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(h.title)}
         ${h.autoGrade?`<span class="grade-result-badge grade-${h.autoGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.autoGrade}</span>`:''}
         ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body collapsed" id="cb-hw_${h.id}">
+      <div class="card-collapse-body" id="cb-hw_${h.id}">
         ${h.desc?`<div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>`:''}
         ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
@@ -7021,6 +6956,7 @@ function renderStudentSchedule(){
   // Объединяем: сначала назначенные, потом заявки (без дублей по slotId)
   const assignedSlotIds=new Set(assignedSlots.map(s=>s.id));
   const bookingItems=myBookings.filter(b=>!assignedSlotIds.has(b.slotId));
+
   const assignedItems=assignedSlots.map(s=>{
     const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
     const c=s.courseId?courses.find(c=>c.id===s.courseId):null;
@@ -8054,6 +7990,7 @@ function getCalEvents(){
 
   return events;
 }
+
 function renderCalendar(){
   const grid = document.getElementById('cal-grid');
   const label = document.getElementById('cal-month-label');
@@ -8480,7 +8417,7 @@ function renderChatAdmin(){
       <div class="chat-avatar">${initials}</div>
       <div style="flex:1;min-width:0">
         <div class="chat-contact-name">${esc(s.name)}</div>
-        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+esc(last.text):'Нет сообщений'}</div>
+        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+last.text:'Нет сообщений'}</div>
       </div>
       ${unread?`<div class="chat-unread">${unread}</div>`:''}
     </div>`;
@@ -8592,7 +8529,7 @@ function updateChatBadge(){
   }
 }
 
-function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\n/g,'<br>'); }
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
 
 // Helper to send chat message from a work item context (with ref)
 function sendChatWithRef(sid, refText){
@@ -9740,7 +9677,6 @@ function libSection(label, count, inner){
 // ── Edit Availability ──
 let _eavType=null, _eavId=null;
 function openEditAvail(type,id){
-  requireAdmin('openEditAvail');
   _eavType=type; _eavId=id;
   let item=null;
   if(type==='content') item=(load('content')||[]).find(c=>c.id===id);
@@ -10413,34 +10349,3 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
-
-// ═══════════════════════════════════════════════
-// ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ — beforeunload + backdrop
-// ═══════════════════════════════════════════════
-
-// Предупреждение при закрытии/обновлении вкладки
-window.addEventListener('beforeunload', function(e) {
-  if (_editorDirty) {
-    e.preventDefault();
-    e.returnValue = '';
-  }
-});
-
-// Клик по backdrop (мимо .modal) — через guard
-document.addEventListener('click', function(e) {
-  if (!e.target.classList.contains('modal-bg')) return;
-  const modal = e.target;
-  if (!modal.classList.contains('open')) return;
-  closeModal(modal.id);
-});
-
-// Помечаем dirty при вводе текста в полях редакторов
-document.addEventListener('input', function(e) {
-  if (!_editorDirty && e.target.closest) {
-    const inEditor = _DIRTY_MODALS.some(id => {
-      const el = document.getElementById(id);
-      return el && el.classList.contains('open') && el.contains(e.target);
-    });
-    if (inEditor) _setDirty(true);
-  }
-});
