@@ -698,6 +698,41 @@ textarea.q-input{resize:vertical;min-height:70px}
   @page { margin: 1.2cm; size: A4; }
 }
 
+/* ── MOBILE RESPONSIVE ── */
+@media (max-width: 768px) {
+  .sidebar { display: none !important; }
+  .main { margin-left: 0 !important; padding: 70px 14px 80px !important; }
+  #mobile-taskbar { display: flex !important; }
+}
+@media (min-width: 769px) {
+  #mobile-taskbar { display: none !important; }
+}
+
+/* ── MOBILE TASKBAR ── */
+#mobile-taskbar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+  background: var(--accent); border-top: 1px solid rgba(255,255,255,0.15);
+  display: none; align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -4px 20px rgba(27,67,50,0.25);
+}
+#mobile-taskbar .tb-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 8px 4px 6px;
+  color: rgba(255,255,255,0.55); font-size: 0.6rem; font-weight: 700;
+  letter-spacing: 0.02em; cursor: pointer; transition: color .2s, background .2s;
+  border: none; background: none; text-align: center; gap: 3px;
+  -webkit-tap-highlight-color: transparent;
+}
+#mobile-taskbar .tb-item .tb-icon { font-size: 1.35rem; line-height: 1; }
+#mobile-taskbar .tb-item.active,
+#mobile-taskbar .tb-item:active { color: #fff; background: rgba(255,255,255,0.1); border-radius: 10px; }
+#mobile-taskbar .tb-item .tb-badge {
+  position: absolute; top: 4px; right: calc(50% - 18px);
+  background: #e74c3c; color: #fff; border-radius: 10px;
+  font-size: 0.55rem; font-weight: 800; padding: 1px 5px;
+  line-height: 1.4; min-width: 14px; text-align: center;
+}
 </style>
 </head>
 <body>
@@ -742,6 +777,9 @@ textarea.q-input{resize:vertical;min-height:70px}
       <button class="btn-logout" id="btn-reset-data" style="margin-top:8px;display:none;background:rgba(192,57,43,0.18);border-color:rgba(192,57,43,0.4);color:#ff9e9e" onclick="resetAllData()">🗑 Сбросить все данные</button>
     </div>
   </div>
+
+  <!-- МОБИЛЬНЫЙ ТАСКБАР -->
+  <div id="mobile-taskbar"></div>
 
   <div class="main">
     <!-- ГЛОБАЛЬНЫЙ ПОИСК -->
@@ -1097,6 +1135,9 @@ textarea.q-input{resize:vertical;min-height:70px}
       </div>
       <div id="student-profile-card" style="display:none;margin-bottom:20px"></div>
       <div class="grid-3" id="student-stats-grid"></div>
+
+      <!-- ГЕЙМИФИКАЦИЯ -->
+      <div id="gm-mount" style="margin-top:16px"></div>
 
       <!-- ZOOM LINK -->
       <div id="student-zoom-block" style="display:none;margin-top:20px">
