@@ -184,6 +184,22 @@ html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--
 .card-title { font-family: 'Playfair Display', serif; font-size: 1.1rem; color: var(--accent); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
 .card-title .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-light); }
 
+/* Сворачиваемые карточки */
+.card-title.collapsible { cursor: pointer; user-select: none; margin-bottom: 0; padding-bottom: 0; }
+.card-title.collapsible:hover { color: var(--green-mid); }
+.card-title.collapsible .collapse-arrow {
+  margin-left: auto; font-size: 0.8rem; color: var(--text3);
+  transition: transform 0.25s; display: inline-block; flex-shrink: 0;
+}
+.card-title.collapsible.collapsed .collapse-arrow { transform: rotate(-90deg); }
+.card-collapse-body { overflow: hidden; transition: max-height 0.3s ease, opacity 0.25s ease; max-height: 2000px; opacity: 1; }
+.card-collapse-body.collapsed { max-height: 0 !important; opacity: 0; pointer-events: none; }
+.card.collapsible-card { padding-bottom: 0; }
+.card.collapsible-card .card-title.collapsible { padding-bottom: 14px; }
+.card.collapsible-card .card-title.collapsible:not(.collapsed) { border-bottom: 1px solid var(--green-xpale); margin-bottom: 0; }
+.card-collapse-body:not(.collapsed) { padding-top: 14px; padding-bottom: 4px; }
+
+
 /* ─── GRID ─── */
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
