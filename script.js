@@ -1056,8 +1056,8 @@ function safeUrl(url){
 
 // 3. Защита от брутфорса (sessionStorage — переживает перезагрузку страницы)
 const _BF_SS_KEY = 'biohim_bf';
-function _bfLoad(){ try{ return JSON.parse(sessionStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
-function _bfSave(d){ try{ sessionStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
+function _bfLoad(){ try{ return JSON.parse(localStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
+function _bfSave(d){ try{ localStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
 
 function checkBruteForce(login){
   const now = Date.now();
@@ -1453,6 +1453,15 @@ function navigateTo(page){
     console.warn('Route guard blocked:', page, 'for role:', currentUser.role);
     return;
   }
+  // Admin cannot navigate to student-only pages
+  const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
+    'student-hw','student-trial','student-chat','student-grades','student-taskbank',
+    'student-payment','student-schedule','student-repeat','student-lesson',
+    'student-notif-settings'];
+  if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
+    console.warn('Admin blocked from student page:', page);
+    return;
+  }
   // Parent role: block all pages except parent-dashboard
   if(currentUser && currentUser.role === 'parent' && page !== 'parent-dashboard'){
     showNotif('⛔ Нет доступа');
@@ -1488,7 +1497,7 @@ function renderPage(p){
   else if(p==='hw-admin'){ renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='trial-admin'){ renderTrialAdmin(); }
   else if(p==='taskbank-admin'){ renderTaskBankAdmin(); }
-  else if(p==='student-trial'){ renderStudentTrial(); }
+  else if(p==='student-trial'){ if(currentUser&&currentUser.role==='student') renderStudentTrial(); }
   else if(p==='chat-admin'){ renderChatAdmin(); }
   else if(p==='student-chat'){ renderStudentChat(); }
   else if(p==='attend-pay-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); }
@@ -1496,10 +1505,10 @@ function renderPage(p){
   else if(p==='schedule-admin') renderScheduleAdmin();
   else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
-  else if(p==='student-materials') renderStudentMaterials();
+  else if(p==='student-materials'){ if(currentUser&&currentUser.role==='student') renderStudentMaterials(); }
   else if(p==='student-repeat') renderRepeatPage();
-  else if(p==='student-tests') renderStudentTests();
-  else if(p==='student-hw') renderStudentHW();
+  else if(p==='student-tests'){ if(currentUser&&currentUser.role==='student') renderStudentTests(); }
+  else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student') renderStudentHW(); }
   else if(p==='student-grades') renderStudentGrades();
   else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
@@ -1989,7 +1998,6 @@ function closeModal(id, force){
     _theoryFiles=[];
   }
 }
-
 function getVideoEmbedUrl(url){
   if(!url) return null;
   url = url.trim();
@@ -2418,6 +2426,7 @@ function submitCheck(itemId,qId,itemType){
 
 // ── OVERALL REVIEW for test / hw / trial ──
 function openItemOverallReview(itemId, itemType){
+  requireAdmin('openItemOverallReview');
   const storeKey=itemType==='test'?'tests':itemType==='hw'?'hw':'trials';
   const items=load(storeKey)||[];
   const item=items.find(t=>t.id===itemId); if(!item) return;
@@ -2647,6 +2656,7 @@ function deleteTest(id){ requireAdmin('deleteTest'); save('tests',(load('tests')
 // ─── ASSIGN STUDENTS TO EXISTING ITEM ───
 let _assignType=null, _assignId=null;
 function openAssignStudents(type, id){
+  requireAdmin('openAssignStudents');
   _assignType=type; _assignId=id;
   const students=(load('users')||[]).filter(u=>u.role==='student');
   // Find which students already have this item
@@ -3580,6 +3590,7 @@ function addEditTestQuestion(type){
 }
 function removeEditQ(i){ _editTestQuestions.splice(i,1); _setDirty(true); renderEditTestBuilder(); }
 function saveEditTest(){
+  requireAdmin('saveEditTest');
   const title=document.getElementById('et-title').value.trim();
   if(!title){ showNotif('Введите название теста'); return; }
   if(!_editTestQuestions.length){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -3851,6 +3862,7 @@ async function importDocxToHW(input) {
 }
 
 function saveEditHW(){
+  requireAdmin('saveEditHW');
   const id=document.getElementById('ehw-id').value;
   const title=document.getElementById('ehw-title').value.trim();
   if(!title){ showNotif('Введите тему'); return; }
@@ -4510,7 +4522,8 @@ function trialAdminItemHTML(t){
 
   </div>`;
 }
-function deleteTrial(id){ save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
+function deleteTrial(id){
+  requireAdmin('deleteTrial'); save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
 
 // ── EDIT TRIAL ──
 let _editTrialSections = [];
@@ -4716,6 +4729,7 @@ function handleEditTrialQImgUpload(input, si, qi, previewId){
 }
 
 function saveEditTrial(){
+  try{ requireAdmin('saveEditTrial'); } catch(e){ return; }
   const title=document.getElementById('etr-title').value.trim();
   if(!title){ showNotif('Введите название'); return; }
   if(!_editTrialSections.some(s=>s.questions.length)){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -4909,6 +4923,9 @@ let _activeTrial=null, _trialAnswers={}, _trialTimerInterval=null, _trialSeconds
 function startTrial(id){
   const t=(load('trials')||[]).find(t=>t.id===id);
   if(!t) return;
+  if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
+    showNotif('⛔ Нет доступа к этому пробнику'); console.warn('IDOR attempt startTrial',id); return;
+  }
   _activeTrial=t;
   _trialAnswers={};
   _trialSecondsLeft=t.timeMins*60;
@@ -4967,6 +4984,7 @@ function submitTrial(timeout=false){
   clearInterval(_trialTimerInterval);
   const trials=load('trials')||[];
   const t=trials.find(t=>t.id===_activeTrial.id);
+  if(!t){ showNotif('Ошибка: пробник не найден'); return; }
   t.submitted=true; t.answers={..._trialAnswers};
   let score=0, total=0;
   (t.sections||[]).forEach(s=>s.questions.forEach(q=>{
@@ -6065,10 +6083,10 @@ function renderParentDashboard(){
   const el = document.getElementById('page-parent-dashboard');
   if(!el) return;
 
-  // Find linked student
+  // Find linked student — verify it's actually a student role (not admin)
   const sid = currentUser.linkedStudentId;
   const users = load('users')||[];
-  const student = users.find(u=>u.id===sid);
+  const student = users.find(u=>u.id===sid && u.role==='student');
 
   if(!student){
     el.innerHTML = `<div class="page-title">👨‍👩‍👧 Дашборд родителя</div>
@@ -6371,6 +6389,10 @@ let _takingTest=null; let _testAnswers={};
 function takeTest(id){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===id);
+  if(!t){ showNotif('Тест не найден'); return; }
+  if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
+    showNotif('⛔ Нет доступа к этому тесту'); console.warn('IDOR attempt takeTest',id); return;
+  }
   const maxAttempts=t.maxAttempts||0;
   const attemptsUsed=(t.attempts||[]).length;
   if(maxAttempts>0 && attemptsUsed>=maxAttempts){
@@ -6413,6 +6435,7 @@ function calcGrade(pct, gradeConfig){
 function submitTest(){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===_takingTest.id);
+  if(!t){ showNotif('Ошибка: тест не найден'); return; }
   let score=0, total=0;
   t.questions.forEach(q=>{
     const pts=+q.points||1;
@@ -8457,7 +8480,7 @@ function renderChatAdmin(){
       <div class="chat-avatar">${initials}</div>
       <div style="flex:1;min-width:0">
         <div class="chat-contact-name">${esc(s.name)}</div>
-        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+last.text:'Нет сообщений'}</div>
+        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+esc(last.text):'Нет сообщений'}</div>
       </div>
       ${unread?`<div class="chat-unread">${unread}</div>`:''}
     </div>`;
@@ -8569,7 +8592,7 @@ function updateChatBadge(){
   }
 }
 
-function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\n/g,'<br>'); }
 
 // Helper to send chat message from a work item context (with ref)
 function sendChatWithRef(sid, refText){
@@ -9717,6 +9740,7 @@ function libSection(label, count, inner){
 // ── Edit Availability ──
 let _eavType=null, _eavId=null;
 function openEditAvail(type,id){
+  requireAdmin('openEditAvail');
   _eavType=type; _eavId=id;
   let item=null;
   if(type==='content') item=(load('content')||[]).find(c=>c.id===id);
