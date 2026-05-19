@@ -1977,7 +1977,12 @@ function getCheckedModalStudents(containerId){
   if(!el) return [];
   return [...el.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
 }
-function closeModal(id){
+function closeModal(id, force){
+  // Редакторы — через guard с подтверждением
+  if (_DIRTY_MODALS && _DIRTY_MODALS.includes(id)) {
+    _safeClose(id, force);
+    return;
+  }
   const el=document.getElementById(id);
   if(el) el.classList.remove('open');
   if(id==='modal-add-theory'){
@@ -3416,6 +3421,24 @@ let _editTheoryFiles=[];
 // ─── TEST EDITOR ───
 let _editTestId='';
 let _editTestQuestions=[];
+
+// ── Защита от потери несохранённых изменений ──
+const _DIRTY_MODALS = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial'];
+let _editorDirty = false;
+
+function _setDirty(val) {
+  _editorDirty = !!val;
+}
+
+function _safeClose(id, force) {
+  if (!force && _DIRTY_MODALS.includes(id) && _editorDirty) {
+    if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
+  }
+  _editorDirty = false;
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+  if (id === 'modal-add-theory') { _theoryFiles = []; }
+}
 // ── EDIT TEST ──
 function openEditTest(id){
   const t=(load('tests')||[]).find(t=>t.id===id);
@@ -3434,6 +3457,7 @@ function openEditTest(id){
   document.getElementById('et-max-attempts').value=t.maxAttempts??0;
   document.getElementById('et-grade-mode').value=t.gradeMode||'best';
   renderEditTestBuilder();
+  _setDirty(false);
   document.getElementById('modal-edit-test').classList.add('open');
 }
 function qTypeLabel(type){
@@ -3551,9 +3575,10 @@ function handleEditQImgUpload(input, store, idx, previewId){
 }
 function addEditTestQuestion(type){
   _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
+  _setDirty(true);
   renderEditTestBuilder();
 }
-function removeEditQ(i){ _editTestQuestions.splice(i,1); renderEditTestBuilder(); }
+function removeEditQ(i){ _editTestQuestions.splice(i,1); _setDirty(true); renderEditTestBuilder(); }
 function saveEditTest(){
   const title=document.getElementById('et-title').value.trim();
   if(!title){ showNotif('Введите название теста'); return; }
@@ -3571,7 +3596,8 @@ function saveEditTest(){
   t.questions=_editTestQuestions;
   t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('tests',tests);
-  closeModal('modal-edit-test');
+  _setDirty(false);
+  closeModal('modal-edit-test', true);
   renderTestsAdmin();
   showNotif('✅ Тест обновлён');
 }
@@ -3594,6 +3620,7 @@ function openEditHW(id){
   document.getElementById('ehw-max-attempts').value=h.maxAttempts??0;
   document.getElementById('ehw-grade-mode').value=h.gradeMode||'best';
   renderEditHWBuilder();
+  _setDirty(false);
   document.getElementById('modal-edit-hw').classList.add('open');
 }
 function renderEditHWBuilder(){
@@ -3649,10 +3676,11 @@ function renderEditHWBuilder(){
   }).join('');
 }
 function addEditHWQuestion(type){
+  _setDirty(true);
   _editHWQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
   renderEditHWBuilder();
 }
-function removeEditHWQ(i){ _editHWQuestions.splice(i,1); renderEditHWBuilder(); }
+function removeEditHWQ(i){ _editHWQuestions.splice(i,1); _setDirty(true); renderEditHWBuilder(); }
 
 // ═══════════════════════════════════════
 // 📄 DOCX → AI → Questions Import
@@ -3839,7 +3867,8 @@ function saveEditHW(){
   h.questions=_editHWQuestions;
   h.autoTotal=_editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('hw',hws);
-  closeModal('modal-edit-hw');
+  _setDirty(false);
+  closeModal('modal-edit-hw', true);
   renderHWAdmin();
   showNotif('✅ ДЗ обновлено');
 }
@@ -4518,6 +4547,7 @@ function openEditTrial(id){
   if(hint) hint.textContent='(считается автоматически из вопросов)';
 
   renderEditTrialBuilder();
+  _setDirty(false);
   document.getElementById('modal-edit-trial').classList.add('open');
 }
 
@@ -4542,18 +4572,22 @@ function toggleEditTrialMaxPts(){
 }
 
 function addEditTrialSection(){
+  _setDirty(true);
   _editTrialSections.push({id:'ts_'+Date.now(), title:'Часть '+(+_editTrialSections.length+1), questions:[]});
   renderEditTrialBuilder();
 }
 function removeEditTrialSection(idx){
+  _setDirty(true);
   _editTrialSections.splice(idx,1);
   renderEditTrialBuilder();
 }
 function addEditTrialQuestion(sIdx, type){
+  _setDirty(true);
   _editTrialSections[sIdx].questions.push(initQuestion('tq_'+Date.now(), type));
   renderEditTrialBuilder();
 }
 function removeEditTrialQuestion(sIdx, qIdx){
+  _setDirty(true);
   _editTrialSections[sIdx].questions.splice(qIdx,1);
   renderEditTrialBuilder();
 }
@@ -4704,7 +4738,8 @@ function saveEditTrial(){
   t.maxPts=autoPts;
   t.autoTotal=allQ.filter(q=>q.type==='auto').reduce((a,q)=>a+(+q.points||1),0)||autoPts;
   save('trials',trials);
-  closeModal('modal-edit-trial');
+  _setDirty(false);
+  closeModal('modal-edit-trial', true);
   renderTrialAdmin();
   showNotif('✅ Пробник обновлён');
 }
@@ -6963,7 +6998,6 @@ function renderStudentSchedule(){
   // Объединяем: сначала назначенные, потом заявки (без дублей по slotId)
   const assignedSlotIds=new Set(assignedSlots.map(s=>s.id));
   const bookingItems=myBookings.filter(b=>!assignedSlotIds.has(b.slotId));
-
   const assignedItems=assignedSlots.map(s=>{
     const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
     const c=s.courseId?courses.find(c=>c.id===s.courseId):null;
@@ -10355,3 +10389,34 @@ if ('serviceWorker' in navigator) {
     }
   });
 }
+
+// ═══════════════════════════════════════════════
+// ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ — beforeunload + backdrop
+// ═══════════════════════════════════════════════
+
+// Предупреждение при закрытии/обновлении вкладки
+window.addEventListener('beforeunload', function(e) {
+  if (_editorDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// Клик по backdrop (мимо .modal) — через guard
+document.addEventListener('click', function(e) {
+  if (!e.target.classList.contains('modal-bg')) return;
+  const modal = e.target;
+  if (!modal.classList.contains('open')) return;
+  closeModal(modal.id);
+});
+
+// Помечаем dirty при вводе текста в полях редакторов
+document.addEventListener('input', function(e) {
+  if (!_editorDirty && e.target.closest) {
+    const inEditor = _DIRTY_MODALS.some(id => {
+      const el = document.getElementById(id);
+      return el && el.classList.contains('open') && el.contains(e.target);
+    });
+    if (inEditor) _setDirty(true);
+  }
+});
