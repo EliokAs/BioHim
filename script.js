@@ -1297,6 +1297,7 @@ function buildNav(){
   document.getElementById('sidebar-name').textContent=currentUser.name;
   document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Преподаватель':currentUser.role==='parent'?'Родитель':'Ученик';
   setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); }, 50);
+  buildMobileTaskbar();
 }
 
 function openAdminChatById(sid){
@@ -1305,6 +1306,43 @@ function openAdminChatById(sid){
 }
 
 let curPage='';
+function buildMobileTaskbar(){
+  const el = document.getElementById('mobile-taskbar');
+  if(!el) return;
+  // Выбрать нужные пункты для таскбара (максимум 5)
+  let items;
+  if(currentUser.role==='admin'){
+    items=[
+      {id:'dashboard',      icon:'🏠', label:'Главная'},
+      {id:'students',       icon:'👥', label:'Ученики'},
+      {id:'tests-admin',    icon:'📋', label:'Тесты'},
+      {id:'grades-admin',   icon:'🏅', label:'Оценки'},
+      {id:'chat-admin',     icon:'💬', label:'Чат'},
+    ];
+  } else if(currentUser.role==='student'){
+    items=[
+      {id:'student-dashboard', icon:'🏠', label:'Главная'},
+      {id:'student-materials', icon:'📚', label:'Материалы'},
+      {id:'student-tests',     icon:'📋', label:'Тесты'},
+      {id:'student-hw',        icon:'✏️',  label:'ДЗ'},
+      {id:'student-chat',      icon:'💬', label:'Чат'},
+    ];
+  } else {
+    items=[{id:'parent-dashboard', icon:'👨‍👩‍👧', label:'Дашборд'}];
+  }
+  el.innerHTML = items.map(n=>`
+    <button class="tb-item" id="tb-${n.id}" onclick="navigateTo('${n.id}')">
+      <span class="tb-icon">${n.icon}</span>
+      <span>${n.label}</span>
+    </button>`).join('');
+}
+
+function updateMobileTaskbar(activeId){
+  document.querySelectorAll('#mobile-taskbar .tb-item').forEach(el=>{
+    el.classList.toggle('active', el.id==='tb-'+activeId);
+  });
+}
+
 function navigateTo(page){
   // Защита маршрутов — ученик не может зайти на страницы администратора
   if(ADMIN_PAGES.includes(page) && currentUser && currentUser.role !== 'admin'){
@@ -1329,6 +1367,7 @@ function navigateTo(page){
   const nav=document.getElementById('nav-'+page);
   if(nav) nav.classList.add('active');
   curPage=page;
+  updateMobileTaskbar(page);
   if(currentUser) localStorage.setItem('biohim_last_page_'+currentUser.id, page);
   renderPage(page);
 }
@@ -9998,6 +10037,7 @@ function importTrial(data) {
   renderTrialAdmin();
   showNotif(`✅ Пробник «${data.title}» импортирован (${allQ.length} вопр., ${maxPts} б.)`);
 }
+
 // Инициализация темы при загрузке
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initTheme);
