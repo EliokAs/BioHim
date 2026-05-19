@@ -998,7 +998,6 @@ function toggleCollapse(id, btn){
   const collapsed = body.classList.toggle('collapsed');
   if(title) title.classList.toggle('collapsed', collapsed);
 }
-
 function toggleNotifExpand(btn, extraCount){
   const list = btn.closest('#student-notifs-list') || btn.parentElement;
   const hidden = list.querySelectorAll('[data-notif-idx]');
@@ -4839,20 +4838,28 @@ function renderStudentTrial(){
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
     const hasOpen=allQ.some(q=>q.type==='open');
     const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
+    const statusIcon=!t.submitted?'⏳':fullyChecked?'✅':'🔍';
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
         ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.autoTotal?(' · Оценка '+(t.autoGrade||calcGrade(pct,t.gradeConfig))):''}</span>`
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
-    return `<div class="card">
-      <div class="card-title"><span class="dot"></span>🎯 ${esc(t.title)}</div>
-      <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
-        ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
-        ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
+    const grade=t.autoGrade||(t.autoTotal?calcGrade(pct,t.gradeConfig):null);
+    return `<div class="card collapsible-card" data-item-id="${t.id}">
+      <div class="card-title collapsible" onclick="toggleCollapse('tr_${t.id}',this)">
+        <span class="dot"></span>${statusIcon} ${esc(t.title)}
+        ${grade&&t.submitted?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
+        <span class="collapse-arrow">▼</span>
       </div>
-      <div style="margin-bottom:12px">${statusBadge}</div>
-      ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
-      <div id="cmt-trial-${t.id}"></div>
+      <div class="card-collapse-body" id="cb-tr_${t.id}">
+        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
+          ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
+          ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
+        </div>
+        <div style="margin-bottom:12px">${statusBadge}</div>
+        ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
+        <div id="cmt-trial-${t.id}"></div>
+      </div>
     </div>`;
   }).join('');
   // Inject comment threads
@@ -7990,7 +7997,6 @@ function getCalEvents(){
 
   return events;
 }
-
 function renderCalendar(){
   const grid = document.getElementById('cal-grid');
   const label = document.getElementById('cal-month-label');
