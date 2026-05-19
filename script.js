@@ -4579,7 +4579,7 @@ function checkTrialOpenAnswer(tid,qid){
   const pts=+(document.getElementById(`pts-tr-${tid}-${qid}`)?.value)||0;
   const allQ=(t.sections||[]).flatMap(s=>s.questions);
   // Mark this question checked
-  allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; } });
+  allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; q.grade=pts; } });
   const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
   t.openChecked=openDone;
   // Recalculate total score from scratch: auto + all checked open
@@ -9706,7 +9706,7 @@ function renderReviewQuestion(q, answers){
       <div class="question-text">${q.text}</div>
       ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
       <div class="feedback-box"><strong>Ваш ответ:</strong> ${ans||'—'}</div>
-      ${q.checked?`<div class="feedback-box" style="border-left-color:var(--gold);margin-top:8px"><strong>Оценка: ${q.grade}</strong><br>${q.comment||''}</div>`:`<div style="color:var(--text3);font-size:0.8rem;margin-top:6px">⏳ Ожидает проверки</div>`}
+      ${q.checked?`<div class="feedback-box" style="border-left-color:var(--gold);margin-top:8px"><strong>Оценка: ${q.grade!=null?q.grade:q.earnedPts!=null?q.earnedPts:'—'}</strong><br>${q.comment||''}</div>`:`<div style="color:var(--text3);font-size:0.8rem;margin-top:6px">⏳ Ожидает проверки</div>`}
     </div>`;
   }
 
