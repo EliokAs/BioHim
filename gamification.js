@@ -319,22 +319,43 @@ window.addEventListener('load', () => {
 
 // Авто-встройка: ищем якорь #gm-mount (добавь в HTML) или вставляем после первой .card на странице
 function gmAutoMount(userId) {
+  // Только для учеников
+  if (typeof currentUser === 'undefined' || currentUser?.role !== 'student') return;
+
   gmCheckIn(userId);
 
-  // Попытка найти явный якорь
+  // Не монтировать повторно
+  if (document.getElementById('gm-widget')) {
+    gmUpdateWidget(userId);
+    return;
+  }
+
+  // Явный якорь
   const mount = document.getElementById('gm-mount');
   if (mount) {
     mount.innerHTML = gmRenderWidget(userId);
     return;
   }
 
-  // Если нет — ждём навигации на страницу ученика и инжектируем
-  const observer = new MutationObserver(() => {
-    const page = document.getElementById('page-dashboard') || document.querySelector('.page.active');
-    if (!page) return;
-    if (page.querySelector('#gm-widget')) return; // уже есть
-
+  // Вставить перед первой .card на активной странице
+  const page = document.getElementById('page-student-dashboard') || document.getElementById('page-dashboard') || document.querySelector('.page.active');
+  if (page) {
+    if (page.querySelector('#gm-widget')) return;
     const firstCard = page.querySelector('.card');
+    if (firstCard) {
+      const div = document.createElement('div');
+      div.innerHTML = gmRenderWidget(userId);
+      firstCard.parentNode.insertBefore(div.firstElementChild, firstCard);
+    }
+    return;
+  }
+
+  // Если страница ещё не отрисована — ждём
+  const observer = new MutationObserver(() => {
+    const pg = document.getElementById('page-student-dashboard') || document.querySelector('.page.active');
+    if (!pg) return;
+    if (pg.querySelector('#gm-widget')) { observer.disconnect(); return; }
+    const firstCard = pg.querySelector('.card');
     if (firstCard) {
       const div = document.createElement('div');
       div.innerHTML = gmRenderWidget(userId);
