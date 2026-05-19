@@ -927,6 +927,27 @@ function _fbRef(k){ return _fbInit().ref('db/' + k); }
 // Синхронный кэш — заполняется при preloadCache
 const _cache = {};
 
+// ── Сворачиваемые карточки ──
+function toggleCollapse(id, btn){
+  const body = document.getElementById('cb-' + id);
+  const title = btn || body?.previousElementSibling;
+  if(!body) return;
+  const collapsed = body.classList.toggle('collapsed');
+  if(title) title.classList.toggle('collapsed', collapsed);
+}
+
+function toggleNotifExpand(btn, extraCount){
+  const list = btn.closest('#student-notifs-list') || btn.parentElement;
+  const hidden = list.querySelectorAll('[data-notif-idx]');
+  const isExpanded = btn.dataset.expanded === '1';
+  hidden.forEach(el=>{
+    const idx = +el.dataset.notifIdx;
+    if(idx >= 5) el.style.display = isExpanded ? 'none' : '';
+  });
+  btn.dataset.expanded = isExpanded ? '0' : '1';
+  btn.textContent = isExpanded ? `▼ Ещё ${extraCount} уведомлений` : '▲ Свернуть';
+}
+
 function load(k){
   return (k in _cache) ? _cache[k] : null;
 }
@@ -5855,7 +5876,9 @@ function renderStudentDashboard(){
     <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hw.filter(h=>!h.submitted).length}</div><div class="stat-label">ДЗ не отправлено</div></div>
   `;
   const notifs=(load('notifs')||[]).filter(n=>n.studentId===sid);
-  document.getElementById('student-notifs-list').innerHTML=notifs.slice().reverse().map(n=>{
+  const notifItems = notifs.slice().reverse();
+  const NOTIF_PREVIEW = 5;
+  const notifHTML = notifItems.map((n,idx)=>{
     const isRepeat  = n.type==='repeat';
     const isChat    = n.type==='chat';
     const isComment = n.type==='comment';
@@ -5865,12 +5888,20 @@ function renderStudentDashboard(){
     const dotClass  = isChat?'new': isComment?'done': isWallet?'new': isRepeat?'':'new';
     const arrow     = isChat?'→ Чат': isComment?'→ Перейти': isWallet?'→ Оплата': isRepeat?'→ Повторить':'';
     const extraClass= isChat?'notif-chat': isComment?'notif-comment': isWallet?'notif-comment':'';
-    return `<div class="hw-item ${extraClass}" style="cursor:${clickable?'pointer':'default'};${extraClass?'border-radius:10px;padding:10px;margin-bottom:4px;':''}" onclick="${clickable?`navigateTo('${nav}')`:''}" >
+    const hiddenStyle = idx >= NOTIF_PREVIEW ? 'display:none;' : '';
+    return `<div class="hw-item ${extraClass}" data-notif-idx="${idx}" style="${hiddenStyle}cursor:${clickable?'pointer':'default'};${extraClass?'border-radius:10px;padding:10px;margin-bottom:4px;':''}" onclick="${clickable?`navigateTo('${nav}')`:''}" >
       <div class="hw-status-dot ${dotClass}"></div>
       <div><div class="content-name" style="font-size:0.85rem">${esc(n.text)}</div><div class="content-meta">${n.date}</div></div>
       ${clickable?`<span style="font-size:0.75rem;color:var(--green-mid);margin-left:auto;white-space:nowrap">${arrow}</span>`:''}
     </div>`;
-  }).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
+  }).join('');
+  const extraCount = notifItems.length - NOTIF_PREVIEW;
+  const showMoreBtn = extraCount > 0
+    ? `<button id="notif-expand-btn" onclick="toggleNotifExpand(this,${extraCount})" style="width:100%;margin-top:8px;padding:7px;border:1px solid var(--green-pale);background:var(--bg2);border-radius:8px;font-size:0.8rem;color:var(--text3);cursor:pointer;font-family:Nunito,sans-serif">▼ Ещё ${extraCount} уведомлений</button>`
+    : '';
+  document.getElementById('student-notifs-list').innerHTML = notifHTML
+    ? notifHTML + showMoreBtn
+    : '<div class="empty-state"><p>Нет уведомлений</p></div>';
 
   // Render student calendar & todo
   _sCalYear = new Date().getFullYear();
@@ -6154,26 +6185,33 @@ function renderStudentTests(){
     const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
     const canRetry = !t.submitted ? true : (maxAttempts===0 || attemptsLeft>0);
     const gradeMode = t.gradeMode||'best';
-    return `<div class="card" data-item-id="${t.id}">
-      <div class="card-title"><span class="dot"></span>${esc(t.title)}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-        ${(()=>{
-          const hasOpen=(t.questions||[]).some(q=>q.type==='open');
-          if(!t.submitted) return `<span class="badge badge-gold">⏳ Не сдан</span>`;
-          if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
-          return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
-        })()}
-        ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
-        ${grade?`<span class="grade-result-badge grade-${grade}">Оценка: ${grade}</span>`:''}
-        ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
-        ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
+    const statusIcon = !t.submitted ? '⏳' : (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
+    return `<div class="card collapsible-card" data-item-id="${t.id}">
+      <div class="card-title collapsible" onclick="toggleCollapse('t_${t.id}', this)">
+        <span class="dot"></span>${statusIcon} ${esc(t.title)}
+        ${grade?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
+        <span class="collapse-arrow">▼</span>
       </div>
-      ${renderAttemptsHistory(t)}
-      ${t.submitted && t.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>` : ''}
-      ${t.submitted ? renderTestResults(t) : availGate(t,'takeTest')}
-      ${t.submitted && canRetry ? `<div style="margin-top:10px">${availGate(t,'takeTest','🔄 Пройти ещё раз')}</div>` : ''}
-      ${t.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
-      <div id="cmt-test-${t.id}"></div>
+      <div class="card-collapse-body" id="cb-t_${t.id}">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          ${(()=>{
+            const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+            if(!t.submitted) return `<span class="badge badge-gold">⏳ Не сдан</span>`;
+            if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
+            return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
+          })()}
+          ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
+          ${grade?`<span class="grade-result-badge grade-${grade}">Оценка: ${grade}</span>`:''}
+          ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
+          ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
+        </div>
+        ${renderAttemptsHistory(t)}
+        ${t.submitted && t.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>` : ''}
+        ${t.submitted ? renderTestResults(t) : availGate(t,'takeTest')}
+        ${t.submitted && canRetry ? `<div style="margin-top:10px">${availGate(t,'takeTest','🔄 Пройти ещё раз')}</div>` : ''}
+        ${t.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
+        <div id="cmt-test-${t.id}"></div>
+      </div>
     </div>`;
   }).join('');
   // Inject comment threads after render
@@ -6310,27 +6348,35 @@ function renderStudentHW(){
     const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
     const canRetry = !h.submitted ? true : (maxAttempts===0 || attemptsLeft>0);
     const gradeMode = h.gradeMode||'best';
-    return `<div class="card" data-item-id="${h.id}">
-      <div class="card-title"><span class="dot"></span>${esc(h.title)}</div>
-      <div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>
-      ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-        ${(()=>{
-          const hasOpen=(h.questions||[]).some(q=>q.type==='open');
-          if(!h.submitted) return `<span class="badge badge-gold">⏳ Не сдано</span>`;
-          if(h.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
-          return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
-        })()}
-        ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
-        ${h.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
+    const statusIcon = !h.submitted ? '⏳' : (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
+    return `<div class="card collapsible-card" data-item-id="${h.id}">
+      <div class="card-title collapsible" onclick="toggleCollapse('hw_${h.id}', this)">
+        <span class="dot"></span>${statusIcon} ${esc(h.title)}
+        ${h.autoGrade?`<span class="grade-result-badge grade-${h.autoGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.autoGrade}</span>`:''}
+        ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
+        <span class="collapse-arrow">▼</span>
       </div>
-      ${renderAttemptsHistory(h)}
-      ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
-      ${h.submitted && h.autoGrade ? `<div style="margin-bottom:10px"><span class="grade-result-badge grade-${h.autoGrade}">🎓 Оценка: ${h.autoGrade}</span>${h.autoTotal?` <span class="badge badge-blue">⭐ ${h.autoScore||0}/${h.autoTotal} б. (${Math.round((h.autoScore||0)/h.autoTotal*100)}%)</span>`:''}</div>` : ''}
-      ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
-      ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
-      ${h.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
-      <div id="cmt-hw-${h.id}"></div>
+      <div class="card-collapse-body" id="cb-hw_${h.id}">
+        ${h.desc?`<div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>`:''}
+        ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+          ${(()=>{
+            const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+            if(!h.submitted) return `<span class="badge badge-gold">⏳ Не сдано</span>`;
+            if(h.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
+            return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
+          })()}
+          ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
+          ${h.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
+        </div>
+        ${renderAttemptsHistory(h)}
+        ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
+        ${h.submitted && h.autoGrade ? `<div style="margin-bottom:10px"><span class="grade-result-badge grade-${h.autoGrade}">🎓 Оценка: ${h.autoGrade}</span>${h.autoTotal?` <span class="badge badge-blue">⭐ ${h.autoScore||0}/${h.autoTotal} б. (${Math.round((h.autoScore||0)/h.autoTotal*100)}%)</span>`:''}</div>` : ''}
+        ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
+        ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
+        ${h.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
+        <div id="cmt-hw-${h.id}"></div>
+      </div>
     </div>`;
   }).join('');
   // Inject comment threads
