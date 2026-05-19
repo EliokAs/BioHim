@@ -801,7 +801,8 @@ textarea.q-input{resize:vertical;min-height:70px}
     <!-- ГЛОБАЛЬНЫЙ ПОИСК -->
     <div class="global-search-bar">
       <input type="text" id="global-search-input" placeholder="🔍 Поиск по платформе: материалы, тесты, ДЗ, пробники..." 
-             onkeypress="if(event.key==='Enter') performGlobalSearch(this.value)">
+             onkeypress="if(event.key==='Enter') performGlobalSearch(this.value)"
+             oninput="if(this.value.length>=2) performGlobalSearchDebounced(this.value)">
       <button class="btn btn-green btn-sm" onclick="performGlobalSearch(document.getElementById('global-search-input').value)">
         Найти
       </button>
