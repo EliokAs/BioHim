@@ -5841,6 +5841,8 @@ function renderStudentDashboard(){
   // Daily task
   renderStudentZoomBlock();
   renderDailyTaskBlock(sid);
+  // Геймификация — только для ученика
+  if (typeof GM !== 'undefined' && GM.gmAutoMount) GM.gmAutoMount(currentUser.id);
 }
 
 // ═══════════════════════════════════════════════
@@ -9996,7 +9998,6 @@ function importTrial(data) {
   renderTrialAdmin();
   showNotif(`✅ Пробник «${data.title}» импортирован (${allQ.length} вопр., ${maxPts} б.)`);
 }
-
 // Инициализация темы при загрузке
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initTheme);
