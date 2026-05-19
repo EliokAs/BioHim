@@ -1295,7 +1295,7 @@ function buildNav(){
     el.innerHTML+=`<div class="nav-item" id="nav-${n.id}" onclick="navigateTo('${n.id}')"><span class="icon">${n.icon}</span>${n.label}</div>`;
   });
   document.getElementById('sidebar-name').textContent=currentUser.name;
-  document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Администратор':currentUser.role==='parent'?'Родитель':'Ученик';
+  document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Преподаватель':currentUser.role==='parent'?'Родитель':'Ученик';
   setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); }, 50);
 }
 
@@ -2186,36 +2186,17 @@ function renderOpenAnswers(){
   const el=document.getElementById('open-answers-list');
   let html='';
   tests.forEach(t=>{
-    const openQs=(t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id]);
-    if(!openQs.length) return;
-    const unchecked=openQs.filter(q=>!q.checked);
-    const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
-    const studentName=(load('users')||[]).find(u=>u.id===t.studentId)?.name||'Ученик';
-    html+=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--green-xpale)">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div>
-          <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">📋 ${esc(t.title)}</div>
-          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">👤 ${esc(studentName)}${t.autoTotal?' · Авто: '+(t.autoScore||0)+'/'+t.autoTotal+' б.':''}${t.autoGrade?' · Оценка: '+t.autoGrade:''}</div>
+    const openQs=t.questions.filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked);
+    openQs.forEach(q=>{
+      html+=`<div class="question-block">
+        <div class="question-num">Тест: ${esc(t.title)}</div>
+        <div class="question-text">${q.text}</div>
+        <div class="feedback-box"><strong>Ответ ученика:</strong> ${t.answers[q.id]||'—'}</div>
+        <div class="inline-actions">
+          <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
         </div>
-        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')">🎓 Итоговая оценка и отзыв</button>
       </div>`;
-    if(unchecked.length){
-      unchecked.forEach(q=>{
-        html+=`<div class="question-block" style="margin-bottom:8px">
-          <div class="question-text">${q.text}</div>
-          <div class="feedback-box"><strong>Ответ ученика:</strong> ${t.answers[q.id]||'—'}</div>
-          <div class="inline-actions">
-            <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
-          </div>
-        </div>`;
-      });
-    } else {
-      html+=`<div style="font-size:0.83rem;color:#27ae60;margin-bottom:8px">✅ Все открытые ответы проверены</div>`;
-    }
-    if(t.teacherFeedback){
-      html+=`<div class="feedback-box" style="margin-top:8px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback)}</div>`;
-    }
-    html+=`</div>`;
+    });
   });
   el.innerHTML=html||'<div class="empty-state"><p>Нет ответов для проверки</p></div>';
 }
@@ -2763,35 +2744,14 @@ function renderHWOpenAnswers(){
   const el=document.getElementById('hw-open-answers-list');
   let html='';
   hws.forEach(h=>{
-    const openQs=(h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id]);
-    if(!openQs.length) return;
-    const unchecked=openQs.filter(q=>!q.checked);
-    const studentName=(load('users')||[]).find(u=>u.id===h.studentId)?.name||'Ученик';
-    html+=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--green-xpale)">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div>
-          <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">✏️ ${esc(h.title)}</div>
-          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">👤 ${esc(studentName)}${h.autoTotal?' · Авто: '+(h.autoScore||0)+'/'+h.autoTotal+' б.':''}${h.autoGrade?' · Оценка: '+h.autoGrade:''}</div>
-        </div>
-        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')">🎓 Итоговая оценка и отзыв</button>
+    (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked).forEach(q=>{
+      html+=`<div class="question-block">
+        <div class="question-num">ДЗ: ${esc(h.title)}</div>
+        <div class="question-text">${q.text}</div>
+        <div class="feedback-box"><strong>Ответ:</strong> ${h.answers[q.id]||'—'}</div>
+        <button class="btn btn-green btn-sm" style="margin-top:8px" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
       </div>`;
-    if(unchecked.length){
-      unchecked.forEach(q=>{
-        html+=`<div class="question-block" style="margin-bottom:8px">
-          <div class="question-text">${q.text}</div>
-          <div class="feedback-box"><strong>Ответ:</strong> ${h.answers[q.id]||'—'}</div>
-          <div style="margin-top:8px">
-            <button class="btn btn-green btn-sm" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
-          </div>
-        </div>`;
-      });
-    } else {
-      html+=`<div style="font-size:0.83rem;color:#27ae60;margin-bottom:8px">✅ Все открытые ответы проверены</div>`;
-    }
-    if(h.teacherFeedback){
-      html+=`<div class="feedback-box" style="margin-top:8px"><strong>💬 Отзыв:</strong> ${esc(h.teacherFeedback)}</div>`;
-    }
-    html+=`</div>`;
+    });
   });
   el.innerHTML=html||'<div class="empty-state"><p>Нет ответов для проверки</p></div>';
 }
@@ -2844,10 +2804,11 @@ function saveHW(){
   const gradeMode=document.getElementById('nhw-grade-mode')?.value||'best';
   const sids=getCheckedModalStudents('modal-hw-students');
   const hws=load('hw')||[];
+  const hwAutoTotal=_tempHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   if(sids.length){
-    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
+    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwAutoTotal,date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
   } else {
-    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
+    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwAutoTotal,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
   }
   save('hw',hws);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'hw',text:`✏️ Новое домашнее задание: ${title}`,nav:'student-hw'}));
@@ -4596,39 +4557,19 @@ function renderTrialOpenAnswers(){
   let html='';
   trials.forEach(t=>{
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
-    const openQ=allQ.filter(q=>q.type==='open');
-    const unchecked=openQ.filter(q=>t.answers&&t.answers[q.id]&&!q.checked);
-    if(!unchecked.length && !openQ.length) return;
-    const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
-    const studentName=(load('users')||[]).find(u=>u.id===t.studentId)?.name||'Ученик';
-    html+=`<div style="background:var(--bg);border-radius:12px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--green-xpale)">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-        <div>
-          <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">🎯 ${esc(t.title)}</div>
-          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">👤 ${esc(studentName)} · Авто: ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoGrade?' · Оценка: '+t.autoGrade:''}</div>
+    allQ.filter(q=>q.type==='open'&&t.answers&&t.answers[q.id]&&!q.checked).forEach(q=>{
+      html+=`<div class="question-block">
+        <div class="question-num">Пробник: ${esc(t.title)}</div>
+        <div class="question-text">${q.text}</div>
+        <div class="feedback-box"><strong>Ответ:</strong> ${t.answers[q.id]||'—'}</div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
+            style="width:80px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center">
+          <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
+          <button class="btn btn-green btn-sm" onclick="checkTrialOpenAnswer('${t.id}','${q.id}')">✅ Зачесть</button>
         </div>
-        <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','trial')">🎓 Итоговая оценка и отзыв</button>
       </div>`;
-    if(unchecked.length){
-      unchecked.forEach(q=>{
-        html+=`<div class="question-block" style="margin-bottom:8px">
-          <div class="question-text">${q.text}</div>
-          <div class="feedback-box"><strong>Ответ:</strong> ${t.answers[q.id]||'—'}</div>
-          <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
-            <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
-              style="width:80px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center">
-            <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
-            <button class="btn btn-green btn-sm" onclick="checkTrialOpenAnswer('${t.id}','${q.id}')">✅ Зачесть</button>
-          </div>
-        </div>`;
-      });
-    } else {
-      html+=`<div style="font-size:0.83rem;color:#27ae60;margin-bottom:8px">✅ Все открытые ответы зачтены</div>`;
-    }
-    if(t.teacherFeedback){
-      html+=`<div class="feedback-box" style="margin-top:8px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback)}</div>`;
-    }
-    html+=`</div>`;
+    });
   });
   el.innerHTML=html||'<div class="empty-state"><p>Нет ответов для проверки</p></div>';
 }
@@ -6441,12 +6382,13 @@ function submitHW(){
     }
   });
   const pct = total ? Math.round(score/total*100) : 0;
+  const hwAttemptGrade = total ? calcGrade(pct, h.gradeConfig) : null;
   // Save attempt to history
   if(!h.attempts) h.attempts=[];
   h.attempts.push({
     n: h.attempts.length+1,
     answers: {..._hwAnswers},
-    freeAnswer, score, total, pct,
+    freeAnswer, score, total, pct, grade: hwAttemptGrade,
     date: new Date().toLocaleDateString('ru'),
     time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
   });
@@ -6461,13 +6403,19 @@ function submitHW(){
   h.submitted=true;
   h.answers=finalAttempt.answers;
   if(finalAttempt.freeAnswer) h.freeAnswer=finalAttempt.freeAnswer;
+  h.autoScore=finalAttempt.score;
+  h.autoScoreBase=finalAttempt.score;
+  h.autoTotal=finalAttempt.total||h.autoTotal||0;
+  h.autoPct=finalAttempt.pct;
+  if(h.autoTotal){ h.autoGrade=calcGrade(finalAttempt.pct, h.gradeConfig); }
   save('hw',hws);
   closeModal('modal-take-test');
   renderStudentHW();
   const maxAttempts=h.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - h.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  showNotif(`✅ ДЗ отправлено!${attemptsMsg}`);
+  const gradeMsg = h.autoGrade ? ` — оценка ${h.autoGrade}` : '';
+  showNotif(`✅ ДЗ сдано! ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${gradeMsg}${attemptsMsg}`);
   // notify admin
   const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
   adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
@@ -6517,8 +6465,9 @@ function renderStudentGrades(){
   trials.forEach(t=>{
     if(t.submitted){
       const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+      const trialGrade = t.autoGrade || (pct!=null ? calcGrade(pct, t.gradeConfig) : null);
       items.push({type:'trial', icon:'🎯', title:t.title, date:t.date, time:'',
-        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true});
+        score:t.autoScore, total:t.autoTotal, pct, grade:trialGrade, attemptN:1, totalAttempts:1, isFinal:true});
     }
   });
 
@@ -6683,8 +6632,9 @@ function renderGradesAdmin(){
   trials.forEach(t=>{
     if(t.submitted){
       const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+      const trialGrade = t.autoGrade || (pct!=null ? calcGrade(pct, t.gradeConfig) : null);
       items.push({type:'trial', icon:'🎯', title:t.title, date:t.date, time:'',
-        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
+        score:t.autoScore, total:t.autoTotal, pct, grade:trialGrade, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
     }
   });
 
