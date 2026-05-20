@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Базовая защита от clickjacking и XSS через мета-теги -->
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -304,6 +308,21 @@ tr:hover td { background: var(--bg2); }
 .lesson-btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .quick-send-item{padding:8px 12px;border-radius:10px;border:1.5px solid var(--green-xpale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600;display:flex;align-items:center;gap:6px;transition:all .15s}
 .quick-send-item:hover{border-color:var(--green-mid);background:var(--green-xpale)}
+
+/* ─── FLASHCARDS ─── */
+.fc-flip-scene { perspective: 1000px; }
+.fc-flip-card {
+  position: relative; width: 100%; height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(0.4, 0.2, 0.2, 1);
+}
+.fc-flip-card.flipped { transform: rotateY(180deg); }
+.fc-face, .fc-back {
+  position: absolute; inset: 0; backface-visibility: hidden; border-radius: 18px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 28px 32px; text-align: center;
+}
+.fc-back { transform: rotateY(180deg); }
 .lesson-end-summary{background:var(--green-xpale);border-radius:12px;padding:16px 18px;margin-top:14px;display:none}
 .jitsi-frame{width:100%;min-height:520px;border-radius:14px;border:none;background:linear-gradient(135deg,#111827,#1a2e1f)}
 @media(max-width:600px){.jitsi-frame{min-height:320px}}
@@ -774,9 +793,7 @@ textarea.q-input{resize:vertical;min-height:70px}
     <button class="btn-main" onclick="doLogin()">Войти</button>
     <div id="login-err" class="login-err"></div>
     <div class="login-hint" style="margin-top:20px">
-      <b>Администратор:</b> admin / admin123<br>
-      <b>Ученик 1:</b> anna / 1234<br>
-      <b>Ученик 2:</b> dima / 1234<br>
+      <!-- Подсказки по умолчанию удалены из соображений безопасности -->
       <b>Родитель:</b> создайте через «✏️ Изменить» ученика
     </div>
   </div>
@@ -1250,6 +1267,13 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div id="taskbank-list"></div>
     </div>
 
+    <!-- Flashcards Admin -->
+    <div class="page" id="page-flashcards-admin">
+      <div class="page-title">🃏 Флешкарты</div>
+      <div class="page-sub">Создавайте колоды карточек «термин → определение» и назначайте ученикам</div>
+      <div id="flashcards-admin-ui"></div>
+    </div>
+
     <!-- Grades Admin -->
     <div class="page" id="page-grades-admin">
       <div class="page-title">🏅 Оценки учеников</div>
@@ -1325,6 +1349,13 @@ textarea.q-input{resize:vertical;min-height:70px}
         </div>
       </div>
     </div><!-- /page-student-taskbank -->
+
+    <!-- Student Flashcards -->
+    <div class="page" id="page-student-flashcards">
+      <div class="page-title">🃏 Флешкарты</div>
+      <div class="page-sub">Учите термины и определения с помощью карточек с умным повторением SM-2</div>
+      <div id="student-flashcards-ui"></div>
+    </div>
 
     <!-- Student Materials -->
     <div class="page" id="page-student-materials">
@@ -2759,6 +2790,7 @@ textarea.q-input{resize:vertical;min-height:70px}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="script.js"></script>
+<script src="flashcards.js"></script>
 <script src="answer-draft.js"></script>
 <script src="gamification.js"></script>
 <script src="trial-proctor.js"></script>
