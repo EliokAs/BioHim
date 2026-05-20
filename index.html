@@ -170,6 +170,24 @@ html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--
 .global-search-bar input::placeholder {
   color: var(--text3);
 }
+.search-clear-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: var(--green-pale);
+  color: var(--green-deep);
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.15s;
+  line-height: 1;
+}
+.search-clear-btn:hover { background: var(--green-light); transform: scale(1.1); }
+.search-clear-btn.visible { display: flex; }
 
 /* ─── MAIN CONTENT ─── */
 .main { margin-left: 240px; min-height: 100vh; padding: 72px 40px 36px; }
@@ -722,14 +740,52 @@ textarea.q-input{resize:vertical;min-height:70px}
 
 /* ─── PRINT / PDF ─── */
 @media print {
+  /* Скрыть всё лишнее */
   .sidebar, .global-search-bar, #login-screen, .btn-main,
   .btn-logout, .btn-green, .btn-outline, .btn-red,
-  #notif, .modal-bg, .cal-popup-bg { display: none !important; }
+  #notif, .modal-bg, .cal-popup-bg,
+  #parent-tabs, .filter-pill, .tabs { display: none !important; }
+
+  /* Макет */
   .main { margin-left: 0 !important; padding: 16px !important; }
-  #app { display: block !important; }
+  #app  { display: block !important; }
   .page { display: none !important; }
   #page-reports-admin { display: block !important; }
-  #report-output .card { box-shadow: none !important; border: 1px solid #d8f3dc !important; }
+
+  /* Карточки — без теней, с бордером, без разрывов */
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #d8f3dc !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Таблицы — заголовок на каждой странице, строки не обрываются */
+  table  { page-break-inside: avoid; break-inside: avoid; }
+  thead  { display: table-header-group; }
+  tr, td { page-break-inside: avoid; break-inside: avoid; }
+
+  /* Заголовки разделов — не отрывать от содержимого */
+  h2, h3, .page-title, .card-title, .section {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Сетки статистики */
+  .grid-3, .grid-2, [style*="grid-template-columns"] {
+    display: block !important;
+  }
+  .stat-card {
+    display: inline-block !important;
+    width: 30% !important;
+    margin: 0 1% 8px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Цвета при печати */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
   @page { margin: 1.2cm; size: A4; }
 }
 
@@ -817,9 +873,11 @@ textarea.q-input{resize:vertical;min-height:70px}
   <div class="main">
     <!-- ГЛОБАЛЬНЫЙ ПОИСК -->
     <div class="global-search-bar">
-      <input type="text" id="global-search-input" placeholder="🔍 Поиск по платформе: материалы, тесты, ДЗ, пробники..." 
+      <input type="text" id="global-search-input" placeholder="🔍 Поиск по платформе: материалы, тесты, ДЗ, пробники..."
              onkeypress="if(event.key==='Enter') performGlobalSearch(this.value)"
-             oninput="if(this.value.length>=2) performGlobalSearchDebounced(this.value)">
+             oninput="onSearchInput(this.value)"
+             onkeydown="if(event.key==='Escape') clearSearch()">
+      <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" title="Очистить поиск">✕</button>
       <button class="btn btn-green btn-sm" onclick="performGlobalSearch(document.getElementById('global-search-input').value)">
         Найти
       </button>
@@ -1109,6 +1167,9 @@ textarea.q-input{resize:vertical;min-height:70px}
     <div class="page" id="page-schedule-admin">
       <div class="page-title">Расписание & Запись</div>
       <div class="page-sub">Управляйте временными слотами и курсами</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+        <button class="btn btn-outline btn-sm" onclick="openAdminCalExport()">📲 Экспорт расписания в .ics</button>
+      </div>
       <div class="grid-2">
         <div class="card">
           <div class="card-title"><span class="dot"></span>Курсы</div>
@@ -1124,6 +1185,52 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div class="card">
         <div class="card-title"><span class="dot"></span>Запросы на запись</div>
         <div id="booking-requests-list"></div>
+      </div>
+    </div>
+
+    <!-- Finance Admin Dashboard -->
+    <div class="page" id="page-finance-admin">
+      <div class="page-title">💰 Финансовый дашборд</div>
+      <div class="page-sub">Сводный доход, задолженности и прогноз по всем ученикам</div>
+
+      <!-- KPI row -->
+      <div id="fin-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px"></div>
+
+      <!-- Month selector + chart -->
+      <div class="card" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+          <div class="card-title" style="margin:0"><span class="dot"></span>Доход по месяцам</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="fin-chart-year" onchange="renderFinanceDashboard()" style="padding:6px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--bg)"></select>
+            <button class="btn btn-outline btn-sm" onclick="window._finChartMode=(window._finChartMode==='income'?'lessons':'income');renderFinanceDashboard()">🔄 Переключить вид</button>
+          </div>
+        </div>
+        <div id="fin-chart-wrap" style="position:relative;width:100%;height:220px">
+          <canvas id="fin-bar-chart" style="width:100%;height:220px"></canvas>
+        </div>
+        <div id="fin-chart-legend" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:0.78rem;color:var(--text3)"></div>
+      </div>
+
+      <!-- Bottom row: debts + next month forecast + per-student -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+        <div class="card">
+          <div class="card-title"><span class="dot"></span>❌ Задолженности</div>
+          <div id="fin-debts-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><span class="dot"></span>📅 Прогноз — следующий месяц</div>
+          <div id="fin-forecast-list"></div>
+        </div>
+      </div>
+
+      <!-- Per-student breakdown -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+          <div class="card-title" style="margin:0"><span class="dot"></span>По ученикам — текущий месяц</div>
+          <input id="fin-student-search" placeholder="🔍 Поиск ученика…" oninput="renderFinanceDashboard()"
+            style="padding:7px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;outline:none;width:200px">
+        </div>
+        <div id="fin-student-table"></div>
       </div>
     </div>
 
@@ -1479,6 +1586,13 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div id="student-grades-content"></div>
     </div>
 
+    <!-- Student Mistakes -->
+    <div class="page" id="page-student-mistakes">
+      <div class="page-title">❌ Мои ошибки</div>
+      <div class="page-sub">Вопросы, на которые вы ответили неправильно — для повторного разбора</div>
+      <div id="student-mistakes-content"></div>
+    </div>
+
     <!-- Student Payment -->
     <div class="page" id="page-student-payment">
       <div class="page-title">💰 Оплата и занятия</div>
@@ -1508,6 +1622,7 @@ textarea.q-input{resize:vertical;min-height:70px}
         <div class="tab" onclick="switchTab('sched',this,'sched-slots')">🗓 Расписание</div>
         <div class="tab" onclick="switchTab('sched',this,'sched-my')">✅ Мои записи</div>
         <div class="tab" onclick="switchTab('sched',this,'sched-attendance');renderStudentAttendance()">📅 Мои занятия</div>
+        <div class="tab" onclick="switchTab('sched',this,'sched-export');renderCalendarExport()">📲 Экспорт в календарь</div>
       </div>
       <div id="sched-courses" class="sched-tab">
         <div id="courses-student-list"></div>
@@ -1526,6 +1641,9 @@ textarea.q-input{resize:vertical;min-height:70px}
       </div>
       <div id="sched-attendance" class="sched-tab" style="display:none">
         <div id="student-attendance-list"></div>
+      </div>
+      <div id="sched-export" class="sched-tab" style="display:none">
+        <div id="cal-export-content"></div>
       </div>
     </div>
 
@@ -1599,6 +1717,8 @@ textarea.q-input{resize:vertical;min-height:70px}
         <div style="font-size:0.82rem;color:var(--text3);margin-bottom:10px">Ученики подключаются самостоятельно в разделе «Уведомления»</div>
         <div id="admin-notif-student-status"></div>
       </div>
+
+      <div id="weekly-report-container"></div>
     </div>
 
     <!-- STUDENT NOTIF SETTINGS -->
@@ -2785,11 +2905,26 @@ textarea.q-input{resize:vertical;min-height:70px}
   </div>
 </div>
 
+<!-- ICS EXPORT MODAL -->
+<div class="modal-bg" id="modal-ics-export">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="ics-modal-title">📲 Экспорт в календарь</div>
+    <span class="modal-close" onclick="closeModal('modal-ics-export')">✕</span>
+    <div id="ics-modal-body"></div>
+  </div>
+</div>
+
 <!-- Firebase SDK (compat) -->
+<!-- Chart.js — используется для графика прогресса -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<!-- jsPDF + html2canvas — для корректного PDF-экспорта -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="script.js"></script>
+<script src="weekly-report.js"></script>
 <script src="flashcards.js"></script>
 <script src="answer-draft.js"></script>
 <script src="gamification.js"></script>
