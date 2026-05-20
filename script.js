@@ -1329,6 +1329,17 @@ async function initData(){
       }));
       save('users', migrated);
     }
+    const users = load('users') || [];
+    const admin = users.find(u => u.login === 'admin');
+    if (admin) {
+      const expectedHash = await hashPassword('admin123');
+      if (admin.passwordHash !== expectedHash) {
+        console.warn('⚠️ Хеш пароля admin не совпадает, исправляем...');
+        admin.passwordHash = expectedHash;
+        admin.mustChangePassword = false;
+        save('users', users);
+      }
+    }
   } catch(e){ console.warn('password migration error', e); }
 
   if(!(load('users')||[]).length){
