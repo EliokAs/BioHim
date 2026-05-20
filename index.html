@@ -43,6 +43,43 @@
   --radius2: 24px;
 }
 
+/* ─── ТЁМНАЯ ТЕМА ─── */
+body.dark-theme {
+  --bg: #0f1a14;
+  --bg2: #162010;
+  --green-deep: #52b788;
+  --green-mid: #74c69d;
+  --green-light: #95d5b2;
+  --green-pale: #2d4a38;
+  --green-xpale: #1e3028;
+  --accent: #95d5b2;
+  --chem: #74c69d;
+  --gold: #ffd166;
+  --red: #ef4565;
+  --text: #d8f3dc;
+  --text2: #95d5b2;
+  --text3: #52b788;
+  --white: #1a2e20;
+  --card: #162010;
+  --shadow: 0 4px 24px rgba(0,0,0,0.35);
+  --shadow2: 0 8px 40px rgba(0,0,0,0.5);
+}
+body.dark-theme .sidebar {
+  background: linear-gradient(180deg, #0a1209 0%, #0f1a14 60%, #091209 100%);
+}
+body.dark-theme .login-card { background: #162010; }
+body.dark-theme .global-search-bar { background: #162010; }
+body.dark-theme input, body.dark-theme textarea, body.dark-theme select {
+  color-scheme: dark;
+}
+
+/* плавный переход для всех цветовых свойств */
+*, *::before, *::after {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+/* но не для анимированных элементов */
+.page, .modal-bg, .cal-popup-bg, .notif, iframe { transition: none !important; }
+
 
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -862,6 +899,7 @@ textarea.q-input{resize:vertical;min-height:70px}
     <nav class="sidebar-nav" id="sidebar-nav"></nav>
     <div class="sidebar-footer">
       <div class="sidebar-user"><b id="sidebar-name">—</b>Личный кабинет</div>
+      <button class="btn-logout" id="btn-dark-theme" onclick="toggleDarkTheme()" style="margin-bottom:8px">🌙 Тёмная тема</button>
       <button class="btn-logout" onclick="doLogout()">🚪 Выйти</button>
       <button class="btn-logout" id="btn-reset-data" style="margin-top:8px;display:none;background:rgba(192,57,43,0.18);border-color:rgba(192,57,43,0.4);color:#ff9e9e" onclick="resetAllData()">🗑 Сбросить все данные</button>
     </div>
@@ -1329,6 +1367,9 @@ textarea.q-input{resize:vertical;min-height:70px}
 
       <!-- STUDENT CALENDAR + TODO -->
       <div class="cal-wrap">
+
+      <!-- ПРОГРЕСС КУРСОВ -->
+      <div id="student-courses-progress" style="margin-top:20px;margin-bottom:4px"></div>
         <div class="cal-card">
           <div class="cal-header">
             <div class="cal-month" id="s-cal-month-label"></div>
@@ -2255,10 +2296,14 @@ textarea.q-input{resize:vertical;min-height:70px}
     </div>
     <div style="background:var(--bg);border-radius:12px;padding:14px 16px;border:1px solid var(--green-xpale);margin:14px 0">
       <div style="font-weight:700;font-size:0.88rem;color:var(--text1);margin-bottom:10px">🔁 Попытки и результат</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         <div>
           <label style="font-size:0.78rem;color:var(--text3);display:block;margin-bottom:4px">🔢 Кол-во попыток <span style="font-weight:400">(0 = ∞)</span></label>
           <input type="number" id="nt-max-attempts" min="0" value="0" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:0.78rem;color:var(--text3);display:block;margin-bottom:4px">⏱ Лимит времени (мин) <span style="font-weight:400">(0 = без ограничений)</span></label>
+          <input type="number" id="nt-time-limit" min="0" value="0" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;box-sizing:border-box">
         </div>
         <div>
           <label style="font-size:0.78rem;color:var(--text3);display:block;margin-bottom:4px">🏆 Итоговая оценка</label>
@@ -2434,7 +2479,17 @@ textarea.q-input{resize:vertical;min-height:70px}
 
 <div class="modal-bg" id="modal-take-test">
   <div class="modal" style="max-width:680px">
-    <div class="modal-title" id="take-test-title"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+      <div class="modal-title" id="take-test-title" style="margin:0;flex:1"></div>
+      <div id="test-timer-wrap" style="display:none;align-items:center;gap:8px">
+        <div id="test-timer-display" style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:800;padding:6px 16px;border-radius:12px;background:var(--green-xpale);color:var(--green-deep);letter-spacing:0.06em;min-width:80px;text-align:center">—</div>
+      </div>
+    </div>
+    <div id="test-timer-bar-wrap" style="display:none;margin-bottom:12px">
+      <div style="height:5px;background:var(--green-xpale);border-radius:10px;overflow:hidden">
+        <div id="test-timer-bar" style="height:100%;width:100%;background:linear-gradient(90deg,var(--green-mid),var(--green-light));border-radius:10px;transition:width 1s linear,background 0.5s"></div>
+      </div>
+    </div>
     <span class="modal-close" onclick="closeModal('modal-take-test')">✕</span>
     <div id="take-test-body"></div>
   </div>
@@ -2934,12 +2989,10 @@ textarea.q-input{resize:vertical;min-height:70px}
 // ── Hide search bar on scroll down, show on scroll up ──
 (function(){
   let lastY = 0;
-  const main = document.querySelector('.main');
-  if(!main) return;
-  main.addEventListener('scroll', function(){
+  window.addEventListener('scroll', function(){
     const bar = document.querySelector('.global-search-bar');
     if(!bar) return;
-    const y = main.scrollTop;
+    const y = window.scrollY;
     if(y > lastY && y > 60){
       bar.classList.add('hidden');
     } else {
