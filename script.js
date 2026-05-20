@@ -69,6 +69,41 @@ class VirtualList {
 // Дебаунс для живого поиска при вводе (300мс)
 const performGlobalSearchDebounced = debounce(q => performGlobalSearch(q), 300);
 
+// Страница, с которой запустили поиск — чтобы вернуться
+let _searchPrePage = '';
+
+/** Вызывается при каждом вводе символа в строку поиска */
+function onSearchInput(val) {
+  const btn = document.getElementById('search-clear-btn');
+  if (btn) btn.classList.toggle('visible', val.length > 0);
+  if (val.length >= 2) performGlobalSearchDebounced(val);
+  if (val.length === 0) clearSearch();
+}
+
+/** Очистить поиск и вернуться на последнюю активную страницу */
+function clearSearch() {
+  const inp = document.getElementById('global-search-input');
+  if (inp) inp.value = '';
+  const btn = document.getElementById('search-clear-btn');
+  if (btn) btn.classList.remove('visible');
+  const old = document.getElementById('page-search-results');
+  if (old) old.remove();
+  if (_searchPrePage) {
+    navigateTo(_searchPrePage);
+    _searchPrePage = '';
+  } else {
+    // Fallback: показать первую активную страницу из sidebar
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const nav = document.querySelector('.nav-item.active');
+    if (nav) {
+      const id = nav.id.replace('nav-', '');
+      const el = document.getElementById('page-' + id);
+      if (el) el.classList.add('active');
+    }
+  }
+  if (inp) inp.focus();
+}
+
 function performGlobalSearch(query) {
   if (!query || query.length < 2) {
     showNotif('⚠️ Введите минимум 2 символа для поиска');
@@ -131,13 +166,27 @@ function showSearchResults(query, results) {
     showNotif(`🔍 По запросу "${query}" ничего не найдено`);
     return;
   }
-  
+
+  // Запомнить страницу, с которой открыли поиск (только если это не сами результаты)
+  if (curPage !== 'search-results') _searchPrePage = curPage;
+
   let html = `
-    <div style="margin-bottom:20px">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--accent);margin-bottom:8px">
-        🔍 Результаты поиска: "${esc(query)}"
-      </h3>
-      <div style="font-size:0.85rem;color:var(--text3)">Найдено: ${total} элементов</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <button onclick="clearSearch()"
+        style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;
+               border:1.5px solid var(--green-pale);background:var(--card);color:var(--green-deep);
+               font-family:'Nunito',sans-serif;font-size:0.85rem;font-weight:700;cursor:pointer;
+               transition:background .15s,border-color .15s;white-space:nowrap"
+        onmouseover="this.style.background='var(--green-xpale)';this.style.borderColor='var(--green-mid)'"
+        onmouseout="this.style.background='var(--card)';this.style.borderColor='var(--green-pale)'">
+        ← Назад
+      </button>
+      <div>
+        <h3 style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--accent);margin-bottom:2px">
+          🔍 Результаты: «${esc(query)}»
+        </h3>
+        <div style="font-size:0.85rem;color:var(--text3)">Найдено: ${total} элементов</div>
+      </div>
     </div>
   `;
   
@@ -1203,7 +1252,7 @@ function resetLoginAttempts(login){
 // 4. Проверка прав доступа
 const ADMIN_PAGES = ['students','tests-admin','hw-admin','content-admin',
   'payments','schedule-admin','courses','analytics','settings',
-  'reports-admin','taskbank-admin','flashcards-admin','notif-settings-admin',
+  'reports-admin','taskbank-admin','flashcards-admin','notif-settings-admin','finance-admin',
   'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin'];
 const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'deleteStudent','saveTest','saveHW','addTheory','saveTrial',
@@ -1487,6 +1536,7 @@ const adminNav=[
   {id:'zoom-settings',    icon:'⚙️', label:'Настройки платформы'},
   {id:'attend-pay-admin', icon:'📅', label:'Посещение и оплата'},
   {id:'schedule-admin',   icon:'🗓', label:'Расписание'},
+  {id:'finance-admin',    icon:'💰', label:'Финансы'},
   {id:'reports-admin',    icon:'📊', label:'Отчёты по ученикам'},
   {id:'notif-settings-admin', icon:'🔔', label:'Интеграции уведомлений'},
   {section:'Занятие'},
@@ -1501,6 +1551,7 @@ const studentNav=[
   {id:'student-trial',     icon:'🎯', label:'Пробник'},
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
   {id:'student-grades',    icon:'🏅', label:'Мои оценки'},
+  {id:'student-mistakes',  icon:'❌', label:'Мои ошибки'},
   {id:'student-taskbank',  icon:'🎲', label:'Банк заданий'},
   {id:'student-flashcards',icon:'🃏', label:'Флешкарты'},
   {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
@@ -1544,7 +1595,7 @@ function buildNav(){
   });
   document.getElementById('sidebar-name').textContent=currentUser.name;
   document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Преподаватель':currentUser.role==='parent'?'Родитель':'Ученик';
-  setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); }, 50);
+  setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); updateMistakesBadge(); }, 50);
   buildMobileTaskbar();
 }
 
@@ -1600,7 +1651,7 @@ function navigateTo(page){
   }
   // Admin cannot navigate to student-only pages
   const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
-    'student-hw','student-trial','student-chat','student-grades','student-taskbank','student-flashcards',
+    'student-hw','student-trial','student-chat','student-grades','student-mistakes','student-taskbank','student-flashcards',
     'student-payment','student-schedule','student-repeat','student-lesson',
     'student-notif-settings'];
   if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
@@ -1649,6 +1700,7 @@ function renderPage(p){
   else if(p==='attend-pay-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); }
   else if(p==='payment-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); } // legacy redirect
   else if(p==='schedule-admin') renderScheduleAdmin();
+  else if(p==='finance-admin') renderFinanceDashboard();
   else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
   else if(p==='student-materials'){ if(currentUser&&currentUser.role==='student') renderStudentMaterials(); }
@@ -1656,6 +1708,7 @@ function renderPage(p){
   else if(p==='student-tests'){ if(currentUser&&currentUser.role==='student') renderStudentTests(); }
   else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student') renderStudentHW(); }
   else if(p==='student-grades') renderStudentGrades();
+  else if(p==='student-mistakes') renderStudentMistakes();
   else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
   else if(p==='student-flashcards') renderStudentFlashcards();
@@ -5143,8 +5196,10 @@ function submitTrial(timeout=false){
   const pct=t.autoTotal?Math.round(score/t.autoTotal*100):0;
   t.autoGrade=pct!=null?calcGrade(pct,t.gradeConfig):null; t.autoPct=pct;
   save('trials',trials);
+  _collectAndSaveWrongAnswersTrial(t, _trialAnswers);
   document.getElementById('modal-take-trial').classList.remove('open');
   renderStudentTrial();
+  updateMistakesBadge();
   showNotif(timeout?`⏰ Время вышло! Авто: ${score}/${t.autoTotal} б.`:`✅ Пробник сдан! Авто: ${score}/${t.autoTotal} б. (${pct}%)`);
   // notify admin
 _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`🧪 ${currentUser.name} сдал(а) пробник «${esc(t.title)}»${timeout?' (время вышло)':''}`, date:new Date().toLocaleDateString('ru'), read:false});
@@ -6222,11 +6277,16 @@ function renderStudentDashboard(){
 // ═══════════════════════════════════════════════
 // PARENT DASHBOARD
 // ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// РОДИТЕЛЬСКИЙ ПОРТАЛ — полная версия
+// ═══════════════════════════════════════════════════════
+
+let _parentTab = 'feed';          // 'feed' | 'chat' | 'grades' | 'payments' | 'lessons'
+
 function renderParentDashboard(){
   const el = document.getElementById('page-parent-dashboard');
   if(!el) return;
 
-  // Find linked student — verify it's actually a student role (not admin)
   const sid = currentUser.linkedStudentId;
   const users = load('users')||[];
   const student = users.find(u=>u.id===sid && u.role==='student');
@@ -6237,168 +6297,384 @@ function renderParentDashboard(){
     return;
   }
 
-  const tests    = (load('tests')||[]).filter(t=>t.studentId===sid);
-  const hws      = (load('hw')||[]).filter(h=>h.studentId===sid);
-  const trials   = (load('trials')||[]).filter(t=>t.studentId===sid);
-  const content  = (load('content')||[]).filter(c=>c.studentId===sid && c.type==='theory');
-  const payments = (load('payments')||[]).filter(p=>p.studentId===sid);
-  const att      = (load('attendance')||[]).filter(a=>a.studentId===sid);
-
   const initials = student.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
 
-  // ── Статистика
-  const statsHtml = `
-    <div class="grid-3" style="margin-bottom:24px">
-      <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">${tests.filter(t=>t.submitted).length}/${tests.length}</div><div class="stat-label">Тестов сдано</div></div>
-      <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hws.filter(h=>h.submitted).length}/${hws.length}</div><div class="stat-label">ДЗ выполнено</div></div>
-      <div class="stat-card"><div class="stat-icon">🧪</div><div class="stat-num">${trials.filter(t=>t.submitted).length}/${trials.length}</div><div class="stat-label">Пробников пройдено</div></div>
-    </div>`;
-
-  // ── Оплаты
-  const paymentsHtml = payments.length
-    ? payments.slice().reverse().map(p=>{
-        const cls = {paid:'badge-green',unpaid:'badge-red',partial:'badge-gold'}[p.status]||'badge-red';
-        const icon = {paid:'✅',unpaid:'❌',partial:'⚠️'}[p.status]||'❌';
-        const lbl  = {paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично'}[p.status]||'';
-        return `<div class="payment-status ${p.status}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
-          <div>
-            <b>${esc(p.period)}</b>
-            ${p.note?`<span style="font-size:0.8rem;color:var(--text3);margin-left:6px">${esc(p.note)}</span>`:''}
-          </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-weight:700">${p.amount}₽</span>
-            <span class="badge ${cls}">${icon} ${lbl}</span>
-          </div>
-        </div>`;
-      }).join('')
-    : '<div class="empty-state"><p>Нет записей об оплате</p></div>';
-
-  // ── Занятия
-  const lessonsHtml = att.length
-    ? att.slice().reverse().slice(0,10).map(a=>{
-        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
-          <div style="font-weight:600;font-size:0.88rem">📅 ${a.date}${a.time?' · '+a.time:''}</div>
-          <div style="font-size:0.8rem;color:var(--text3)">${a.topic?'📖 '+esc(a.topic):''}${a.duration?' · '+a.duration+' мин':''}</div>
-          <div style="margin-top:3px">
-            <span class="badge ${a.present?'badge-green':'badge-red'}" style="font-size:0.7rem">${a.present?'✅ Был на занятии':'❌ Отсутствовал'}</span>
-            ${a.present&&a.costPerStudent?`<span style="font-size:0.72rem;color:var(--text3);margin-left:8px">💰 ${a.costPerStudent}₽ · ${a.paid?'✅ Оплачено':'❌ Не оплачено'}</span>`:''}
-          </div>
-        </div>`;
-      }).join('')
-    : '<div class="empty-state"><p>Занятий пока нет</p></div>';
-
-  // ── Материалы (темы)
-  const topicsHtml = content.length
-    ? content.map(c=>{
-        const viewed = JSON.parse(localStorage.getItem('biohim_viewed_'+sid)||'{}');
-        return `<div style="padding:6px 0;border-bottom:1px solid var(--green-xpale);display:flex;align-items:center;gap:8px">
-          <span style="font-size:0.85rem">${viewed[c.id]?'✅':'🔵'}</span>
-          <span style="font-size:0.85rem;font-weight:500">${esc(c.title)}</span>
-          ${viewed[c.id]?'':'<span style="font-size:0.72rem;color:var(--green-mid)">Не просмотрено</span>'}
-        </div>`;
-      }).join('')
-    : '<div class="empty-state"><p>Нет материалов</p></div>';
-
-  // ── Тесты
-  const testsHtml = tests.length
-    ? tests.slice().reverse().map(t=>{
-        const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-        const hasOpen = (t.questions||[]).some(q=>q.type==='open');
-        const openUncheckedT = t.submitted ? (t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked) : [];
-        const statusBadge = !t.submitted
-          ? `<span class="badge badge-gold">⏳ Не сдан</span>`
-          : (t.openChecked||!hasOpen||openUncheckedT.length===0)
-            ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal} б. (${pct}%) · Оценка ${t.autoGrade||calcGrade(pct,t.gradeConfig)}</span>`
-            : `<span class="badge badge-gold">📝 Ожидает проверки · авто: ${t.autoScore||0}/${t.autoTotal} б.</span>`;
-        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
-          <div style="font-weight:600;font-size:0.88rem">${esc(t.title)}</div>
-          <div style="margin-top:4px">${statusBadge}</div>
-        </div>`;
-      }).join('')
-    : '<div class="empty-state"><p>Тестов нет</p></div>';
-
-  // ── ДЗ
-  const hwsHtml = hws.length
-    ? hws.slice().reverse().map(h=>{
-        const hasOpen = (h.questions||[]).some(q=>q.type==='open');
-        const openUncheckedH = h.submitted ? (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked) : [];
-        const statusBadge = !h.submitted
-          ? `<span class="badge badge-gold">⏳ Не сдано</span>`
-          : (h.openChecked||!hasOpen||openUncheckedH.length===0)
-            ? `<span class="badge badge-green">✅ Проверено</span>`
-            : `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
-        const overdue = !h.submitted&&h.due&&new Date(h.due.split('.').reverse().join('-'))<new Date();
-        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
-          <div style="font-weight:600;font-size:0.88rem">${esc(h.title)}</div>
-          ${h.due?`<div style="font-size:0.78rem;color:var(--text3);margin-top:2px">📅 Срок: ${h.due}${overdue&&!h.submitted?' <span style="color:#c0392b;font-weight:700">ПРОСРОЧЕНО</span>':''}</div>`:''}
-          <div style="margin-top:4px">${statusBadge}</div>
-        </div>`;
-      }).join('')
-    : '<div class="empty-state"><p>ДЗ нет</p></div>';
-
-  // ── Пробники
-  const trialsHtml = trials.length
-    ? trials.slice().reverse().map(t=>{
-        const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-        const allQ = (t.sections||[]).flatMap(s=>s.questions);
-        const hasOpen = allQ.some(q=>q.type==='open');
-        const statusBadge = !t.submitted
-          ? `<span class="badge badge-gold">⏳ Не пройден</span>`
-          : (t.openChecked||!hasOpen)
-            ? `<span class="badge badge-green">✅ ${t.autoScore||0}/${t.autoTotal} б. · ${pct}% · Оценка ${calcGrade(pct,t.gradeConfig)}</span>`
-            : `<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal} б.</span>`;
-        return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale)">
-          <div style="font-weight:600;font-size:0.88rem">${esc(t.title)}${t.subject?` <span style="font-size:0.75rem;color:var(--text3)">· ${t.subject}</span>`:''}</div>
-          <div style="margin-top:4px">${statusBadge}</div>
-        </div>`;
-      }).join('')
-    : '<div class="empty-state"><p>Пробников нет</p></div>';
-
   el.innerHTML = `
-    <div class="page-title">👨‍👩‍👧 Дашборд родителя</div>
-    <div class="page-sub">Информация об успехах ребёнка</div>
+    <div class="page-title">👨‍👩‍👧 Портал родителя</div>
+    <div class="page-sub">Успехи и общение — всё в одном месте</div>
 
-    <div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,var(--green-xpale),var(--bg))">
+    <!-- Шапка ученика -->
+    <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,var(--green-xpale),var(--bg))">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--green-deep),var(--green-mid));display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.3rem;font-weight:700;flex-shrink:0">${initials}</div>
-        <div>
+        <div style="flex:1">
           <div style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--accent);font-weight:700">${esc(student.name)}</div>
           <div style="font-size:0.8rem;color:var(--text3)">${student.grade||''} ${student.subject?'· '+student.subject:''} ${student.format?'· '+student.format:''}</div>
         </div>
+        <div id="parent-chat-badge-wrap"></div>
       </div>
     </div>
 
-    ${statsHtml}
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>💰 Оплата</div>
-        ${paymentsHtml}
-      </div>
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>📅 Занятия (последние 10)</div>
-        ${lessonsHtml}
-      </div>
+    <!-- Вкладки -->
+    <div class="tabs" style="margin-bottom:18px" id="parent-tabs">
+      <div class="tab ${_parentTab==='feed'?'active':''}" onclick="switchParentTab('feed')">📰 Лента</div>
+      <div class="tab ${_parentTab==='chat'?'active':''}" onclick="switchParentTab('chat')">💬 Чат <span id="parent-chat-badge"></span></div>
+      <div class="tab ${_parentTab==='grades'?'active':''}" onclick="switchParentTab('grades')">🏅 Оценки</div>
+      <div class="tab ${_parentTab==='payments'?'active':''}" onclick="switchParentTab('payments')">💰 Оплата</div>
+      <div class="tab ${_parentTab==='lessons'?'active':''}" onclick="switchParentTab('lessons')">📅 Занятия</div>
     </div>
 
-    <div class="card" style="margin-bottom:18px">
-      <div class="card-title"><span class="dot"></span>📖 Материалы / Темы</div>
-      ${topicsHtml}
-    </div>
+    <div id="parent-tab-body"></div>`;
 
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px">
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>📋 Тесты</div>
-        ${testsHtml}
+  _renderParentTab(sid, student);
+  _updateParentChatBadge(sid);
+
+  // Подписка на чат родителя (реалтайм через общий Firebase чат ученика)
+  subscribeChatSid(sid, (updSid) => {
+    _updateParentChatBadge(updSid);
+    if(_parentTab === 'chat') _renderParentChatTab(updSid);
+  });
+}
+
+function switchParentTab(tab){
+  _parentTab = tab;
+  const sid = currentUser.linkedStudentId;
+  const student = (load('users')||[]).find(u=>u.id===sid);
+  if(!student) return;
+  document.querySelectorAll('#parent-tabs .tab').forEach(t=>t.className='tab');
+  const idx = ['feed','chat','grades','payments','lessons'].indexOf(tab);
+  const tabs = document.querySelectorAll('#parent-tabs .tab');
+  if(tabs[idx]) tabs[idx].className='tab active';
+  _renderParentTab(sid, student);
+}
+
+function _renderParentTab(sid, student){
+  const body = document.getElementById('parent-tab-body');
+  if(!body) return;
+  if(_parentTab==='feed')     { body.innerHTML = _buildParentFeed(sid, student); }
+  if(_parentTab==='chat')     { _renderParentChatTab(sid); if(currentUser.role==='parent') markParentChatRead(sid); _updateParentChatBadge(sid); }
+  if(_parentTab==='grades')   { body.innerHTML = _buildParentGrades(sid); }
+  if(_parentTab==='payments') { body.innerHTML = _buildParentPayments(sid); }
+  if(_parentTab==='lessons')  { body.innerHTML = _buildParentLessons(sid); }
+}
+
+// ── ЛЕНТА ────────────────────────────────────────────────────────
+function _buildParentFeed(sid, student){
+  const tests    = (load('tests')||[]).filter(t=>t.studentId===sid&&!t.isLibrary);
+  const hws      = (load('hw')||[]).filter(h=>h.studentId===sid&&!h.isLibrary);
+  const trials   = (load('trials')||[]).filter(t=>t.studentId===sid&&!t.isLibrary);
+  const att      = (load('attendance')||[]).filter(a=>a.studentId===sid);
+
+  const events = [];
+
+  // Новые задания (не сданные)
+  tests.filter(t=>!t.submitted).forEach(t=>events.push({
+    date: t.date, icon:'📝', color:'#e8f4fd', border:'#90caf9',
+    title: `Новый тест: «${t.title}»`,
+    sub: t.due ? `📅 Срок: ${t.due}` : 'Срок не указан',
+    badge: '<span style="background:#fff3cd;color:#856404;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">⏳ Ожидает сдачи</span>'
+  }));
+  hws.filter(h=>!h.submitted).forEach(h=>{
+    const overdue = h.due && new Date(h.due.split('.').reverse().join('-')) < new Date();
+    events.push({
+      date: h.date, icon:'✏️', color: overdue?'#fff0f0':'#fff8e1', border: overdue?'#f48fb1':'#ffe082',
+      title: `Домашнее задание: «${h.title}»`,
+      sub: h.due ? `📅 Срок: ${h.due}` : 'Срок не указан',
+      badge: overdue
+        ? '<span style="background:#ffebee;color:#c0392b;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">🚨 Просрочено</span>'
+        : '<span style="background:#fff3cd;color:#856404;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">⏳ Не сдано</span>'
+    });
+  });
+  trials.filter(t=>!t.submitted).forEach(t=>events.push({
+    date: t.date, icon:'🧪', color:'#f3e5f5', border:'#ce93d8',
+    title: `Пробный экзамен: «${t.title}»`,
+    sub: t.subject||'',
+    badge: '<span style="background:#fff3cd;color:#856404;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">⏳ Ожидает</span>'
+  }));
+
+  // Сданные работы
+  tests.filter(t=>t.submitted).forEach(t=>{
+    const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+    const grade = t.autoGrade || (pct!=null?calcGrade(pct,t.gradeConfig):null);
+    events.push({
+      date: t.date, icon:'📋', color:'#e8f8f0', border:'#81c784',
+      title: `Тест сдан: «${t.title}»`,
+      sub: pct!=null ? `Результат: ${pct}%` : 'Ожидает проверки',
+      badge: grade ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">Оценка: ${grade}</span>` : ''
+    });
+  });
+  hws.filter(h=>h.submitted).forEach(h=>events.push({
+    date: h.date, icon:'✅', color:'#e8f8f0', border:'#81c784',
+    title: `ДЗ сдано: «${h.title}»`,
+    sub: 'Домашняя работа',
+    badge: '<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">✅ Сдано</span>'
+  }));
+  trials.filter(t=>t.submitted).forEach(t=>{
+    const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
+    events.push({
+      date: t.date, icon:'🎯', color:'#e8f8f0', border:'#81c784',
+      title: `Пробник пройден: «${t.title}»`,
+      sub: pct!=null ? `Результат: ${pct}%` : 'Ожидает проверки',
+      badge: pct!=null ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">${pct}%</span>` : ''
+    });
+  });
+
+  // Занятия
+  att.forEach(a=>events.push({
+    date: a.date, icon: a.present?'📅':'🚫', color: a.present?'#f0f7ff':'#fff0f0', border: a.present?'#90caf9':'#f48fb1',
+    title: a.present ? `Занятие — ${a.topic||'тема не указана'}` : `Пропуск занятия`,
+    sub: a.time||'',
+    badge: a.present
+      ? '<span style="background:#e8f4fd;color:#1565c0;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">✅ Присутствовал</span>'
+      : '<span style="background:#ffebee;color:#c0392b;font-size:0.72rem;padding:2px 8px;border-radius:8px;font-weight:700">❌ Отсутствовал</span>'
+  }));
+
+  if(!events.length) return `<div class="card"><div class="empty-state"><div class="big">📭</div><p>Активности пока нет</p></div></div>`;
+
+  // Сортировка: свежие — сверху (строки дд.мм.гггг → сравниваем как даты)
+  events.sort((a,b)=>{
+    const da = a.date ? a.date.split('.').reverse().join('-') : '0000-00-00';
+    const db = b.date ? b.date.split('.').reverse().join('-') : '0000-00-00';
+    return da < db ? 1 : da > db ? -1 : 0;
+  });
+
+  return `<div class="card">
+    <div class="card-title"><span class="dot"></span>📰 Лента активности</div>
+    ${events.map(e=>`
+      <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--green-xpale);align-items:flex-start">
+        <div style="width:38px;height:38px;border-radius:10px;background:${e.color};border:1.5px solid ${e.border};display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${e.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:0.88rem;color:var(--accent)">${esc(e.title)}</div>
+          ${e.sub?`<div style="font-size:0.78rem;color:var(--text3);margin-top:2px">${esc(e.sub)}</div>`:''}
+          <div style="margin-top:5px;display:flex;align-items:center;gap:8px">
+            ${e.badge}
+            ${e.date?`<span style="font-size:0.7rem;color:var(--text3)">${e.date}</span>`:''}
+          </div>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+// ── ЧАТ РОДИТЕЛЬ ↔ ПРЕПОДАВАТЕЛЬ ────────────────────────────────
+// Родитель пишет в тот же чат что и ученик, но с пометкой from:'parent'
+// Преподаватель видит сообщения родителя в обычном чат-окне ученика
+
+function _renderParentChatTab(sid){
+  const body = document.getElementById('parent-tab-body');
+  if(!body) return;
+
+  body.innerHTML = `
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid var(--green-xpale);background:var(--bg2)">
+        <div style="font-weight:700;color:var(--accent);font-size:0.95rem">💬 Сообщения преподавателю</div>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">Преподаватель видит ваши сообщения в разделе «Чат»</div>
       </div>
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>✏️ Домашние задания</div>
-        ${hwsHtml}
+      <div id="parent-chat-messages" style="height:380px;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:4px"></div>
+      <div style="padding:12px 16px;border-top:1px solid var(--green-xpale);display:flex;gap:8px;background:var(--card)">
+        <textarea id="parent-chat-input" placeholder="Написать преподавателю…" rows="2"
+          style="flex:1;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:none;outline:none;transition:border .2s"
+          onfocus="this.style.borderColor='var(--green-mid)'" onblur="this.style.borderColor='var(--green-pale)'"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendParentMsg()}"></textarea>
+        <button class="btn-main" style="width:auto;padding:10px 20px;align-self:flex-end" onclick="sendParentMsg()">➤</button>
       </div>
-      <div class="card">
-        <div class="card-title"><span class="dot"></span>🧪 Пробники</div>
-        ${trialsHtml}
+    </div>`;
+
+  _renderParentChatMessages(sid);
+  markParentChatRead(sid);
+  _updateParentChatBadge(sid);
+}
+
+function _renderParentChatMessages(sid){
+  const el = document.getElementById('parent-chat-messages');
+  if(!el) return;
+  const msgs = loadChat(sid);
+  if(!msgs.length){
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:40px 0;font-size:0.9rem">👋 Напишите преподавателю — ответим в ближайшее время</div>';
+    return;
+  }
+  let lastDate = '';
+  el.innerHTML = msgs.map(m=>{
+    const isParent = m.from === 'parent';
+    const isAdmin  = m.from === 'admin';
+    const mine = isParent; // родитель видит свои сообщения справа
+    let html = '';
+    if(m.date !== lastDate){
+      html += `<div style="text-align:center;font-size:0.72rem;color:var(--text3);padding:6px 0">${m.date}</div>`;
+      lastDate = m.date;
+    }
+    const label = isAdmin ? '👩‍🏫 Преподаватель' : isParent ? '👨‍👩‍👧 Вы' : '🎓 Ученик';
+    const bg = mine ? 'var(--green-deep)' : (isAdmin ? 'var(--green-xpale)' : '#f0f0f0');
+    const color = mine ? '#fff' : 'var(--text)';
+    html += `<div style="display:flex;flex-direction:column;align-items:${mine?'flex-end':'flex-start'};margin-bottom:6px">
+      <div style="font-size:0.68rem;color:var(--text3);margin-bottom:2px">${label}</div>
+      <div style="max-width:78%;padding:10px 14px;border-radius:${mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};background:${bg};color:${color};font-size:0.88rem;line-height:1.5;word-break:break-word">${escHtml(m.text)}</div>
+      <div style="font-size:0.68rem;color:var(--text3);margin-top:2px">${m.time||''}</div>
+    </div>`;
+    return html;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function sendParentMsg(){
+  const inp = document.getElementById('parent-chat-input');
+  const text = inp ? inp.value.trim() : '';
+  if(!text) return;
+  const sid = currentUser.linkedStudentId;
+  const msgs = loadChat(sid);
+  msgs.push({
+    id: 'm'+Date.now(), from: 'parent', text,
+    time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}),
+    date: new Date().toLocaleDateString('ru'), read: false
+  });
+  saveChat(sid, msgs);
+  if(inp) inp.value = '';
+  _renderParentChatMessages(sid);
+  // Уведомить преподавателя
+  const parentName = currentUser.name || 'Родитель';
+  const studentName = (load('users')||[]).find(u=>u.id===sid)?.name || '';
+  _addAdminNotif({
+    id:'an'+Date.now(), studentId: sid,
+    studentName: `${parentName} (родитель ${studentName})`,
+    type:'chat', text:`👨‍👩‍👧 ${parentName}: ${text.substring(0,80)}`,
+    time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}),
+    date: new Date().toLocaleDateString('ru'), read: false
+  });
+}
+
+function markParentChatRead(sid){
+  const msgs = loadChat(sid);
+  let changed = false;
+  msgs.forEach(m=>{ if(m.from==='admin' && !m.read){ m.read=true; changed=true; } });
+  if(changed) saveChat(sid, msgs);
+}
+
+function _updateParentChatBadge(sid){
+  const msgs = loadChat(sid);
+  const unread = msgs.filter(m=>m.from==='admin' && !m.read).length;
+  const badge = document.getElementById('parent-chat-badge');
+  if(badge) badge.innerHTML = unread > 0 ? `<span style="background:var(--red);color:#fff;border-radius:10px;padding:1px 6px;font-size:0.68rem;font-weight:700;margin-left:4px">${unread}</span>` : '';
+}
+
+// ── ОЦЕНКИ ───────────────────────────────────────────────────────
+function _buildParentGrades(sid){
+  const tests  = (load('tests')||[]).filter(t=>t.studentId===sid&&!t.isLibrary);
+  const hws    = (load('hw')||[]).filter(h=>h.studentId===sid&&!h.isLibrary);
+  const trials = (load('trials')||[]).filter(t=>t.studentId===sid&&!t.isLibrary);
+
+  const items = [];
+  tests.forEach(t=>{
+    const attempts = t.attempts||[];
+    if(attempts.length) attempts.forEach(a=>items.push({icon:'📋',title:t.title,date:a.date,pct:a.pct,grade:a.grade}));
+    else if(t.submitted){ const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null; items.push({icon:'📋',title:t.title,date:t.date,pct,grade:t.autoGrade}); }
+  });
+  hws.forEach(h=>{
+    const attempts = h.attempts||[];
+    if(attempts.length) attempts.forEach(a=>items.push({icon:'✏️',title:h.title,date:a.date,pct:a.pct,grade:a.grade}));
+    else if(h.submitted) items.push({icon:'✏️',title:h.title,date:h.date,pct:null,grade:null,pending:true});
+  });
+  trials.forEach(t=>{
+    if(t.submitted){ const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null; items.push({icon:'🎯',title:t.title,date:t.date,pct,grade:t.autoGrade||(pct!=null?calcGrade(pct,t.gradeConfig):null)}); }
+  });
+
+  const graded = items.filter(i=>i.grade);
+  const avgPct = graded.length ? Math.round(graded.reduce((s,i)=>s+(i.pct||0),0)/graded.length) : null;
+
+  items.sort((a,b)=>{
+    const da=a.date?a.date.split('.').reverse().join('-'):'0000-00-00';
+    const db=b.date?b.date.split('.').reverse().join('-'):'0000-00-00';
+    return da<db?1:da>db?-1:0;
+  });
+
+  if(!items.length) return `<div class="card"><div class="empty-state"><div class="big">🏅</div><p>Работ пока нет</p></div></div>`;
+
+  const gradeColor = {5:'#27ae60',4:'#2196f3',3:'#ff9800',2:'#c0392b'};
+
+  return `
+    ${avgPct!=null?`<div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,var(--green-xpale),var(--bg))">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="font-size:2rem;font-weight:700;color:var(--green-deep)">${avgPct}%</div>
+        <div><div style="font-weight:600;color:var(--accent)">Средний балл</div><div style="font-size:0.8rem;color:var(--text3)">По ${graded.length} оценённым работам</div></div>
       </div>
+    </div>`:''}
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>🏅 История оценок</div>
+      ${items.map(i=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+          <span style="font-size:1.2rem">${i.icon}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:0.88rem">${esc(i.title)}</div>
+            <div style="font-size:0.75rem;color:var(--text3)">${i.date||''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            ${i.grade?`<div style="font-size:1.3rem;font-weight:800;color:${gradeColor[i.grade]||'var(--text)'}">${i.grade}</div>`:''}
+            ${i.pct!=null?`<div style="font-size:0.75rem;color:var(--text3)">${i.pct}%</div>`:''}
+            ${i.pending?`<span style="font-size:0.72rem;color:#856404">⏳ На проверке</span>`:''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── ОПЛАТА ───────────────────────────────────────────────────────
+function _buildParentPayments(sid){
+  const payments = (load('payments')||[]).filter(p=>p.studentId===sid);
+  if(!payments.length) return `<div class="card"><div class="empty-state"><div class="big">💰</div><p>Записей об оплате нет</p></div></div>`;
+  const statusMeta = {
+    paid:    {cls:'badge-green', icon:'✅', lbl:'Оплачено'},
+    unpaid:  {cls:'badge-red',   icon:'❌', lbl:'Не оплачено'},
+    partial: {cls:'badge-gold',  icon:'⚠️', lbl:'Частично'}
+  };
+  const total = payments.filter(p=>p.status==='paid').reduce((s,p)=>s+(+p.amount||0),0);
+  const debt  = payments.filter(p=>p.status==='unpaid'||p.status==='partial').reduce((s,p)=>s+(+p.amount||0),0);
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num">${total}₽</div><div class="stat-label">Оплачено</div></div>
+      <div class="stat-card" style="${debt>0?'background:#fff0f0':''}"><div class="stat-icon">❌</div><div class="stat-num" style="${debt>0?'color:#c0392b':''}">${debt}₽</div><div class="stat-label">К оплате</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>💰 История оплат</div>
+      ${payments.slice().reverse().map(p=>{
+        const m = statusMeta[p.status]||statusMeta.unpaid;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+          <div>
+            <div style="font-weight:600;font-size:0.88rem">${esc(p.period)}</div>
+            ${p.note?`<div style="font-size:0.78rem;color:var(--text3)">${esc(p.note)}</div>`:''}
+            <div style="font-size:0.73rem;color:var(--text3)">${p.date||''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <span style="font-weight:700">${p.amount}₽</span>
+            <span class="badge ${m.cls}">${m.icon} ${m.lbl}</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+// ── ЗАНЯТИЯ ──────────────────────────────────────────────────────
+function _buildParentLessons(sid){
+  const att = (load('attendance')||[]).filter(a=>a.studentId===sid);
+  if(!att.length) return `<div class="card"><div class="empty-state"><div class="big">📅</div><p>Занятий пока нет</p></div></div>`;
+  const present = att.filter(a=>a.present).length;
+  const absent  = att.filter(a=>!a.present).length;
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-num">${att.length}</div><div class="stat-label">Всего занятий</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num">${present}</div><div class="stat-label">Посещено</div></div>
+      <div class="stat-card" style="${absent>0?'background:#fff0f0':''}"><div class="stat-icon">🚫</div><div class="stat-num" style="${absent>0?'color:#c0392b':''}">${absent}</div><div class="stat-label">Пропущено</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📅 История занятий</div>
+      ${att.slice().reverse().map(a=>`
+        <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-weight:600;font-size:0.88rem">📅 ${a.date}${a.time?' · '+a.time:''}</div>
+              ${a.topic?`<div style="font-size:0.8rem;color:var(--text2);margin-top:2px">📖 ${esc(a.topic)}</div>`:''}
+              ${a.duration?`<div style="font-size:0.75rem;color:var(--text3)">${a.duration} мин</div>`:''}
+            </div>
+            <span class="badge ${a.present?'badge-green':'badge-red'}" style="flex-shrink:0">${a.present?'✅ Был':'❌ Отсутствовал'}</span>
+          </div>
+          ${a.present&&a.costPerStudent?`<div style="font-size:0.73rem;color:var(--text3);margin-top:4px">💰 ${a.costPerStudent}₽ · ${a.paid?'✅ Оплачено':'❌ Не оплачено'}</div>`:''}
+        </div>`).join('')}
     </div>`;
 }
 
@@ -6615,8 +6891,10 @@ function submitTest(){
   t.autoGrade=finalAttempt.grade;
   t.autoPct=finalAttempt.pct;
   save('tests',tests);
+  _collectAndSaveWrongAnswers('test', t, _testAnswers);
   closeModal('modal-take-test');
   renderStudentTests();
+  updateMistakesBadge();
   const maxAttempts=t.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - t.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
@@ -6805,8 +7083,10 @@ function submitHW(){
   h.autoPct=finalAttempt.pct;
   if(h.autoTotal){ h.autoGrade=calcGrade(finalAttempt.pct, h.gradeConfig); }
   save('hw',hws);
+  _collectAndSaveWrongAnswers('hw', h, _hwAnswers);
   closeModal('modal-take-test');
   renderStudentHW();
+  updateMistakesBadge();
   const maxAttempts=h.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - h.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
@@ -7116,6 +7396,431 @@ function isSlotForStudent(s, sid){
   return false;
 }
 
+// ══════════════════════════════════════════════
+// ICS / CALENDAR EXPORT
+// ══════════════════════════════════════════════
+
+/** Format a Date to iCalendar DTSTART;TZID format (local naive) */
+function _icsDate(d, allDay) {
+  const pad = n => String(n).padStart(2,'0');
+  if (allDay) {
+    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+  }
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+}
+
+/** Get next occurrence of a weekday (0=Mon…6=Sun in Russian slot.day) from a base date */
+function _nextWeekday(dayName, fromDate) {
+  const RU_DOW = {'Понедельник':1,'Вторник':2,'Среда':3,'Четверг':4,'Пятница':5,'Суббота':6,'Воскресенье':0};
+  const target = RU_DOW[dayName];
+  if (target === undefined) return null;
+  const d = new Date(fromDate);
+  d.setHours(0,0,0,0);
+  const cur = d.getDay(); // 0=Sun
+  let diff = (target - cur + 7) % 7;
+  if (diff === 0) diff = 0; // same day = today
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+/** Map Russian weekday name to RRULE BYDAY value */
+function _rruleDay(dayName) {
+  const map = {'Понедельник':'MO','Вторник':'TU','Среда':'WE','Четверг':'TH','Пятница':'FR','Суббота':'SA','Воскресенье':'SU'};
+  return map[dayName] || null;
+}
+
+/** Fold long iCalendar lines (RFC 5545: max 75 octets, continue with CRLF + SPACE) */
+function _icsFold(line) {
+  if (line.length <= 75) return line;
+  let result = '';
+  while (line.length > 75) {
+    result += line.slice(0, 75) + '\r\n ';
+    line = line.slice(75);
+  }
+  return result + line;
+}
+
+/** Escape text for iCalendar */
+function _icsEsc(s) {
+  return (s || '').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+}
+
+/**
+ * Build ICS string for a student's schedule:
+ *  - Recurring VEVENT for each booked/assigned slot (weekly RRULE, 1 year)
+ *  - Single VEVENT for each past attendance record
+ */
+function buildStudentICS(sid) {
+  const slots    = load('slots')    || [];
+  const courses  = load('courses')  || [];
+  const att      = load('attendance') || [];
+  const users    = load('users')    || [];
+  const student  = users.find(u => u.id === sid);
+  const sName    = student ? student.name : 'Ученик';
+
+  const now = new Date();
+  const uid_base = `biohim-${sid}-`;
+  const dtstamp  = _icsDate(now) + 'T' + now.toISOString().slice(11,13) + now.toISOString().slice(14,16) + '00Z';
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//BioХим//Репетитор//RU',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:BioХим — ${_icsEsc(sName)}`,
+    'X-WR-TIMEZONE:Europe/Moscow',
+    'X-WR-CALDESC:Расписание занятий BioХим',
+  ];
+
+  // ── 1. Recurring weekly events from schedule slots
+  const mySlots = slots.filter(s => isSlotForStudent(s, sid));
+  mySlots.forEach(s => {
+    const course  = s.courseId ? courses.find(c => c.id === s.courseId) : null;
+    const title   = course ? course.title : 'Занятие';
+    const rruleDay = _rruleDay(s.day);
+    if (!rruleDay) return;
+
+    const dtStart = _nextWeekday(s.day, now);
+    if (!dtStart) return;
+
+    // Parse time HH:MM
+    const [hh, mm] = (s.time || '00:00').split(':').map(Number);
+    dtStart.setHours(hh, mm, 0, 0);
+
+    const dtEnd = new Date(dtStart);
+    dtEnd.setMinutes(dtEnd.getMinutes() + (s.dur || 60));
+
+    // Until: 1 year from now
+    const until = new Date(now);
+    until.setFullYear(until.getFullYear() + 1);
+
+    const uid = `${uid_base}slot-${s.id}@biohim.app`;
+    const desc = [
+      course ? `Курс: ${course.title}` : '',
+      course ? `Формат: ${{individual:'Индивидуальный',group:'Групповой',pair:'Парный'}[course.format] || course.format}` : '',
+      course ? `Стоимость: ${course.price}₽/занятие` : '',
+      s.dur ? `Продолжительность: ${s.dur} мин` : '',
+    ].filter(Boolean).join('\\n');
+
+    lines.push('BEGIN:VEVENT');
+    lines.push(_icsFold(`UID:${uid}`));
+    lines.push(`DTSTAMP:${dtstamp}Z`);
+    lines.push(_icsFold(`DTSTART;TZID=Europe/Moscow:${_icsDate(dtStart)}`));
+    lines.push(_icsFold(`DTEND;TZID=Europe/Moscow:${_icsDate(dtEnd)}`));
+    lines.push(_icsFold(`RRULE:FREQ=WEEKLY;BYDAY=${rruleDay};UNTIL=${_icsDate(until)}T235959Z`));
+    lines.push(_icsFold(`SUMMARY:📚 ${_icsEsc(title)}`));
+    lines.push(_icsFold(`DESCRIPTION:${desc}`));
+    lines.push('STATUS:CONFIRMED');
+    lines.push('TRANSP:OPAQUE');
+    lines.push(`CATEGORIES:Занятие`);
+    lines.push('BEGIN:VALARM');
+    lines.push('ACTION:DISPLAY');
+    lines.push('DESCRIPTION:Напоминание о занятии');
+    lines.push('TRIGGER:-PT30M');
+    lines.push('END:VALARM');
+    lines.push('END:VEVENT');
+  });
+
+  // ── 2. Past attendance records as single events
+  const myAtt = att.filter(a => a.studentId === sid && a.present && a.date);
+  myAtt.forEach(a => {
+    // Parse date: DD.MM.YYYY or YYYY-MM-DD
+    let dateObj;
+    if (a.date.includes('-')) {
+      dateObj = new Date(a.date);
+    } else {
+      const [d, m, y] = a.date.split('.').map(Number);
+      dateObj = new Date(y, m - 1, d);
+    }
+    if (isNaN(dateObj)) return;
+
+    const [hh, mm] = (a.time || '00:00').split(':').map(Number);
+    dateObj.setHours(hh || 0, mm || 0, 0, 0);
+    const endObj = new Date(dateObj);
+    endObj.setMinutes(endObj.getMinutes() + (a.duration || 60));
+
+    const uid = `${uid_base}att-${a.lessonId || a.id || Date.now()}@biohim.app`;
+    const desc = [
+      a.topic  ? `Тема: ${a.topic}` : '',
+      a.summary ? `Итог: ${a.summary}` : '',
+      a.duration ? `Длительность: ${a.duration} мин` : '',
+      a.costPerStudent ? `Стоимость: ${a.costPerStudent}₽` : '',
+    ].filter(Boolean).join('\\n');
+
+    lines.push('BEGIN:VEVENT');
+    lines.push(_icsFold(`UID:${uid}`));
+    lines.push(`DTSTAMP:${dtstamp}Z`);
+    lines.push(_icsFold(`DTSTART;TZID=Europe/Moscow:${_icsDate(dateObj)}`));
+    lines.push(_icsFold(`DTEND;TZID=Europe/Moscow:${_icsDate(endObj)}`));
+    lines.push(_icsFold(`SUMMARY:✅ ${_icsEsc(a.topic || 'Занятие')} (прошло)`));
+    lines.push(_icsFold(`DESCRIPTION:${desc}`));
+    lines.push('STATUS:CONFIRMED');
+    lines.push('TRANSP:TRANSPARENT');
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+/**
+ * Build ICS for the admin: ALL booked slots (all students)
+ */
+function buildAdminICS() {
+  const slots   = load('slots')   || [];
+  const courses = load('courses') || [];
+  const users   = load('users')   || [];
+  const att     = load('attendance') || [];
+  const now     = new Date();
+  const dtstamp = _icsDate(now) + 'T000000Z';
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//BioХим//Репетитор//RU',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:BioХим — Расписание (все)',
+    'X-WR-TIMEZONE:Europe/Moscow',
+  ];
+
+  // Recurring from slots
+  slots.filter(s => s.bookedBy || s.groupId).forEach(s => {
+    const student = s.bookedBy ? users.find(u => u.id === s.bookedBy) : null;
+    const course  = s.courseId ? courses.find(c => c.id === s.courseId) : null;
+    const whoName = student ? student.name : (s.groupId ? 'Группа' : '—');
+    const rruleDay = _rruleDay(s.day);
+    if (!rruleDay) return;
+
+    const dtStart = _nextWeekday(s.day, now);
+    if (!dtStart) return;
+    const [hh, mm] = (s.time || '00:00').split(':').map(Number);
+    dtStart.setHours(hh, mm, 0, 0);
+    const dtEnd = new Date(dtStart);
+    dtEnd.setMinutes(dtEnd.getMinutes() + (s.dur || 60));
+    const until = new Date(now); until.setFullYear(until.getFullYear() + 1);
+
+    lines.push('BEGIN:VEVENT');
+    lines.push(_icsFold(`UID:biohim-admin-slot-${s.id}@biohim.app`));
+    lines.push(`DTSTAMP:${dtstamp}Z`);
+    lines.push(_icsFold(`DTSTART;TZID=Europe/Moscow:${_icsDate(dtStart)}`));
+    lines.push(_icsFold(`DTEND;TZID=Europe/Moscow:${_icsDate(dtEnd)}`));
+    lines.push(_icsFold(`RRULE:FREQ=WEEKLY;BYDAY=${rruleDay};UNTIL=${_icsDate(until)}T235959Z`));
+    lines.push(_icsFold(`SUMMARY:👤 ${_icsEsc(whoName)}${course?' — '+_icsEsc(course.title):''}`));
+    lines.push(_icsFold(`DESCRIPTION:${_icsEsc(whoName)}\\n${s.day} ${s.time}\\n${s.dur||60} мин${course?'\\nКурс: '+course.title:''}`));
+    lines.push('STATUS:CONFIRMED');
+    lines.push('BEGIN:VALARM');
+    lines.push('ACTION:DISPLAY');
+    lines.push(`DESCRIPTION:Занятие: ${_icsEsc(whoName)}`);
+    lines.push('TRIGGER:-PT15M');
+    lines.push('END:VALARM');
+    lines.push('END:VEVENT');
+  });
+
+  // Past attendance
+  att.filter(a => a.present && a.date).forEach(a => {
+    const student = users.find(u => u.id === a.studentId);
+    let dateObj;
+    if (a.date.includes('-')) dateObj = new Date(a.date);
+    else { const [d,m,y]=a.date.split('.').map(Number); dateObj=new Date(y,m-1,d); }
+    if (isNaN(dateObj)) return;
+    const [hh, mm] = (a.time||'00:00').split(':').map(Number);
+    dateObj.setHours(hh||0, mm||0, 0, 0);
+    const endObj = new Date(dateObj);
+    endObj.setMinutes(endObj.getMinutes() + (a.duration || 60));
+
+    lines.push('BEGIN:VEVENT');
+    lines.push(_icsFold(`UID:biohim-admin-att-${a.lessonId||a.id||Math.random().toString(36).slice(2)}@biohim.app`));
+    lines.push(`DTSTAMP:${dtstamp}Z`);
+    lines.push(_icsFold(`DTSTART;TZID=Europe/Moscow:${_icsDate(dateObj)}`));
+    lines.push(_icsFold(`DTEND;TZID=Europe/Moscow:${_icsDate(endObj)}`));
+    lines.push(_icsFold(`SUMMARY:✅ ${_icsEsc(student?student.name:'—')} — ${_icsEsc(a.topic||'Занятие')}`));
+    lines.push(_icsFold(`DESCRIPTION:${_icsEsc(a.topic||'')}${a.duration?'\\n'+a.duration+' мин':''}`));
+    lines.push('STATUS:CONFIRMED');
+    lines.push('TRANSP:TRANSPARENT');
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+/** Trigger download of .ics file */
+function downloadICS(icsStr, filename) {
+  const blob = new Blob([icsStr], { type: 'text/calendar;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+/** Build a Google Calendar import URL for a single-event (not recurring) — for "Add to Google Calendar" */
+function googleCalendarLink(title, startDate, endDate, description) {
+  const fmt = d => d.toISOString().replace(/[-:]/g,'').slice(0,15)+'Z';
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: title,
+    dates: `${fmt(startDate)}/${fmt(endDate)}`,
+    details: description || '',
+    sf: 'true',
+    output: 'xml'
+  });
+  return `https://calendar.google.com/calendar/render?${p}`;
+}
+
+/** Student: render the calendar export tab */
+function renderCalendarExport() {
+  const sid = currentUser.id;
+  const el  = document.getElementById('cal-export-content');
+  if (!el) return;
+
+  const slots   = load('slots')   || [];
+  const courses = load('courses') || [];
+  const mySlots = slots.filter(s => isSlotForStudent(s, sid));
+  const att     = (load('attendance') || []).filter(a => a.studentId === sid && a.present);
+
+  const slotCount = mySlots.length;
+  const attCount  = att.length;
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title"><span class="dot"></span>📲 Добавить занятия в календарь</div>
+      <div style="font-size:0.88rem;color:var(--text2);line-height:1.7;margin-bottom:16px">
+        Скачайте файл <b>.ics</b> и откройте его — занятия появятся в вашем Google Calendar, Apple Calendar или любом другом приложении.<br>
+        В файл входят: <b>${slotCount}</b> регулярных занятий из расписания и <b>${attCount}</b> прошедших занятий.
+      </div>
+
+      <!-- Main download -->
+      <button class="btn btn-green" style="width:100%;padding:14px;font-size:1rem;margin-bottom:12px"
+        onclick="downloadICS(buildStudentICS('${sid}'), 'biohim-schedule.ics')">
+        ⬇️ Скачать файл .ics (все занятия)
+      </button>
+
+      <!-- Instructions grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <!-- Google Calendar -->
+        <div style="border:1.5px solid var(--green-pale);border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#4285F4,#34A853);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0">📅</div>
+            <div>
+              <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">Google Calendar</div>
+              <div style="font-size:0.72rem;color:var(--text3)">Android, Web</div>
+            </div>
+          </div>
+          <ol style="font-size:0.78rem;color:var(--text2);line-height:2;padding-left:18px;margin:0">
+            <li>Нажмите «Скачать .ics» выше</li>
+            <li>Откройте <a href="https://calendar.google.com" target="_blank" style="color:var(--green-mid)">calendar.google.com</a></li>
+            <li>Настройки → Импорт</li>
+            <li>Выберите скачанный файл</li>
+          </ol>
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-top:10px"
+            onclick="downloadICS(buildStudentICS('${sid}'), 'biohim-schedule.ics');setTimeout(()=>window.open('https://calendar.google.com/calendar/r/settings/import','_blank'),800)">
+            📥 Скачать и открыть Google Calendar
+          </button>
+        </div>
+
+        <!-- Apple Calendar -->
+        <div style="border:1.5px solid var(--green-pale);border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#ff6b6b,#ee5a24);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0">🍎</div>
+            <div>
+              <div style="font-weight:700;font-size:0.92rem;color:var(--accent)">Apple Calendar</div>
+              <div style="font-size:0.72rem;color:var(--text3)">iPhone, iPad, Mac</div>
+            </div>
+          </div>
+          <ol style="font-size:0.78rem;color:var(--text2);line-height:2;padding-left:18px;margin:0">
+            <li>Нажмите «Скачать .ics» выше</li>
+            <li>На iPhone/iPad — откройте файл из Загрузок</li>
+            <li>На Mac — дважды кликните по файлу</li>
+            <li>Нажмите «Добавить все»</li>
+          </ol>
+          <button class="btn btn-outline btn-sm" style="width:100%;margin-top:10px"
+            onclick="openAppleCalendar('${sid}')">
+            🍎 Открыть напрямую (Safari/Mac)
+          </button>
+        </div>
+      </div>
+
+      <!-- Outlook -->
+      <div style="border:1.5px solid var(--green-pale);border-radius:12px;padding:14px;margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#0078D4,#106EBE);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0">📧</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:0.88rem;color:var(--accent)">Outlook / Яндекс Календарь / другие</div>
+          <div style="font-size:0.75rem;color:var(--text3)">Скачайте .ics и импортируйте через меню «Файл → Импорт»</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="downloadICS(buildStudentICS('${sid}'), 'biohim-schedule.ics')">⬇️ Скачать .ics</button>
+      </div>
+    </div>
+
+    <!-- Individual slots preview -->
+    ${mySlots.length ? `
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📋 Занятия в экспорте (${slotCount})</div>
+      ${mySlots.map(s => {
+        const c = s.courseId ? courses.find(x => x.id === s.courseId) : null;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+          <div>
+            <div style="font-weight:600;font-size:0.88rem">${c ? esc(c.title) : 'Занятие'}</div>
+            <div style="font-size:0.76rem;color:var(--text3)">Каждый ${esc(s.day)} в ${esc(s.time)} · ${s.dur||60} мин</div>
+          </div>
+          <span class="badge badge-green" style="font-size:0.72rem">🔁 Еженедельно</span>
+        </div>`;
+      }).join('')}
+    </div>` : `<div class="card"><div style="text-align:center;padding:20px;color:var(--text3)">🗓 Нет назначенных слотов расписания</div></div>`}
+  `;
+}
+
+/** Open .ics via data: URI for Apple Calendar / Safari direct open */
+function openAppleCalendar(sid) {
+  const ics = buildStudentICS(sid);
+  const encoded = encodeURIComponent(ics);
+  // Try opening as webcal data URI — works in Safari/macOS
+  const a = document.createElement('a');
+  a.href = 'data:text/calendar;charset=utf-8,' + encoded;
+  a.download = 'biohim-schedule.ics';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showNotif('📲 Файл скачан — откройте его для добавления в Apple Calendar');
+}
+
+/** Admin: open ICS export modal */
+function openAdminCalExport() {
+  const el = document.getElementById('ics-modal-body');
+  if (!el) return;
+  const slots    = load('slots')   || [];
+  const courses  = load('courses') || [];
+  const users    = load('users')   || [];
+  const att      = load('attendance') || [];
+  const bookedSlots = slots.filter(s => s.bookedBy || s.groupId);
+
+  el.innerHTML = `
+    <div style="font-size:0.88rem;color:var(--text2);line-height:1.7;margin-bottom:16px">
+      Экспорт всего расписания: <b>${bookedSlots.length}</b> занятий и <b>${att.filter(a=>a.present).length}</b> прошедших уроков.
+    </div>
+    <button class="btn btn-green" style="width:100%;margin-bottom:14px"
+      onclick="downloadICS(buildAdminICS(),'biohim-all-schedule.ics');showNotif('✅ Файл скачан!')">
+      ⬇️ Скачать .ics (все ученики)
+    </button>
+
+    <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>По ученикам</div>
+    ${getStudents().map(s => {
+      const sSlots = slots.filter(sl => isSlotForStudent(sl, s.id));
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+        <div>
+          <div style="font-weight:600;font-size:0.88rem">${esc(s.name)}</div>
+          <div style="font-size:0.74rem;color:var(--text3)">${sSlots.length} слотов</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="downloadICS(buildStudentICS('${s.id}'),'biohim-${s.id}.ics');showNotif('✅ Скачан для ${esc(s.name)}')">⬇️ .ics</button>
+      </div>`;
+    }).join('')}
+  `;
+  document.getElementById('ics-modal-title').textContent = '📲 Экспорт расписания в .ics';
+  openModal('modal-ics-export');
+}
+
 function renderStudentSchedule(){
   const courses=load('courses')||[];
   const slots=load('slots')||[];
@@ -7329,6 +8034,297 @@ function setReportPeriod(period){
   document.getElementById('report-date-from').value=from.toISOString().slice(0,10);
   document.getElementById('report-date-to').value=to.toISOString().slice(0,10);
   generateReport();
+}
+
+// ══════════════════════════════════════════════
+// ФИНАНСОВЫЙ ДАШБОРД
+// ══════════════════════════════════════════════
+
+window._finChartMode = 'income'; // 'income' | 'lessons'
+let _finBarChart = null;
+
+function renderFinanceDashboard() {
+  const students = getStudents();
+  const payments  = load('payments')  || [];
+  const att       = load('attendance')|| [];
+  const slots     = load('slots')     || [];
+  const courses   = load('courses')   || [];
+
+  const now   = new Date();
+  const curY  = now.getFullYear();
+  const curM  = now.getMonth(); // 0-based
+
+  // ── Year selector
+  const yearSel = document.getElementById('fin-chart-year');
+  if (yearSel && !yearSel.dataset.built) {
+    yearSel.dataset.built = '1';
+    const years = [];
+    for (let y = curY - 2; y <= curY + 1; y++) years.push(y);
+    yearSel.innerHTML = years.map(y => `<option value="${y}" ${y === curY ? 'selected' : ''}>${y}</option>`).join('');
+  }
+  const selectedYear = yearSel ? +yearSel.value : curY;
+
+  // ── Helper: parse any Russian/ISO date → Date object
+  function parseDate(s) {
+    if (!s) return null;
+    if (s.includes('-')) return new Date(s);
+    const p = s.split('.');
+    if (p.length === 3) return new Date(+p[2], +p[1] - 1, +p[0]);
+    return null;
+  }
+
+  // ── Collect all paid income from attendance (present + paid) and payments
+  // attendance.costPerStudent when present=true is the earned amount per student
+  // payments.amount where status='paid' is additional recorded income
+
+  function getAttIncome(year, month) {
+    // month is 0-based
+    return att.filter(a => {
+      if (!a.present) return false;
+      const d = parseDate(a.date);
+      if (!d) return false;
+      return d.getFullYear() === year && d.getMonth() === month;
+    }).reduce((s, a) => s + (+a.costPerStudent || 0), 0);
+  }
+
+  function getPaymentsIncome(year, month) {
+    return payments.filter(p => {
+      if (p.status !== 'paid') return false;
+      const d = parseDate(p.date);
+      if (!d) return false;
+      return d.getFullYear() === year && d.getMonth() === month;
+    }).reduce((s, p) => s + (+p.amount || 0), 0);
+  }
+
+  function getLessonCount(year, month) {
+    const ids = new Set();
+    att.filter(a => {
+      if (!a.present) return false;
+      const d = parseDate(a.date);
+      return d && d.getFullYear() === year && d.getMonth() === month;
+    }).forEach(a => ids.add(a.lessonId || a.id));
+    return ids.size;
+  }
+
+  // ── KPI: this month
+  const thisAttIncome  = getAttIncome(curY, curM);
+  const thisPaidIncome = getPaymentsIncome(curY, curM);
+  const thisIncome     = thisAttIncome + thisPaidIncome;
+  const thisLessons    = getLessonCount(curY, curM);
+
+  // ── Debts: attendance present but not paid
+  const debtByStudent = {};
+  att.filter(a => a.present && !a.paid && (+a.costPerStudent || 0) > 0).forEach(a => {
+    if (!debtByStudent[a.studentId]) debtByStudent[a.studentId] = 0;
+    debtByStudent[a.studentId] += +a.costPerStudent;
+  });
+  // Also unpaid payment records
+  payments.filter(p => p.status === 'unpaid').forEach(p => {
+    if (!debtByStudent[p.studentId]) debtByStudent[p.studentId] = 0;
+    debtByStudent[p.studentId] += +p.amount || 0;
+  });
+  const totalDebt = Object.values(debtByStudent).reduce((s, v) => s + v, 0);
+  const debtorCount = Object.keys(debtByStudent).length;
+
+  // ── Forecast next month: booked slots × course price
+  const nextM = (curM + 1) % 12;
+  const nextY = curM === 11 ? curY + 1 : curY;
+  // Map day names to next month's occurrences count
+  const dayNames = ['вс','пн','вт','ср','чт','пт','сб']; // JS getDay() = 0=Sun
+  const dayNamesRu = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота',
+    'вс','пн','вт','ср','чт','пт','сб'];
+  function countDayOccurrences(dayAbbr, year, month) {
+    // slot.day is like "Понедельник", "Пн", "Пятница", etc.
+    const norm = (dayAbbr || '').toLowerCase().trim();
+    let targetDay = -1;
+    const abbrs  = ['вс','пн','вт','ср','чт','пт','сб'];
+    const fulls  = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+    targetDay = abbrs.indexOf(norm);
+    if (targetDay === -1) {
+      targetDay = fulls.findIndex(f => norm.startsWith(f.slice(0,3)));
+    }
+    if (targetDay === -1) return 4; // fallback: ~4 per month
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    let count = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (new Date(year, month, d).getDay() === targetDay) count++;
+    }
+    return count;
+  }
+
+  let forecastTotal = 0;
+  const forecastItems = [];
+  slots.filter(s => s.bookedBy || s.groupId).forEach(s => {
+    const course = s.courseId ? courses.find(c => c.id === s.courseId) : null;
+    const price  = course ? +course.price || 0 : 0;
+    if (!price) return;
+    const occurrences = countDayOccurrences(s.day, nextY, nextM);
+    const income = price * occurrences;
+    forecastTotal += income;
+
+    const who = s.bookedBy ? students.find(st => st.id === s.bookedBy) : null;
+    const whoLabel = who ? who.name : (s.groupId ? '👥 Группа' : '—');
+    forecastItems.push({ label: `${whoLabel} · ${s.day} ${s.time}`, course: course?.title || '—', price, occurrences, income });
+  });
+
+  // ── Last month income (for comparison)
+  const prevM = curM === 0 ? 11 : curM - 1;
+  const prevY = curM === 0 ? curY - 1 : curY;
+  const prevIncome = getAttIncome(prevY, prevM) + getPaymentsIncome(prevY, prevM);
+
+  // ── Render KPI cards
+  const kpiEl = document.getElementById('fin-kpi-row');
+  const trend = thisIncome > prevIncome ? '📈' : thisIncome < prevIncome ? '📉' : '➡️';
+  const trendColor = thisIncome > prevIncome ? 'var(--green-mid)' : thisIncome < prevIncome ? 'var(--red)' : 'var(--text3)';
+  const trendDiff = thisIncome - prevIncome;
+  const trendLabel = trendDiff === 0 ? 'как в прошлом месяце' : (trendDiff > 0 ? `+${trendDiff.toLocaleString('ru')}₽` : `${trendDiff.toLocaleString('ru')}₽`);
+
+  kpiEl.innerHTML = [
+    { icon:'💰', label:'Доход этот месяц', value:`${thisIncome.toLocaleString('ru')} ₽`, sub:`${trend} ${trendLabel} vs прошлый месяц`, subColor: trendColor },
+    { icon:'❌', label:'Общая задолженность', value:`${totalDebt.toLocaleString('ru')} ₽`, sub:`${debtorCount} ${debtorCount===1?'должник':'должников'}`, subColor:'var(--red)' },
+    { icon:'📅', label:'Прогноз след. месяц', value:`${forecastTotal.toLocaleString('ru')} ₽`, sub:'На основе расписания', subColor:'var(--text3)' },
+    { icon:'🎓', label:'Занятий этот месяц', value:`${thisLessons}`, sub:`студентов: ${students.length}`, subColor:'var(--text3)' },
+  ].map(k => `
+    <div class="card" style="text-align:center;padding:18px 14px;border:none;box-shadow:var(--shadow)">
+      <div style="font-size:1.7rem;margin-bottom:6px">${k.icon}</div>
+      <div style="font-size:0.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">${k.label}</div>
+      <div style="font-size:1.6rem;font-weight:900;color:var(--accent);font-family:'Playfair Display',serif;line-height:1">${k.value}</div>
+      <div style="font-size:0.74rem;margin-top:5px;color:${k.subColor};font-weight:600">${k.sub}</div>
+    </div>`).join('');
+
+  // ── Bar chart (12 months for selectedYear)
+  const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  const incomeData  = months.map((_, i) => getAttIncome(selectedYear, i) + getPaymentsIncome(selectedYear, i));
+  const lessonsData = months.map((_, i) => getLessonCount(selectedYear, i));
+
+  const mode = window._finChartMode || 'income';
+  const chartData  = mode === 'income' ? incomeData : lessonsData;
+  const chartLabel = mode === 'income' ? 'Доход (₽)' : 'Занятий';
+  const chartColor = mode === 'income' ? '#40916c' : '#74c69d';
+
+  const maxVal = Math.max(...chartData, 1);
+  const chartWrap = document.getElementById('fin-chart-wrap');
+  // SVG bar chart (no external library needed)
+  const W = 700, H = 180, padL = 52, padB = 28, padT = 10, padR = 10;
+  const plotW = W - padL - padR;
+  const plotH = H - padB - padT;
+  const barW  = Math.floor(plotW / 12 * 0.6);
+  const gap   = Math.floor(plotW / 12);
+  const curMonthIdx = (selectedYear === curY) ? curM : -1;
+
+  let bars = '', labels = '', yAxis = '';
+  // Y axis lines
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + plotH - (i / 4) * plotH;
+    const val = Math.round(maxVal * i / 4);
+    yAxis += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#e0ece5" stroke-width="1"/>`;
+    yAxis += `<text x="${padL - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#7a9b73">${mode==='income'?val.toLocaleString('ru'):val}</text>`;
+  }
+
+  chartData.forEach((val, i) => {
+    const x = padL + i * gap + (gap - barW) / 2;
+    const h = plotH * (val / maxVal) || 0;
+    const y = padT + plotH - h;
+    const isCur = i === curMonthIdx;
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${h}"
+      rx="4" fill="${isCur ? '#2d6a4f' : chartColor}" opacity="${isCur ? 1 : 0.72}"/>`;
+    if (val > 0) {
+      const label = mode === 'income' ? (val >= 1000 ? (val/1000).toFixed(1)+'k' : val) : val;
+      bars += `<text x="${x + barW/2}" y="${y - 3}" text-anchor="middle" font-size="9" fill="${isCur?'#1b4332':'#4a6741'}" font-weight="700">${label}</text>`;
+    }
+    labels += `<text x="${x + barW/2}" y="${H - 4}" text-anchor="middle" font-size="9" fill="${isCur?'#1b4332':'#7a9b73'}" font-weight="${isCur?700:400}">${months[i]}</text>`;
+  });
+
+  chartWrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible">
+    ${yAxis}${bars}${labels}
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+plotH}" stroke="#b7e4c7" stroke-width="1.5"/>
+    <line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="#b7e4c7" stroke-width="1.5"/>
+  </svg>`;
+
+  document.getElementById('fin-chart-legend').innerHTML =
+    `<span>⬛ Тёмный = текущий месяц</span>
+     <span style="cursor:pointer;color:var(--green-mid);font-weight:700" onclick="window._finChartMode=(window._finChartMode==='income'?'lessons':'income');renderFinanceDashboard()">
+       Показать: ${mode==='income'?'количество занятий →':'доход в ₽ →'}</span>`;
+
+  // ── Debts list
+  const debtsEl = document.getElementById('fin-debts-list');
+  const debtEntries = Object.entries(debtByStudent)
+    .map(([sid, amt]) => ({ sid, amt, name: (students.find(s => s.id === sid)?.name || '—') }))
+    .sort((a, b) => b.amt - a.amt);
+
+  if (!debtEntries.length) {
+    debtsEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--green-mid);font-weight:700">🎉 Задолженностей нет!</div>`;
+  } else {
+    debtsEl.innerHTML = debtEntries.map(d => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
+        <div style="font-weight:600;font-size:0.9rem">${esc(d.name)}</div>
+        <span style="background:#fdecea;color:var(--red);font-weight:800;font-size:0.88rem;padding:3px 12px;border-radius:8px">${d.amt.toLocaleString('ru')} ₽</span>
+      </div>`).join('') +
+      `<div style="display:flex;justify-content:space-between;padding-top:10px;font-weight:800;font-size:0.92rem">
+        <span>Итого</span><span style="color:var(--red)">${totalDebt.toLocaleString('ru')} ₽</span>
+      </div>`;
+  }
+
+  // ── Forecast list
+  const forecastEl = document.getElementById('fin-forecast-list');
+  const nextMonthName = months[nextM] + ' ' + nextY;
+  if (!forecastItems.length) {
+    forecastEl.innerHTML = `<div style="font-size:0.85rem;color:var(--text3);padding:16px 0">Нет расписания с курсами для прогноза</div>`;
+  } else {
+    forecastEl.innerHTML =
+      `<div style="font-size:0.78rem;color:var(--text3);margin-bottom:10px">📅 ${nextMonthName}</div>` +
+      forecastItems.map(f => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--green-xpale)">
+          <div>
+            <div style="font-weight:600;font-size:0.85rem">${esc(f.label)}</div>
+            <div style="font-size:0.74rem;color:var(--text3)">${esc(f.course)} · ${f.price}₽ × ${f.occurrences}</div>
+          </div>
+          <span class="badge badge-green" style="font-size:0.78rem">${f.income.toLocaleString('ru')} ₽</span>
+        </div>`).join('') +
+      `<div style="display:flex;justify-content:space-between;padding-top:10px;font-weight:800;font-size:0.92rem">
+         <span>Прогноз</span><span style="color:var(--green-deep)">${forecastTotal.toLocaleString('ru')} ₽</span>
+       </div>`;
+  }
+
+  // ── Per-student table
+  const search = (document.getElementById('fin-student-search')?.value || '').toLowerCase();
+  const tableEl = document.getElementById('fin-student-table');
+
+  const rows = students
+    .filter(s => !search || s.name.toLowerCase().includes(search))
+    .map(s => {
+      const sAtt   = att.filter(a => a.studentId === s.id && a.present);
+      const curAtt = sAtt.filter(a => { const d = parseDate(a.date); return d && d.getFullYear() === curY && d.getMonth() === curM; });
+      const sIncome = curAtt.reduce((sum, a) => sum + (+a.costPerStudent || 0), 0)
+        + payments.filter(p => p.studentId === s.id && p.status === 'paid' && (() => { const d = parseDate(p.date); return d && d.getFullYear() === curY && d.getMonth() === curM; })()).reduce((sum, p) => sum + (+p.amount || 0), 0);
+      const sDebt  = debtByStudent[s.id] || 0;
+      const sLessons = curAtt.length;
+      const wallet = loadWallet(s.id);
+      return { s, sIncome, sDebt, sLessons, walletBalance: wallet.balance };
+    })
+    .sort((a, b) => b.sIncome - a.sIncome);
+
+  if (!rows.length) {
+    tableEl.innerHTML = `<div style="color:var(--text3);font-size:0.85rem;padding:16px 0">Ученики не найдены</div>`;
+    return;
+  }
+
+  tableEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--green-xpale)">
+      <div style="padding:8px 12px;background:var(--bg2);font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase">Ученик</div>
+      <div style="padding:8px 12px;background:var(--bg2);font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:right">Занятий</div>
+      <div style="padding:8px 12px;background:var(--bg2);font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:right">Доход мес.</div>
+      <div style="padding:8px 12px;background:var(--bg2);font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:right">Долг</div>
+      <div style="padding:8px 12px;background:var(--bg2);font-size:0.72rem;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:right">Кошелёк</div>
+      ${rows.map((r, idx) => `
+        <div style="padding:10px 12px;background:${idx%2?'var(--bg)':'#fff'};font-weight:600;font-size:0.88rem;cursor:pointer;color:var(--green-deep)"
+             onclick="navigateTo('attend-pay-admin');setTimeout(()=>selectStudentById('${r.s.id}'),80)">${esc(r.s.name)}</div>
+        <div style="padding:10px 12px;background:${idx%2?'var(--bg)':'#fff'};text-align:right;font-size:0.88rem">${r.sLessons}</div>
+        <div style="padding:10px 12px;background:${idx%2?'var(--bg)':'#fff'};text-align:right;font-weight:700;font-size:0.88rem;color:var(--green-mid)">${r.sIncome?r.sIncome.toLocaleString('ru')+' ₽':'—'}</div>
+        <div style="padding:10px 12px;background:${idx%2?'var(--bg)':'#fff'};text-align:right;font-size:0.88rem;color:${r.sDebt?'var(--red)':'var(--text3)'};font-weight:${r.sDebt?700:400}">${r.sDebt?r.sDebt.toLocaleString('ru')+' ₽':'—'}</div>
+        <div style="padding:10px 12px;background:${idx%2?'var(--bg)':'#fff'};text-align:right;font-size:0.88rem;color:${r.walletBalance<0?'var(--red)':r.walletBalance>0?'var(--green-mid)':'var(--text3)'};font-weight:600">${r.walletBalance.toLocaleString('ru')} ₽</div>
+      `).join('')}
+    </div>`;
 }
 
 function renderReportsAdmin(){
@@ -7587,7 +8583,7 @@ function generateReport(){
     ${testChartData.length >= 2 ? `
     ${sectionTitle('📈','График прогресса')}
     <div style="background:var(--bg);border-radius:14px;padding:16px;margin-bottom:8px">
-      <canvas id="progress-chart" height="200" style="width:100%;display:block"></canvas>
+      <div style="position:relative;height:220px"><canvas id="progress-chart"></canvas></div>
     </div>
     ` : testChartData.length === 1 ? `
     ${sectionTitle('📈','График прогресса')}
@@ -7670,207 +8666,100 @@ function generateReport(){
 }
 
 // Draw progress chart after DOM update
-function drawProgressChart(data){
-  requestAnimationFrame(()=>{
-    const canvas = document.getElementById('progress-chart');
-    if(!canvas || !data || data.length < 2) return;
-    const dpr = window.devicePixelRatio || 1;
-    const W = canvas.offsetWidth || canvas.parentElement.offsetWidth || 600;
-    const H = 200;
-    canvas.width  = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width  = W + 'px';
-    canvas.style.height = H + 'px';
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
+// ── График прогресса — Chart.js ──────────────────────────────────
+// Заменяет ~130 строк сырого Canvas API.
+// Требует: <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js">
 
-    const PAD = {top:18, right:24, bottom:44, left:44};
-    const cW = W - PAD.left - PAD.right;
-    const cH = H - PAD.top  - PAD.bottom;
-    const n  = data.length;
+let _progressChartInstance = null;   // держим ссылку для destroy()
 
-    // ── Helpers
-    const xOf = i => PAD.left + (i/(n-1)) * cW;
-    const yOf = v => PAD.top  + cH - (v/100) * cH;
+function drawProgressChart(data) {
+  const canvas = document.getElementById('progress-chart');
+  if (!canvas || !data || data.length < 2) return;
 
-    // ── Grid lines
-    ctx.strokeStyle = 'rgba(45,106,79,0.10)';
-    ctx.lineWidth   = 1;
-    [0,25,50,75,100].forEach(v=>{
-      const y = yOf(v);
-      ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left+cW, y); ctx.stroke();
-      // Y labels
-      ctx.fillStyle   = 'rgba(74,103,65,0.6)';
-      ctx.font        = `${11 * dpr / dpr}px Nunito, sans-serif`;
-      ctx.textAlign   = 'right';
-      ctx.textBaseline= 'middle';
-      ctx.fillText(v+'%', PAD.left-6, y);
-    });
+  // Уничтожаем предыдущий экземпляр (переключение учеников)
+  if (_progressChartInstance) { _progressChartInstance.destroy(); _progressChartInstance = null; }
 
-    // ── Gradient fill
-    const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top+cH);
-    grad.addColorStop(0, 'rgba(64,145,108,0.28)');
-    grad.addColorStop(1, 'rgba(64,145,108,0.02)');
-    ctx.beginPath();
-    ctx.moveTo(xOf(0), yOf(data[0].pct));
-    data.forEach((d,i)=>{ if(i>0) ctx.lineTo(xOf(i), yOf(d.pct)); });
-    ctx.lineTo(xOf(n-1), PAD.top+cH);
-    ctx.lineTo(xOf(0),   PAD.top+cH);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
+  const labels = data.map(d => formatDueDisplay(d.date));
+  const pcts   = data.map(d => d.pct);
+  const colors = pcts.map(v => v >= 80 ? '#27ae60' : v >= 60 ? '#e07b00' : '#c0392b');
 
-    // ── Line
-    ctx.beginPath();
-    ctx.strokeStyle = '#40916c';
-    ctx.lineWidth   = 2.5;
-    ctx.lineJoin    = 'round';
-    ctx.lineCap     = 'round';
-    data.forEach((d,i)=>{
-      i===0 ? ctx.moveTo(xOf(i), yOf(d.pct)) : ctx.lineTo(xOf(i), yOf(d.pct));
-    });
-    ctx.stroke();
-
-    // ── Points + tooltips on hover stored
-    const hitZones = [];
-    data.forEach((d,i)=>{
-      const x = xOf(i), y = yOf(d.pct);
-      const color = d.pct>=80?'#27ae60':d.pct>=60?'#e07b00':'#c0392b';
-      // Outer ring
-      ctx.beginPath();
-      ctx.arc(x, y, 6, 0, Math.PI*2);
-      ctx.fillStyle = '#fff';
-      ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      // Inner dot
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI*2);
-      ctx.fillStyle = color;
-      ctx.fill();
-      hitZones.push({x, y, d});
-    });
-
-    // ── X-axis labels (show up to 8, evenly spaced)
-    ctx.fillStyle   = 'rgba(74,103,65,0.7)';
-    ctx.font        = '11px Nunito, sans-serif';
-    ctx.textAlign   = 'center';
-    ctx.textBaseline= 'top';
-    const maxLabels = Math.min(n, 8);
-    const step = Math.ceil(n / maxLabels);
-    data.forEach((d,i)=>{
-      if(i % step === 0 || i === n-1){
-        const label = formatDueDisplay(d.date);  // reuse existing helper
-        ctx.fillText(label, xOf(i), PAD.top+cH+8);
+  _progressChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: pcts,
+        borderColor: '#40916c',
+        borderWidth: 2.5,
+        tension: 0.35,
+        fill: true,
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+          g.addColorStop(0, 'rgba(64,145,108,0.28)');
+          g.addColorStop(1, 'rgba(64,145,108,0.02)');
+          return g;
+        },
+        pointBackgroundColor: colors,
+        pointBorderColor: colors,
+        pointBorderWidth: 2.5,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 500, easing: 'easeOutQuart' },
+      scales: {
+        y: {
+          min: 0, max: 100,
+          ticks: {
+            callback: v => v + '%',
+            color: 'rgba(74,103,65,0.7)',
+            font: { family: 'Nunito, sans-serif', size: 11 },
+            stepSize: 25
+          },
+          grid: { color: 'rgba(45,106,79,0.10)' },
+          border: { display: false }
+        },
+        x: {
+          ticks: {
+            color: 'rgba(74,103,65,0.7)',
+            font: { family: 'Nunito, sans-serif', size: 11 },
+            maxTicksLimit: 8,
+            maxRotation: 30
+          },
+          grid: { display: false },
+          border: { display: false }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(27,67,50,0.92)',
+          titleFont: { family: 'Nunito, sans-serif', size: 13, weight: 'bold' },
+          bodyFont:  { family: 'Nunito, sans-serif', size: 11 },
+          titleColor: '#fff',
+          bodyColor:  'rgba(255,255,255,0.75)',
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            title: (items) => {
+              const d = data[items[0].dataIndex];
+              return d.pct + '%' + (d.grade ? ' · Оценка ' + d.grade : '');
+            },
+            label: (item) => {
+              const d = data[item.dataIndex];
+              const short = d.title.length > 28 ? d.title.slice(0, 27) + '…' : d.title;
+              return [formatDueDisplay(d.date), short];
+            }
+          }
+        }
       }
-    });
-
-    // ── Hover tooltip
-    canvas._hitZones = hitZones;
-    canvas._dpr = dpr;
-    canvas.onmousemove = function(e){
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      let hit = null;
-      for(const z of canvas._hitZones){
-        if(Math.hypot(z.x - mx, z.y - my) < 14){ hit = z; break; }
-      }
-      canvas.style.cursor = hit ? 'pointer' : 'default';
-      // Redraw
-      _drawProgressChartStatic(canvas, data, PAD, W, H, dpr);
-      if(hit){
-        const {x,y,d} = hit;
-        const tipW = 160, tipH = 54;
-        const tx = Math.min(x - tipW/2, W - tipW - 4);
-        const ty = y - tipH - 10;
-        const color = d.pct>=80?'#27ae60':d.pct>=60?'#e07b00':'#c0392b';
-        const ctx2 = canvas.getContext('2d');
-        ctx2.save();
-        ctx2.scale(dpr, dpr);
-        // Bubble
-        ctx2.fillStyle = 'rgba(27,67,50,0.92)';
-        _roundRect(ctx2, tx, Math.max(4,ty), tipW, tipH, 8);
-        ctx2.fill();
-        ctx2.fillStyle = '#fff';
-        ctx2.font = 'bold 13px Nunito,sans-serif';
-        ctx2.textAlign = 'left';
-        ctx2.textBaseline = 'top';
-        ctx2.fillText(d.pct+'%'+(d.grade?' · Оценка '+d.grade:''), tx+10, Math.max(4,ty)+8);
-        ctx2.font = '11px Nunito,sans-serif';
-        ctx2.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx2.fillText(formatDueDisplay(d.date), tx+10, Math.max(4,ty)+26);
-        const shortTitle = d.title.length>22 ? d.title.slice(0,21)+'…' : d.title;
-        ctx2.fillText(shortTitle, tx+10, Math.max(4,ty)+40);
-        ctx2.restore();
-      }
-    };
-    canvas.onmouseleave = ()=>{ _drawProgressChartStatic(canvas, data, PAD, W, H, dpr); };
+    }
   });
 }
 
-function _drawProgressChartStatic(canvas, data, PAD, W, H, dpr){
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W*dpr, H*dpr);
-  ctx.save();
-  ctx.scale(dpr, dpr);
-  const cW = W - PAD.left - PAD.right;
-  const cH = H - PAD.top  - PAD.bottom;
-  const n  = data.length;
-  const xOf = i => PAD.left + (i/(n-1)) * cW;
-  const yOf = v => PAD.top  + cH - (v/100) * cH;
-
-  ctx.strokeStyle = 'rgba(45,106,79,0.10)'; ctx.lineWidth = 1;
-  [0,25,50,75,100].forEach(v=>{
-    const y = yOf(v);
-    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left+cW, y); ctx.stroke();
-    ctx.fillStyle='rgba(74,103,65,0.6)'; ctx.font='11px Nunito,sans-serif';
-    ctx.textAlign='right'; ctx.textBaseline='middle';
-    ctx.fillText(v+'%', PAD.left-6, y);
-  });
-
-  const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top+cH);
-  grad.addColorStop(0,'rgba(64,145,108,0.28)'); grad.addColorStop(1,'rgba(64,145,108,0.02)');
-  ctx.beginPath();
-  ctx.moveTo(xOf(0), yOf(data[0].pct));
-  data.forEach((d,i)=>{ if(i>0) ctx.lineTo(xOf(i), yOf(d.pct)); });
-  ctx.lineTo(xOf(n-1), PAD.top+cH); ctx.lineTo(xOf(0), PAD.top+cH);
-  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
-
-  ctx.beginPath(); ctx.strokeStyle='#40916c'; ctx.lineWidth=2.5;
-  ctx.lineJoin='round'; ctx.lineCap='round';
-  data.forEach((d,i)=>{ i===0?ctx.moveTo(xOf(i),yOf(d.pct)):ctx.lineTo(xOf(i),yOf(d.pct)); });
-  ctx.stroke();
-
-  data.forEach((d,i)=>{
-    const x=xOf(i),y=yOf(d.pct);
-    const color=d.pct>=80?'#27ae60':d.pct>=60?'#e07b00':'#c0392b';
-    ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2);
-    ctx.fillStyle='#fff'; ctx.fill();
-    ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2);
-    ctx.fillStyle=color; ctx.fill();
-  });
-
-  ctx.fillStyle='rgba(74,103,65,0.7)'; ctx.font='11px Nunito,sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='top';
-  const maxLabels=Math.min(n,8); const step=Math.ceil(n/maxLabels);
-  data.forEach((d,i)=>{
-    if(i%step===0||i===n-1) ctx.fillText(formatDueDisplay(d.date), xOf(i), PAD.top+cH+8);
-  });
-  ctx.restore();
-}
-
-function _roundRect(ctx, x, y, w, h, r){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
-  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
-  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
-  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
-  ctx.closePath();
-}
 
 function downloadReport(sid){
   const student  = getStudents().find(s=>s.id===sid);
@@ -7931,25 +8820,18 @@ function downloadReport(sid){
   a.download = `Отчёт_${student.name.replace(/ /g,'_')}_${new Date().toLocaleDateString('ru').replace(/\./g,'-')}.txt`;
   a.click();
 }
-function downloadReportPDF(sid){
-  // Collect the rendered report HTML
+function downloadReportPDF(sid) {
   const reportEl = document.getElementById('report-output');
-  if(!reportEl || !reportEl.innerHTML.trim()){
-    showNotif('⚠️ Сначала сформируйте отчёт'); return;
-  }
-  const student = getStudents().find(s=>s.id===sid);
-  const dateFrom = document.getElementById('report-date-from').value;
-  const dateTo   = document.getElementById('report-date-to').value;
+  if (!reportEl || !reportEl.innerHTML.trim()) { showNotif('⚠️ Сначала сформируйте отчёт'); return; }
+
+  const student     = getStudents().find(s => s.id === sid);
+  const dateFrom    = (document.getElementById('report-date-from') || {}).value;
+  const dateTo      = (document.getElementById('report-date-to')   || {}).value;
   const periodLabel = dateFrom && dateTo
-    ? `${new Date(dateFrom).toLocaleDateString('ru',{day:'numeric',month:'short'})} — ${new Date(dateTo).toLocaleDateString('ru',{day:'numeric',month:'short',year:'numeric'})}`
+    ? `${new Date(dateFrom).toLocaleDateString('ru', {day:'numeric',month:'short'})} — ${new Date(dateTo).toLocaleDateString('ru', {day:'numeric',month:'short',year:'numeric'})}`
     : 'Всё время';
 
-  // Remove existing print frame
-  const old = document.getElementById('pdf-print-frame');
-  if(old) old.remove();
-
-  // Build self-contained HTML for print
-  const html = `<!DOCTYPE html>
+  const fullHtml = `<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -7962,14 +8844,14 @@ function downloadReportPDF(sid){
   .sub{font-size:11px;color:#7a9b73;margin-bottom:20px}
   .section{margin:18px 0 8px;border-bottom:1.5px solid #d8f3dc;padding-bottom:5px;font-weight:800;font-size:13px;color:#1b4332;display:flex;align-items:center;gap:6px}
   .chips{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}
-  .chip{border:1px solid #d8f3dc;border-radius:8px;padding:8px 6px;text-align:center}
+  .chip{border:1px solid #d8f3dc;border-radius:8px;padding:8px 6px;text-align:center;page-break-inside:avoid}
   .chip-label{font-size:9px;color:#7a9b73;font-weight:700;margin-bottom:2px}
   .chip-val{font-size:14px;font-weight:800;color:#1b4332}
   .bar-row{display:flex;align-items:center;gap:8px;margin:5px 0}
   .bar-bg{flex:1;background:#d8f3dc;border-radius:99px;height:9px;overflow:hidden}
   .bar-fill{height:100%;border-radius:99px}
   .bar-pct{font-size:10px;color:#7a9b73;min-width:34px;text-align:right}
-  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11px}
+  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11px;page-break-inside:avoid}
   th{background:#d8f3dc;color:#1b4332;font-weight:700;padding:5px 8px;text-align:left}
   td{padding:5px 8px;border-bottom:1px solid #eaf3e2}
   tr:last-child td{border-bottom:none}
@@ -7979,37 +8861,81 @@ function downloadReportPDF(sid){
   .yellow{background:#fef3cd;color:#8a6400}
   .meta{font-size:11px;color:#4a6741;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap}
   .meta span{display:flex;align-items:center;gap:4px}
-  @media print{
+  /* ── Защита от разрывов страниц ── */
+  .card, table, tr, .chip, .bar-row { page-break-inside: avoid; }
+  h2, h3, .section { page-break-after: avoid; }
+  thead { display: table-header-group; }
+  @media print {
     body{padding:16px 24px}
     @page{margin:1.2cm;size:A4}
+    .card{box-shadow:none!important;border:1px solid #d8f3dc!important}
   }
 </style>
 </head>
 <body>
 <h1>📊 Отчёт по ученику</h1>
-<div class="sub">Сформирован: ${new Date().toLocaleDateString('ru',{day:'numeric',month:'long',year:'numeric'})}</div>
+<div class="sub">Сформирован: ${new Date().toLocaleDateString('ru', {day:'numeric',month:'long',year:'numeric'})}</div>
 <div class="meta">
   <span>👤 <b>${student ? student.name : '—'}</b></span>
   ${student && student.subject ? `<span>📚 ${student.subject}</span>` : ''}
-  ${student && student.format ? `<span>🎓 ${student.format}</span>` : ''}
+  ${student && student.format  ? `<span>🎓 ${student.format}</span>`  : ''}
   <span>📅 Период: <b>${periodLabel}</b></span>
 </div>
 ${reportEl.innerHTML}
 </body></html>`;
 
-  // Open in a new tab and print
+  // Пробуем jsPDF + html2canvas (если загружены), иначе — печать
+  if (typeof window.jspdf !== 'undefined' && typeof html2canvas !== 'undefined') {
+    _exportPdfViaJsPDF(fullHtml, student);
+  } else {
+    _exportPdfViaPrint(fullHtml, student);
+  }
+}
+
+function _exportPdfViaPrint(html, student) {
+  const old = document.getElementById('pdf-print-frame');
+  if (old) old.remove();
   const win = window.open('', '_blank', 'width=900,height=700');
-  if(!win){ showNotif('⚠️ Разрешите всплывающие окна в браузере'); return; }
+  if (!win) { showNotif('⚠️ Разрешите всплывающие окна в браузере'); return; }
   win.document.open();
   win.document.write(html);
   win.document.close();
-  win.onload = () => {
-    setTimeout(() => {
-      win.focus();
-      win.print();
-    }, 600);
-  };
+  win.onload = () => setTimeout(() => { win.focus(); win.print(); }, 700);
 }
+
+function _exportPdfViaJsPDF(html, student) {
+  // Рендерим во временный скрытый div, затем конвертируем через html2canvas → jsPDF
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:#fff;z-index:-1';
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap);
+
+  showNotif('⏳ Генерируем PDF…');
+
+  html2canvas(wrap, { scale: 2, useCORS: true, logging: false }).then(canvas => {
+    document.body.removeChild(wrap);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pW  = pdf.internal.pageSize.getWidth();
+    const pH  = pdf.internal.pageSize.getHeight();
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const imgH = (canvas.height * pW) / canvas.width;
+    let y = 0;
+    while (y < imgH) {
+      if (y > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, -y, pW, imgH);
+      y += pH;
+    }
+    const name = student ? student.name.replace(/ /g, '_') : 'report';
+    pdf.save(`Отчёт_${name}_${new Date().toLocaleDateString('ru').replace(/\./g, '-')}.pdf`);
+    showNotif('✅ PDF сохранён');
+  }).catch(e => {
+    console.error('[PDF]', e);
+    showNotif('⚠️ Ошибка генерации PDF, открываем печать');
+    _exportPdfViaPrint(html, student);
+  });
+}
+
 
 function switchTab(group, tabEl, targetId){
   const allTabs=tabEl.closest('.tabs').querySelectorAll('.tab');
@@ -8754,8 +9680,10 @@ function renderChatMessages(containerId, sid, myRole){
       lastDate = m.date;
     }
     const refBlock = m.ref ? `<div class="chat-bubble-ref">📎 ${m.ref}</div>` : '';
+    const senderLabel = m.from==='parent' && myRole==='admin'
+      ? `<div style="font-size:0.68rem;color:var(--text3);margin-bottom:2px">👨‍👩‍👧 Родитель</div>` : '';
     html += `<div class="chat-msg ${mine?'mine':'theirs'}">
-      <div class="chat-bubble">${refBlock}${escHtml(m.text)}</div>
+      ${senderLabel}<div class="chat-bubble">${refBlock}${escHtml(m.text)}</div>
       <div class="chat-time">${m.time}</div>
     </div>`;
     return html;
@@ -8796,6 +9724,10 @@ function sendStudentMsg(){
 }
 
 function updateChatBadge(){
+  if(currentUser && currentUser.role==='parent'){
+    const sid = currentUser.linkedStudentId;
+    if(sid) _updateParentChatBadge(sid);
+  }
   if(currentUser && currentUser.role==='student'){
     const count = chatUnread(currentUser.id);
     document.querySelectorAll('#nav-student-chat').forEach(el=>{
@@ -8967,6 +9899,15 @@ function updateAdminBadge(){
       if(total>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${total}</span>`);
     });
   }
+}
+
+function updateMistakesBadge(){
+  if(!currentUser || currentUser.role!=='student') return;
+  const count = (load('mistakes')||[]).filter(m=>m.studentId===currentUser.id && !m.resolved).length;
+  const navEl = document.getElementById('nav-student-mistakes');
+  if(!navEl) return;
+  navEl.querySelectorAll('.mistakes-badge').forEach(b=>b.remove());
+  if(count>0) navEl.insertAdjacentHTML('beforeend',`<span class="rep-badge mistakes-badge" style="background:var(--red)">${count}</span>`);
 }
 
 // ══════════════════════════════════════════
@@ -9428,6 +10369,10 @@ function renderNotifSettingsAdmin(){
         : `<span style="background:var(--bg);color:var(--text3);font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px">❌ Не подключён</span>`}
     </div>`;
   }).join('');
+
+  if(typeof renderWeeklyReportSettings === 'function'){
+    renderWeeklyReportSettings(document.getElementById('weekly-report-container'));
+  }
 }
 
 function saveAdminTgBot(){
@@ -9992,6 +10937,207 @@ function initQuestion(id, type){
 }
 
 /** Auto-score a question (returns true/false) */
+// ══════════════════════════════════════════════
+// МОИ ОШИБКИ — СБОР И ОТОБРАЖЕНИЕ
+// ══════════════════════════════════════════════
+
+/**
+ * Collect wrong answers from a test/hw submission and merge into 'mistakes' store.
+ * Each mistake entry: { id, studentId, sourceType, sourceId, sourceTitle, questionId,
+ *   questionText, questionType, options, pairs, correct, studentAnswer,
+ *   explanation, imageUrl, date, resolved }
+ */
+function _collectAndSaveWrongAnswers(sourceType, item, answers) {
+  if (!currentUser) return;
+  const mistakes = load('mistakes') || [];
+  const date = new Date().toLocaleDateString('ru');
+  (item.questions || []).forEach(q => {
+    if (q.type === 'open') return; // open questions are manually checked
+    const ans = answers[q.id] || '';
+    if (scoreQuestion(q, ans)) return; // correct — skip
+    // Check if already exists for this student+question+source
+    const existingIdx = mistakes.findIndex(m =>
+      m.studentId === currentUser.id && m.sourceId === item.id && m.questionId === q.id
+    );
+    const entry = {
+      id: 'm' + Date.now() + '_' + q.id,
+      studentId: currentUser.id,
+      sourceType,
+      sourceId: item.id,
+      sourceTitle: item.title || '',
+      questionId: q.id,
+      questionText: q.text || '',
+      questionType: q.type,
+      options: q.options || [],
+      pairs: q.pairs || [],
+      correct: q.correct || '',
+      studentAnswer: ans,
+      explanation: q.explanation || '',
+      imageUrl: q.imageUrl || '',
+      date,
+      resolved: false
+    };
+    if (existingIdx >= 0) {
+      // Update with latest attempt data, reset resolved
+      mistakes[existingIdx] = { ...mistakes[existingIdx], ...entry, id: mistakes[existingIdx].id, resolved: false };
+    } else {
+      mistakes.push(entry);
+    }
+  });
+  save('mistakes', mistakes);
+}
+
+function _collectAndSaveWrongAnswersTrial(trial, answers) {
+  if (!currentUser) return;
+  const mistakes = load('mistakes') || [];
+  const date = new Date().toLocaleDateString('ru');
+  (trial.sections || []).forEach(sec => {
+    (sec.questions || []).forEach(q => {
+      if (q.type === 'open') return;
+      const ans = answers[q.id] || '';
+      if (scoreQuestion(q, ans)) return;
+      const existingIdx = mistakes.findIndex(m =>
+        m.studentId === currentUser.id && m.sourceId === trial.id && m.questionId === q.id
+      );
+      const entry = {
+        id: 'm' + Date.now() + '_' + q.id,
+        studentId: currentUser.id,
+        sourceType: 'trial',
+        sourceId: trial.id,
+        sourceTitle: trial.title || '',
+        questionId: q.id,
+        questionText: q.text || '',
+        questionType: q.type,
+        options: q.options || [],
+        pairs: q.pairs || [],
+        correct: q.correct || '',
+        studentAnswer: ans,
+        explanation: q.explanation || '',
+        imageUrl: q.imageUrl || '',
+        date,
+        resolved: false
+      };
+      if (existingIdx >= 0) {
+        mistakes[existingIdx] = { ...mistakes[existingIdx], ...entry, id: mistakes[existingIdx].id, resolved: false };
+      } else {
+        mistakes.push(entry);
+      }
+    });
+  });
+  save('mistakes', mistakes);
+}
+
+function resolveMistake(id) {
+  const mistakes = load('mistakes') || [];
+  const m = mistakes.find(m => m.id === id);
+  if (m) { m.resolved = !m.resolved; save('mistakes', mistakes); renderStudentMistakes(); }
+}
+
+function deleteMistake(id) {
+  let mistakes = load('mistakes') || [];
+  mistakes = mistakes.filter(m => m.id !== id);
+  save('mistakes', mistakes);
+  renderStudentMistakes();
+}
+
+function renderStudentMistakes() {
+  const el = document.getElementById('student-mistakes-content');
+  if (!el) return;
+  const sid = currentUser.id;
+  let mistakes = (load('mistakes') || []).filter(m => m.studentId === sid);
+
+  const filter = window._mistakesFilter || 'all';
+  const groupBy = window._mistakesGroup || 'source';
+
+  // filter bar
+  const filterBar = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      <button class="btn ${filter==='all'?'btn-green':'btn-outline'} btn-sm" onclick="window._mistakesFilter='all';renderStudentMistakes()">Все (${mistakes.length})</button>
+      <button class="btn ${filter==='unresolved'?'btn-green':'btn-outline'} btn-sm" onclick="window._mistakesFilter='unresolved';renderStudentMistakes()">❌ Не разобраны (${mistakes.filter(m=>!m.resolved).length})</button>
+      <button class="btn ${filter==='resolved'?'btn-green':'btn-outline'} btn-sm" onclick="window._mistakesFilter='resolved';renderStudentMistakes()">✅ Разобраны (${mistakes.filter(m=>m.resolved).length})</button>
+      <span style="margin-left:auto;font-size:0.8rem;color:var(--text3)">Группировка:</span>
+      <button class="btn ${groupBy==='source'?'btn-green':'btn-outline'} btn-sm" onclick="window._mistakesGroup='source';renderStudentMistakes()">По работе</button>
+      <button class="btn ${groupBy==='date'?'btn-green':'btn-outline'} btn-sm" onclick="window._mistakesGroup='date';renderStudentMistakes()">По дате</button>
+    </div>`;
+
+  if (filter === 'unresolved') mistakes = mistakes.filter(m => !m.resolved);
+  if (filter === 'resolved') mistakes = mistakes.filter(m => m.resolved);
+
+  if (!mistakes.length) {
+    el.innerHTML = filterBar + `<div class="empty-state"><div class="big">${filter==='resolved'?'🏆':'🎉'}</div><p>${filter==='resolved'?'Нет разобранных ошибок':'Ошибок нет — отличная работа!'}</p></div>`;
+    return;
+  }
+
+  // Group
+  let groups = {};
+  if (groupBy === 'source') {
+    mistakes.forEach(m => {
+      const key = m.sourceTitle || m.sourceId;
+      if (!groups[key]) groups[key] = { label: `${_sourceIcon(m.sourceType)} ${esc(m.sourceTitle||m.sourceId)}`, items: [] };
+      groups[key].items.push(m);
+    });
+  } else {
+    mistakes.forEach(m => {
+      const key = m.date || '—';
+      if (!groups[key]) groups[key] = { label: `📅 ${key}`, items: [] };
+      groups[key].items.push(m);
+    });
+  }
+
+  function _sourceIcon(t) { return t==='test'?'📋':t==='hw'?'✏️':'🎯'; }
+
+  let html = filterBar;
+  Object.values(groups).forEach(g => {
+    const unresolved = g.items.filter(m => !m.resolved).length;
+    html += `<div class="card" style="margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:14px">
+        <span class="dot"></span>${g.label}
+        <span class="badge ${unresolved?'badge-gold':'badge-green'}" style="margin-left:auto;font-size:0.72rem">${unresolved ? unresolved + ' не разобрано' : '✅ все разобраны'}</span>
+      </div>
+      ${g.items.map(m => _renderMistakeCard(m)).join('')}
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function _renderMistakeCard(m) {
+  const typeLabel = {auto:'⚡ Авто',multi:'☑️ Несколько',fill:'🔤 Вставка',match:'🔗 Соответствие',pairs:'🧩 Пары',order:'📊 Порядок'}[m.questionType]||'Вопрос';
+  const correctDisplay = _formatCorrectAnswer(m);
+  const studentDisplay = m.studentAnswer || '—';
+  return `<div style="border:1.5px solid ${m.resolved?'var(--green-pale)':'#fdd'};border-radius:12px;padding:14px;margin-bottom:10px;background:${m.resolved?'var(--bg)':'#fff8f8'}">
+    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <span class="badge" style="background:${m.resolved?'var(--green-xpale)':'#ffeaea'};color:${m.resolved?'var(--green-deep)':'var(--red)'};border-color:${m.resolved?'var(--green-pale)':'#f5c6cb'};flex-shrink:0">${m.resolved?'✅':'❌'} ${typeLabel}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:0.93rem;color:var(--text);margin-bottom:6px">${esc(m.questionText)}</div>
+        ${m.imageUrl?`<img src="${safeUrl(m.imageUrl)}" style="max-width:100%;max-height:180px;border-radius:8px;object-fit:contain;margin-bottom:8px" alt="" onerror="this.style.display='none'">` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div style="background:#ffeaea;border-radius:8px;padding:8px 10px;font-size:0.83rem">
+            <div style="font-size:0.7rem;color:var(--red);font-weight:700;margin-bottom:2px">ВАШ ОТВЕТ</div>
+            <div style="color:var(--text)">${esc(studentDisplay)}</div>
+          </div>
+          <div style="background:#e8f8ef;border-radius:8px;padding:8px 10px;font-size:0.83rem">
+            <div style="font-size:0.7rem;color:var(--green-deep);font-weight:700;margin-bottom:2px">ПРАВИЛЬНО</div>
+            <div style="color:var(--text)">${correctDisplay}</div>
+          </div>
+        </div>
+        ${m.explanation ? `<div style="background:var(--bg2);border-radius:8px;padding:8px 12px;font-size:0.83rem;color:var(--text2);margin-bottom:8px"><span style="font-weight:700;color:var(--green-deep)">💡 Пояснение:</span> ${esc(m.explanation)}</div>` : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn btn-sm ${m.resolved?'btn-outline':'btn-green'}" onclick="resolveMistake('${m.id}')">${m.resolved?'↩️ Вернуть в ошибки':'✅ Отметить разобранным'}</button>
+          <button class="btn btn-sm btn-outline" onclick="deleteMistake('${m.id}')" style="color:var(--red);border-color:var(--red)">🗑 Удалить</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function _formatCorrectAnswer(m) {
+  if (m.questionType === 'match' || m.questionType === 'pairs') {
+    return (m.pairs || []).map(p => `${esc(p[0])} → ${esc(p[1])}`).join('<br>');
+  }
+  return esc(m.correct || '—');
+}
+
 function scoreQuestion(q, ans){
   if(!ans) return false;
   const norm = s => (s||'').toString().trim().toLowerCase();
