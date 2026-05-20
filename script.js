@@ -62,6 +62,29 @@ class VirtualList {
 // ТЁМНАЯ ТЕМА
 // ═══════════════════════════════════════════════
 
+const _DARK_KEY = 'biohim_dark_theme';
+
+function initDarkTheme() {
+  const isDark = localStorage.getItem(_DARK_KEY) === '1';
+  if (isDark) _applyDark(true);
+}
+
+function toggleDarkTheme() {
+  const isDark = document.body.classList.toggle('dark-theme');
+  localStorage.setItem(_DARK_KEY, isDark ? '1' : '0');
+  _updateDarkBtn(isDark);
+}
+
+function _applyDark(isDark) {
+  document.body.classList.toggle('dark-theme', isDark);
+  _updateDarkBtn(isDark);
+}
+
+function _updateDarkBtn(isDark) {
+  const btn = document.getElementById('btn-dark-theme');
+  if (btn) btn.textContent = isDark ? '☀️ Светлая тема' : '🌙 Тёмная тема';
+}
+
 // ═══════════════════════════════════════════════
 // ГЛОБАЛЬНЫЙ ПОИСК
 // ═══════════════════════════════════════════════
@@ -250,19 +273,19 @@ function showSearchResults(query, results) {
     </div>`;
   }
   
+  // Убираем активность со всех страниц
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+  // Удаляем старую страницу результатов если есть (до создания новой!)
+  const oldSearch = document.getElementById('page-search-results');
+  if (oldSearch) oldSearch.remove();
+
   // Создаем временную страницу для результатов
   const searchPage = document.createElement('div');
   searchPage.className = 'page active';
   searchPage.id = 'page-search-results';
   searchPage.innerHTML = html;
-  
-  // Убираем активность со всех страниц
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  
-  // Удаляем старую страницу результатов если есть
-  const oldSearch = document.getElementById('page-search-results');
-  if (oldSearch) oldSearch.remove();
-  
+
   // Добавляем новую
   document.querySelector('.main').appendChild(searchPage);
 }
@@ -375,7 +398,7 @@ function _subscribeLessonNote(code){
       }
     }
     // Также обновляем поле ввода у преподавателя (если открыто)
-    const adminNoteEl = document.getElementById('ls-note');
+    const adminNoteEl = document.getElementById('ls-note-ta');
     if(adminNoteEl && document.activeElement !== adminNoteEl){
       adminNoteEl.value = text;
     }
@@ -1496,6 +1519,7 @@ function _startSession(user){
   document.getElementById('app').style.display='block';
   const resetBtn = document.getElementById('btn-reset-data');
   if(resetBtn) resetBtn.style.display = user.role==='admin' ? 'block' : 'none';
+  initDarkTheme();
   buildNav();
   subscribeRealtime();
   const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
@@ -1730,15 +1754,19 @@ function buildStudentSelector(containerId, onChange){
   if(!_selectedStudent && students.length) _selectedStudent=students[0].id;
   const el=document.getElementById(containerId);
   if(!el) return;
+  // Store callback on the element to avoid serialization issues
+  el._selectorOnChange = onChange;
   el.innerHTML=students.map(s=>`
-    <div class="student-chip ${_selectedStudent===s.id?'active':''}" onclick="selectStudent('${s.id}','${containerId}',${onChange.toString()})">
+    <div class="student-chip ${_selectedStudent===s.id?'active':''}" onclick="selectStudent('${s.id}','${containerId}')">
       ${esc(s.name)}
     </div>`).join('');
 }
-function selectStudent(id, containerId, onChange){
+function selectStudent(id, containerId){
   _selectedStudent=id;
-  buildStudentSelector(containerId, onChange);
-  onChange();
+  const el=document.getElementById(containerId);
+  const onChange = el ? el._selectorOnChange : null;
+  buildStudentSelector(containerId, onChange||function(){});
+  if(typeof onChange==='function') onChange();
 }
 
 // ─── DASHBOARD ───
@@ -1878,8 +1906,8 @@ function getPaymentStatusBadge(sid){
   const payments=(load('payments')||[]).filter(p=>p.studentId===sid);
   if(!payments.length) return '<span class="badge badge-red">Нет данных</span>';
   const last=payments[payments.length-1];
-  const cls={paid:'badge-green',unpaid:'badge-red',partial:'badge-gold'}[last.status];
-  const lbl={paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично'}[last.status];
+  const cls={paid:'badge-green',unpaid:'badge-red',partial:'badge-gold'}[last.status]||'badge-red';
+  const lbl={paid:'Оплачено',unpaid:'Не оплачено',partial:'Частично'}[last.status]||last.status;
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 async function addStudent(){
@@ -2194,6 +2222,9 @@ function closeModal(id, force){
   }
   const el=document.getElementById(id);
   if(el) el.classList.remove('open');
+  if(id==='modal-take-test'){
+    _clearTestTimer();
+  }
   if(id==='modal-add-theory'){
     _theoryFiles=[];
   }
@@ -2831,12 +2862,13 @@ function saveTest(){
   const gradeConfig={5:+(document.getElementById('nt-g5').value)||90,4:+(document.getElementById('nt-g4').value)||75,3:+(document.getElementById('nt-g3').value)||55,2:0};
   const maxAttempts=+(document.getElementById('nt-max-attempts')?.value)||0;
   const gradeMode=document.getElementById('nt-grade-mode')?.value||'best';
+  const timeLimit=+(document.getElementById('nt-time-limit')?.value)||0;
   const autoTotal=_tempQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   const tests=load('tests')||[];
   if(sids.length){
-    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
+    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]}));
   } else {
-    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
+    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
   }
   save('tests',tests);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'test',text:`📝 Новый тест: ${title}`,nav:'student-tests'}));
@@ -4203,6 +4235,7 @@ function deleteSlot(id){ requireAdmin('deleteSlot'); save('slots',(load('slots')
 function approveBooking(id){
   const bookings=load('bookings')||[];
   const b=bookings.find(b=>b.id===id);
+  if(!b){ showNotif('Заявка не найдена'); return; }
   b.status='approved';
   const slots=load('slots')||[];
   const s=slots.find(s=>s.id===b.slotId);
@@ -4215,6 +4248,7 @@ function approveBooking(id){
 function rejectBooking(id){
   const bookings=load('bookings')||[];
   const b=bookings.find(b=>b.id===id);
+  if(!b){ showNotif('Заявка не найдена'); return; }
   b.status='rejected';
   save('bookings',bookings);
   renderScheduleAdmin();
@@ -6270,12 +6304,78 @@ function renderStudentDashboard(){
   // Daily task
   renderStudentZoomBlock();
   renderDailyTaskBlock(sid);
+  // Прогресс курсов
+  _renderStudentCourseProgress(sid);
   // Геймификация — только для ученика
   if (typeof GM !== 'undefined' && GM.gmAutoMount) GM.gmAutoMount(currentUser.id);
 }
 
-// ═══════════════════════════════════════════════
-// PARENT DASHBOARD
+// ─── ПРОГРЕСС-БАР КУРСОВ ───────────────────────────────
+function _renderStudentCourseProgress(sid) {
+  const el = document.getElementById('student-courses-progress');
+  if (!el) return;
+
+  const user     = (load('users') || []).find(u => u.id === sid);
+  const courses  = load('courses') || [];
+  const enrolled = (user?.enrolledCourses || []).map(id => courses.find(c => c.id === id)).filter(Boolean);
+  if (!enrolled.length) { el.innerHTML = ''; return; }
+
+  const allTests   = (load('tests')   || []).filter(t => t.studentId === sid && !t.isLibrary);
+  const allHW      = (load('hw')      || []).filter(h => h.studentId === sid && !h.isLibrary);
+  const allContent = (load('content') || []).filter(c => c.studentId === sid);
+
+  const html = enrolled.map(course => {
+    // Собираем элементы этого курса (ищем по courseId или по совпадению subject)
+    const courseTests   = allTests.filter(t   => t.courseId === course.id || (!t.courseId && t.subject === course.subject));
+    const courseHW      = allHW.filter(h      => h.courseId === course.id || (!h.courseId && h.subject === course.subject));
+    const courseMats    = allContent.filter(c => c.courseId === course.id || (!c.courseId && c.subject === course.subject));
+
+    const total    = courseTests.length + courseHW.length + courseMats.length;
+    if (!total) return ''; // нет контента — не показываем
+
+    const viewedKey = 'biohim_viewed_' + sid;
+    const viewed    = (() => { try { return JSON.parse(localStorage.getItem(viewedKey) || '{}'); } catch(e) { return {}; } })();
+
+    const doneMats  = courseMats.filter(c => viewed[c.id]).length;
+    const doneTests = courseTests.filter(t => t.submitted).length;
+    const doneHW    = courseHW.filter(h => h.submitted).length;
+    const done      = doneMats + doneTests + doneHW;
+    const pct       = Math.round(done / total * 100);
+
+    const colorClass = pct >= 80 ? '#27ae60' : pct >= 40 ? 'var(--gold)' : 'var(--green-mid)';
+    const icon = course.subject === 'Биология' ? '🌿' : course.subject === 'Химия' ? '⚗️' : '🧬';
+
+    return `
+    <div style="background:var(--card);border-radius:var(--radius);padding:16px 20px;box-shadow:var(--shadow);border:1px solid var(--green-xpale);margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:1.3rem">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:0.95rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(course.title)}</div>
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:1px">${done} из ${total} заданий выполнено</div>
+        </div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:800;color:${colorClass};white-space:nowrap">${pct}%</div>
+      </div>
+      <div style="height:8px;background:var(--green-xpale);border-radius:10px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${colorClass},${pct<40?'var(--green-light)':pct<80?'#fcd34d':'#52d68a'});border-radius:10px;transition:width 0.6s ease"></div>
+      </div>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:0.75rem;color:var(--text3)">
+        ${courseMats.length  ? `<span>📚 ${doneMats}/${courseMats.length} прочитано</span>` : ''}
+        ${courseTests.length ? `<span>📋 ${doneTests}/${courseTests.length} тестов</span>` : ''}
+        ${courseHW.length    ? `<span>✏️ ${doneHW}/${courseHW.length} ДЗ</span>` : ''}
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  if (html) {
+    el.innerHTML = `
+      <div class="card-title" style="margin-bottom:12px"><span class="dot"></span>📊 Прогресс по курсам</div>
+      ${html}`;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+
 // ═══════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════
 // РОДИТЕЛЬСКИЙ ПОРТАЛ — полная версия
@@ -6784,6 +6884,7 @@ function renderStudentTests(){
           ${grade?`<span class="grade-result-badge grade-${grade}">Оценка: ${grade}</span>`:''}
           ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
           ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
+          ${(!t.submitted && (t.timeLimit||t.timeMins)) ? `<span class="badge" style="background:#fff3f3;color:#c0392b;border-color:#f5c6c2">⏱ ${t.timeLimit||t.timeMins} мин</span>` : ''}
         </div>
         ${renderAttemptsHistory(t)}
         ${t.submitted && t.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>` : ''}
@@ -6805,7 +6906,62 @@ function renderTestResults(t){
 }
 
 let _takingTest=null; let _testAnswers={};
-function takeTest(id){
+// ── Таймер теста ──
+let _testTimerInterval = null;
+let _testTimerSecsLeft = 0;
+let _testTimerTotal    = 0;
+
+function _startTestTimer(timeMins) {
+  _clearTestTimer();
+  if (!timeMins || timeMins <= 0) return;
+  _testTimerSecsLeft = timeMins * 60;
+  _testTimerTotal    = _testTimerSecsLeft;
+  const wrap    = document.getElementById('test-timer-wrap');
+  const barWrap = document.getElementById('test-timer-bar-wrap');
+  if (wrap)    wrap.style.display    = 'flex';
+  if (barWrap) barWrap.style.display = 'block';
+  _renderTestTimer();
+  _testTimerInterval = setInterval(() => {
+    _testTimerSecsLeft--;
+    _renderTestTimer();
+    if (_testTimerSecsLeft <= 0) {
+      _clearTestTimer();
+      showNotif('⏰ Время вышло! Тест сдаётся автоматически.');
+      submitTest(true);
+    }
+  }, 1000);
+}
+
+function _clearTestTimer() {
+  if (_testTimerInterval) { clearInterval(_testTimerInterval); _testTimerInterval = null; }
+  const wrap    = document.getElementById('test-timer-wrap');
+  const barWrap = document.getElementById('test-timer-bar-wrap');
+  if (wrap)    wrap.style.display    = 'none';
+  if (barWrap) barWrap.style.display = 'none';
+}
+
+function _renderTestTimer() {
+  const display = document.getElementById('test-timer-display');
+  const bar     = document.getElementById('test-timer-bar');
+  if (!display) return;
+  const m = Math.floor(_testTimerSecsLeft / 60);
+  const s = _testTimerSecsLeft % 60;
+  display.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  const pct = _testTimerTotal > 0 ? (_testTimerSecsLeft / _testTimerTotal) * 100 : 100;
+  if (bar) {
+    bar.style.width = pct + '%';
+    if (pct < 20) bar.style.background = 'linear-gradient(90deg,#ef4444,#f87171)';
+    else if (pct < 40) bar.style.background = 'linear-gradient(90deg,var(--gold),#fcd34d)';
+    else bar.style.background = 'linear-gradient(90deg,var(--green-mid),var(--green-light))';
+  }
+  if (display) {
+    if (pct < 20) { display.style.background = '#fef2f2'; display.style.color = '#ef4444'; }
+    else if (pct < 40) { display.style.background = '#fef9e7'; display.style.color = 'var(--gold)'; }
+    else { display.style.background = 'var(--green-xpale)'; display.style.color = 'var(--green-deep)'; }
+  }
+}
+
+function takeTest(id) {
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===id);
   if(!t){ showNotif('Тест не найден'); return; }
@@ -6822,6 +6978,8 @@ function takeTest(id){
   document.getElementById('take-test-title').textContent=t.title;
   renderTakeTestBody();
   openModal('modal-take-test');
+  // Запустить таймер если задан лимит времени
+  _startTestTimer(t.timeLimit || t.timeMins || 0);
 }
 function renderTakeTestBody(){
   const el=document.getElementById('take-test-body');
@@ -6851,10 +7009,11 @@ function calcGrade(pct, gradeConfig){
   return 2;
 }
 
-function submitTest(){
+function submitTest(autoSubmit){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===_takingTest.id);
   if(!t){ showNotif('Ошибка: тест не найден'); return; }
+  _clearTestTimer(); // останавливаем таймер
   let score=0, total=0;
   t.questions.forEach(q=>{
     const pts=+q.points||1;
