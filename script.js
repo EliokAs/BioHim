@@ -46,6 +46,7 @@ class VirtualList {
     const padTop     = startIdx * this.itemHeight;
     const padBot     = Math.max(0, this._totalH - endIdx * this.itemHeight);
 
+    // ВАЖНО: renderItem должен экранировать пользовательские данные через esc() перед вставкой в innerHTML
     this.container.innerHTML =
       `<div style="height:${padTop}px;pointer-events:none"></div>` +
       this.items.slice(startIdx, endIdx).map(this.renderItem).join('') +
@@ -60,11 +61,6 @@ class VirtualList {
 // ═══════════════════════════════════════════════
 // ТЁМНАЯ ТЕМА
 // ═══════════════════════════════════════════════
-const THEME_KEY = 'biohim_theme';
-
-function initTheme() { /* dark theme removed */ }
-function toggleTheme() { /* dark theme removed */ }
-function updateThemeToggle() { /* dark theme removed */ }
 
 // ═══════════════════════════════════════════════
 // ГЛОБАЛЬНЫЙ ПОИСК
@@ -150,7 +146,7 @@ function showSearchResults(query, results) {
       <div class="card-title">📚 Материалы (${results.content.length})</div>
       ${results.content.map(c => `
         <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer" 
-             onclick="navigateTo('content');setTimeout(()=>openContentModal('${c.id}'),100)">
+             onclick="navigateTo('content');setTimeout(()=>openContentModal('${escAttr(c.id)}'),100)">
           <div style="font-weight:700;color:var(--green-deep)">${esc(c.title)}</div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
             ${c.studentId ? 'Для: ' + getUserName(c.studentId) : 'Общий'}
@@ -165,7 +161,7 @@ function showSearchResults(query, results) {
       <div class="card-title">📝 Тесты (${results.tests.length})</div>
       ${results.tests.map(t => `
         <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer"
-             onclick="navigateTo('tests');setTimeout(()=>openTestModal('${t.id}'),100)">
+             onclick="navigateTo('tests');setTimeout(()=>openTestModal('${escAttr(t.id)}'),100)">
           <div style="font-weight:700;color:var(--green-deep)">${esc(t.title)}</div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
             ${t.studentId ? 'Для: ' + getUserName(t.studentId) : 'Общий'} · ${(t.questions||[]).length} вопросов
@@ -180,7 +176,7 @@ function showSearchResults(query, results) {
       <div class="card-title">✏️ Домашние задания (${results.hw.length})</div>
       ${results.hw.map(h => `
         <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer"
-             onclick="navigateTo('hw');setTimeout(()=>openHWModal('${h.id}'),100)">
+             onclick="navigateTo('hw');setTimeout(()=>openHWModal('${escAttr(h.id)}'),100)">
           <div style="font-weight:700;color:var(--green-deep)">${esc(h.title)}</div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
             ${h.studentId ? 'Для: ' + getUserName(h.studentId) : 'Общий'} · ${(h.questions||[]).length} вопросов
@@ -195,7 +191,7 @@ function showSearchResults(query, results) {
       <div class="card-title">🧪 Пробники (${results.trials.length})</div>
       ${results.trials.map(t => `
         <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer"
-             onclick="navigateTo('trials');setTimeout(()=>openTrialModal('${t.id}'),100)">
+             onclick="navigateTo('trials');setTimeout(()=>openTrialModal('${escAttr(t.id)}'),100)">
           <div style="font-weight:700;color:var(--green-deep)">${esc(t.title)}</div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
             ${t.studentId ? 'Для: ' + getUserName(t.studentId) : 'Общий'}
@@ -240,19 +236,105 @@ let _lessonCode    = '';
 let _lessonRoom    = '';
 let _lsChatPoll    = null;
 
-// ── Ключи localStorage для урока ──
-const LS_LESSON      = 'biohim_live_lesson';   // { code, room, note, startedAt, studentId }
-const LS_LESSON_CHAT = 'biohim_lesson_chat_';  // + code → [{who,name,text,ts}]
-const LS_LESSON_NOTE = 'biohim_lesson_note_';  // + code → string
+// ── Урок: данные хранятся в Firebase для синхронизации между устройствами ──
+const LS_LESSON_CHAT = 'biohim_lesson_chat_';  // legacy key (не используется)
+const LS_LESSON_NOTE = 'biohim_lesson_note_';  // legacy key (не используется)
 
-function getLessonData(){ try{ return JSON.parse(localStorage.getItem(LS_LESSON)||'null'); }catch(e){ return null; } }
-function saveLessonData(d){ localStorage.setItem(LS_LESSON, JSON.stringify(d)); }
+// Firebase пути:
+//   live_lesson/<code>  — { code, room, topic, studentId, slotId, price, startedAt }
+//   live_lesson_note/<code>  — строка конспекта
+// Для обратной совместимости храним активный code в sessionStorage (только на этом устройстве)
 
-function getLessonChat(code){ try{ return JSON.parse(localStorage.getItem(LS_LESSON_CHAT+code)||'[]'); }catch(e){ return []; } }
-function saveLessonChat(code,arr){ localStorage.setItem(LS_LESSON_CHAT+code, JSON.stringify(arr)); }
+let _lessonDataCache = null;  // локальный кэш, обновляется подпиской
 
-function getLessonNote(code){ return localStorage.getItem(LS_LESSON_NOTE+code)||''; }
-function saveLessonNote(code,text){ localStorage.setItem(LS_LESSON_NOTE+code, text); }
+function _lessonFbRef(code){ return _fbInit().ref('live_lesson/' + code); }
+function _lessonNoteFbRef(code){ return _fbInit().ref('live_lesson_note/' + code); }
+
+/** Сохранить данные урока в Firebase */
+function saveLessonData(d){
+  _lessonDataCache = d;
+  if(d && d.code){
+    sessionStorage.setItem('biohim_active_lesson_code', d.code);
+    _lessonFbRef(d.code).set(d).catch(e => console.error('[Firebase] lesson save error', e));
+  }
+}
+
+/** Удалить данные урока из Firebase (завершение) */
+function _deleteLessonData(code){
+  _lessonDataCache = null;
+  sessionStorage.removeItem('biohim_active_lesson_code');
+  if(code) _lessonFbRef(code).remove().catch(()=>{});
+}
+
+/** Синхронный геттер — возвращает кэш; для первого чтения используйте loadLessonDataAsync */
+function getLessonData(){ return _lessonDataCache; }
+
+/** Загрузить данные урока из Firebase по коду (однократно) */
+async function loadLessonDataAsync(code){
+  const snap = await _lessonFbRef(code).get();
+  _lessonDataCache = snap.val() || null;
+  return _lessonDataCache;
+}
+
+/** Подписаться на изменения урока в реальном времени */
+function _subscribeLessonData(code, onUpdate){
+  _lessonFbRef(code).on('value', snap => {
+    _lessonDataCache = snap.val() || null;
+    if(typeof onUpdate === 'function') onUpdate(_lessonDataCache);
+  });
+}
+function _unsubscribeLessonData(code){
+  if(code) _lessonFbRef(code).off('value');
+}
+
+// Lesson chat: хранится в Firebase по пути lesson_chats/<code>
+const _lsChatCache = {}; // { code: [{who,name,text,ts}] }
+function _lsChatFbRef(code){ return _fbInit().ref('lesson_chats/' + code); }
+
+function getLessonChat(code){ return _lsChatCache[code] || []; }
+function saveLessonChat(code, arr){
+  _lsChatCache[code] = arr;
+  _lsChatFbRef(code).set(arr).catch(e => console.error('[Firebase] lesson_chat save error', code, e));
+}
+function _subscribeLessonChat(code, viewer){
+  _lsChatFbRef(code).on('value', snap => {
+    const val = snap.val();
+    _lsChatCache[code] = Array.isArray(val) ? val : val ? Object.values(val) : [];
+    _renderChatNow(code, viewer);
+  });
+}
+
+// Конспект урока: кэш + Firebase
+const _lessonNoteCache = {};  // { code: string }
+
+function getLessonNote(code){ return _lessonNoteCache[code] || ''; }
+function saveLessonNote(code, text){
+  _lessonNoteCache[code] = text;
+  _lessonNoteFbRef(code).set(text).catch(e => console.error('[Firebase] lesson_note save error', e));
+}
+/** Подписаться на конспект урока — ученик видит правки преподавателя в реальном времени */
+function _subscribeLessonNote(code){
+  _lessonNoteFbRef(code).on('value', snap => {
+    const text = snap.val() || '';
+    _lessonNoteCache[code] = text;
+    const noteEl = document.getElementById('ls-student-note');
+    if(noteEl){
+      if(text){
+        noteEl.textContent = text;
+      } else {
+        noteEl.innerHTML = '<span style="color:var(--text3)">Преподаватель ещё не написал конспект...</span>';
+      }
+    }
+    // Также обновляем поле ввода у преподавателя (если открыто)
+    const adminNoteEl = document.getElementById('ls-note');
+    if(adminNoteEl && document.activeElement !== adminNoteEl){
+      adminNoteEl.value = text;
+    }
+  });
+}
+function _unsubscribeLessonNote(code){
+  if(code) _lessonNoteFbRef(code).off('value');
+}
 
 // ═══════════════════════════════════════
 // FEATURE TOGGLES
@@ -645,6 +727,11 @@ function lsAdminCreate(){
   _lessonStart  = Date.now();
   _lessonActive = true;
 
+  // Подписываемся на реалтайм — преподаватель видит актуальные данные
+  _subscribeLessonData(code, () => { /* данные уже в _lessonDataCache */ });
+  _subscribeLessonNote(code);
+  _subscribeLessonChat(code, 'admin');
+
   // Уведомление ученику
   if(studentId){
     addNotif(studentId,{
@@ -773,7 +860,7 @@ function lsSaveNote(text){
   const live = getLessonData();
   if(!live) return;
   saveLessonNote(live.code, text);
-  // ученик видит обновление через poll
+  // Firebase-подписка доставит обновление ученику в реальном времени
 }
 
 const _CHAT_MAX_MSG_LEN = 2000;  // символов на сообщение
@@ -808,28 +895,13 @@ function _renderChatNow(code, viewer){
 }
 
 function _startChatPoll(code, viewer){
+  // Все обновления теперь через Firebase-подписки:
+  //   _subscribeLessonChat    — чат
+  //   _subscribeLessonNote    — конспект
+  //   _subscribeLessonData    — завершение урока
+  // setInterval не нужен
   if(_lsChatPoll) clearInterval(_lsChatPoll);
-  _lsChatPoll = setInterval(()=>{
-    _renderChatNow(code, viewer);
-    // Update note for student
-    if(viewer==='student'){
-      const noteEl = document.getElementById('ls-student-note');
-      if(noteEl){
-        const note = getLessonNote(code);
-        if(note){
-          noteEl.textContent = note;
-        } else {
-          noteEl.innerHTML = '<span style="color:var(--text3)">Преподаватель ещё не написал конспект...</span>';
-        }
-      }
-      // Check if lesson ended
-      const live = getLessonData();
-      if(!live || !live.code){
-        clearInterval(_lsChatPoll);
-        renderStudentLesson();
-      }
-    }
-  }, 2000);
+  _subscribeLessonChat(code, viewer);
 }
 
 function _startLessonTimer(){
@@ -926,9 +998,12 @@ function lsEndLesson(){
       nav:'student-lesson'
     });
   }
-
-  // Очистка
-  localStorage.removeItem(LS_LESSON);
+  // Очистка — удаляем из Firebase (ученик получит событие и увидит экран завершения)
+  const endCode = live.code;
+  _deleteLessonData(endCode);
+  _unsubscribeLessonNote(endCode);
+  _unsubscribeLessonData(endCode);
+  _lessonNoteFbRef(endCode).remove().catch(()=>{});
   _lessonActive = false;
   clearInterval(_lessonTimer);
   clearInterval(_lsChatPoll);
@@ -938,12 +1013,34 @@ function lsEndLesson(){
   renderAdminLesson();
 }
 
-function lsStudentJoin(){
+async function lsStudentJoin(){
   const input = document.getElementById('ls-code-input');
   if(!input||!input.value.trim()){ showNotif('Введите код занятия'); return; }
   const code = input.value.trim().replace(/\D/g,'');
   if(code.length!==6){ showNotif('Код — 6 цифр'); return; }
-  saveLessonData({ code, room:'biohim-lesson-'+code, topic:'Занятие', studentId:currentUser?.id||'', startedAt:Date.now() });
+
+  showNotif('⏳ Подключение...');
+  const data = await loadLessonDataAsync(code);
+  if(!data || !data.code){
+    showNotif('❌ Занятие не найдено. Проверьте код.');
+    return;
+  }
+
+  // Подписываемся на реалтайм — ученик видит данные преподавателя
+  _subscribeLessonData(code, live => {
+    if(!live) {
+      // Преподаватель завершил урок
+      clearInterval(_lsChatPoll);
+      _unsubscribeLessonNote(code);
+      _unsubscribeLessonData(code);
+      _lessonDataCache = null;
+      renderStudentLesson();
+    }
+  });
+  _subscribeLessonNote(code);
+  _subscribeLessonChat(code, 'student');
+
+  sessionStorage.setItem('biohim_active_lesson_code', code);
   renderLesson('student');
 }
 
@@ -964,7 +1061,7 @@ function lsStudentOpenVideo(code){
 // ══════════════════════════════════════════
 // FIREBASE REALTIME DATABASE
 // ══════════════════════════════════════════
-const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','trials','groups','attendance','taskbank'];
+const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','trials','groups','attendance','taskbank','flashcard_decks'];
 
 const _fbConfig = {
   apiKey: "AIzaSyAh_g-_X0bMd23YEh5r5dO3xLu4Awpb1ns",
@@ -998,7 +1095,6 @@ function toggleCollapse(id, btn){
   const collapsed = body.classList.toggle('collapsed');
   if(title) title.classList.toggle('collapsed', collapsed);
 }
-
 function toggleNotifExpand(btn, extraCount){
   const list = btn.closest('#student-notifs-list') || btn.parentElement;
   const hidden = list.querySelectorAll('[data-notif-idx]');
@@ -1045,17 +1141,32 @@ function esc(str){
     .replace(/'/g,'&#39;');
 }
 
+// ИСПРАВЛЕНО: отдельный эскейп для значений в атрибутах (onclick и пр.)
+// Экранирует одиночные кавычки и обратный слеш, чтобы нельзя было вырваться из onclick='...'
+function escAttr(str){
+  return String(str==null?'':str)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
 
 
-// 2. URL-санитайзер: блокирует javascript:, vbscript: и другие опасные схемы
+
+// ИСПРАВЛЕНО: блокируем все data: URI кроме изображений (было data(?!:image) — добавляем полный список)
 function safeUrl(url){
   if(!url) return '#';
   const s = String(url).trim();
-  if(/^(javascript|vbscript|data(?!:image))/i.test(s)) return '#';
+  // Блокируем javascript:, vbscript:, data: (кроме data:image и data:application/pdf)
+  if(/^(javascript|vbscript)/i.test(s)) return '#';
+  if(/^data:/i.test(s) && !/^data:image\//i.test(s) && !/^data:application\/pdf/i.test(s)) return '#';
   return s;
 }
 
 // 3. Защита от брутфорса (sessionStorage — переживает перезагрузку страницы)
+// ИСПРАВЛЕНО: данные брутфорса хранятся в sessionStorage (живут только пока открыта вкладка)
+// Persistent блокировка дополнительно остаётся в localStorage
 const _BF_SS_KEY = 'biohim_bf';
 function _bfLoad(){ try{ return JSON.parse(sessionStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
 function _bfSave(d){ try{ sessionStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
@@ -1092,7 +1203,7 @@ function resetLoginAttempts(login){
 // 4. Проверка прав доступа
 const ADMIN_PAGES = ['students','tests-admin','hw-admin','content-admin',
   'payments','schedule-admin','courses','analytics','settings',
-  'reports-admin','taskbank-admin','notif-settings-admin',
+  'reports-admin','taskbank-admin','flashcards-admin','notif-settings-admin',
   'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin'];
 const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'deleteStudent','saveTest','saveHW','addTheory','saveTrial',
@@ -1142,6 +1253,16 @@ function subscribeRealtime(){
     }
   });
 
+  // Admin notifications (from students) — перенесены из localStorage в Firebase
+  db.ref('admin_notifs').on('value', snap => {
+    const val = snap.val();
+    _adminNotifsCache = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
+    updateChatBadge();
+    if(currentUser && currentUser.role==='admin' && typeof renderAdminNotifsList === 'function'){
+      renderAdminNotifsList();
+    }
+  });
+
   // Дебаунсированные рендеры — не чаще 1 раза в 300мс, только на активной странице
   const _debouncedRender = {};
   const studentPageMap = {
@@ -1180,9 +1301,14 @@ function subscribeRealtime(){
 // ══════════════════════════════════════════
 // ХЕШИРОВАНИЕ ПАРОЛЕЙ (Web Crypto API)
 // ══════════════════════════════════════════
+// ИСПРАВЛЕНО: используем HMAC-SHA256 с солью вместо чистого SHA-256
+// Замените _SITE_SALT уникальным секретом при развёртывании
+const _SITE_SALT = 'biohim_s@lt_2024_CHANGE_ME_IN_PRODUCTION';
 async function hashPassword(plain){
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain));
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const enc = new TextEncoder();
+  const key  = await crypto.subtle.importKey('raw', enc.encode(_SITE_SALT), {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
+  const sig  = await crypto.subtle.sign('HMAC', key, enc.encode(plain));
+  return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 // ══════════════════════════════════════════
@@ -1209,9 +1335,9 @@ async function initData(){
     const adminHash = await hashPassword('admin123');
     const stuHash   = await hashPassword('1234');
     save('users',[
-      {id:'admin', login:'admin', passwordHash: adminHash, name:'Преподаватель', role:'admin'},
-      {id:'anna',  login:'anna',  passwordHash: stuHash,   name:'Анна Петрова',  role:'student', subject:'Биология', active:true},
-      {id:'dima',  login:'dima',  passwordHash: stuHash,   name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true}
+      {id:'admin', login:'admin', passwordHash: adminHash, name:'Преподаватель', role:'admin', mustChangePassword: true},
+      {id:'anna',  login:'anna',  passwordHash: stuHash,   name:'Анна Петрова',  role:'student', subject:'Биология', active:true, mustChangePassword: true},
+      {id:'dima',  login:'dima',  passwordHash: stuHash,   name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true, mustChangePassword: true}
     ]);
   }
   if(!(load('courses')||[]).length){
@@ -1249,7 +1375,7 @@ async function resetAllData(){
   await _fbInit().ref('db').remove();
   COLLECTIONS.forEach(k => { _cache[k] = null; });
   localStorage.removeItem('biohim_session');
-  localStorage.removeItem('biohim_admin_notifs');
+  _adminNotifsRef().set([]).catch(()=>{}); _adminNotifsCache=[];
   location.reload();
 }
 
@@ -1289,6 +1415,11 @@ async function doLogin(){
   }
   resetLoginAttempts(uname);
   errEl.textContent = '';
+  // ИСПРАВЛЕНО: проверяем флаг обязательной смены пароля
+  if(found.mustChangePassword){
+    errEl.textContent = '⚠️ Пожалуйста, смените временный пароль в настройках профиля.';
+    errEl.style.color = 'var(--gold)';
+  }
   _startSession(found);
 }
 function _startSession(user){
@@ -1338,6 +1469,7 @@ const adminNav=[
   {id:'hw-admin',     icon:'✏️', label:'Домашние задания'},
   {id:'trial-admin',  icon:'🎯', label:'Пробник'},
   {id:'taskbank-admin',icon:'🎲',label:'База заданий'},
+  {id:'flashcards-admin',icon:'🃏',label:'Флешкарты'},
   {id:'grades-admin', icon:'🏅', label:'Оценки учеников'},
   {section:'Управление'},
   {id:'chat-admin',       icon:'💬', label:'Чат с учениками'},
@@ -1359,6 +1491,7 @@ const studentNav=[
   {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
   {id:'student-grades',    icon:'🏅', label:'Мои оценки'},
   {id:'student-taskbank',  icon:'🎲', label:'Банк заданий'},
+  {id:'student-flashcards',icon:'🃏', label:'Флешкарты'},
   {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
   {section:'Прочее'},
   {id:'student-payment',   icon:'💰',label:'Оплата и занятия'},
@@ -1454,6 +1587,15 @@ function navigateTo(page){
     console.warn('Route guard blocked:', page, 'for role:', currentUser.role);
     return;
   }
+  // Admin cannot navigate to student-only pages
+  const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
+    'student-hw','student-trial','student-chat','student-grades','student-taskbank','student-flashcards',
+    'student-payment','student-schedule','student-repeat','student-lesson',
+    'student-notif-settings'];
+  if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
+    console.warn('Admin blocked from student page:', page);
+    return;
+  }
   // Parent role: block all pages except parent-dashboard
   if(currentUser && currentUser.role === 'parent' && page !== 'parent-dashboard'){
     showNotif('⛔ Нет доступа');
@@ -1489,7 +1631,8 @@ function renderPage(p){
   else if(p==='hw-admin'){ renderHWAdmin(); renderHWOpenAnswers(); }
   else if(p==='trial-admin'){ renderTrialAdmin(); }
   else if(p==='taskbank-admin'){ renderTaskBankAdmin(); }
-  else if(p==='student-trial'){ renderStudentTrial(); }
+  else if(p==='flashcards-admin'){ renderFlashcardsAdmin(); }
+  else if(p==='student-trial'){ if(currentUser&&currentUser.role==='student') renderStudentTrial(); }
   else if(p==='chat-admin'){ renderChatAdmin(); }
   else if(p==='student-chat'){ renderStudentChat(); }
   else if(p==='attend-pay-admin'){ buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage(); }
@@ -1497,13 +1640,14 @@ function renderPage(p){
   else if(p==='schedule-admin') renderScheduleAdmin();
   else if(p==='reports-admin') renderReportsAdmin();
   else if(p==='student-dashboard') renderStudentDashboard();
-  else if(p==='student-materials') renderStudentMaterials();
+  else if(p==='student-materials'){ if(currentUser&&currentUser.role==='student') renderStudentMaterials(); }
   else if(p==='student-repeat') renderRepeatPage();
-  else if(p==='student-tests') renderStudentTests();
-  else if(p==='student-hw') renderStudentHW();
+  else if(p==='student-tests'){ if(currentUser&&currentUser.role==='student') renderStudentTests(); }
+  else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student') renderStudentHW(); }
   else if(p==='student-grades') renderStudentGrades();
   else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
+  else if(p==='student-flashcards') renderStudentFlashcards();
   else if(p==='student-payment') renderStudentPayment();
   else if(p==='notif-settings-admin'){ renderNotifSettingsAdmin(); }
   else if(p==='student-notif-settings'){ renderNotifSettingsStudent(); }
@@ -1546,7 +1690,7 @@ function renderDashboard(){
     <div class="stat-card"><div class="stat-icon">✏️</div><div class="stat-num">${hw.length}</div><div class="stat-label">ДЗ назначено</div></div>
   `;
   const notifs=load('notifs')||[];
-  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
+  const adminNotifs = loadAdminNotifs();
   const allAdminNotifs = [
     ...notifs.map(n=>({...n, _student:true})),
     ...adminNotifs
@@ -1567,7 +1711,7 @@ function renderDashboard(){
   }).join('') || '<div class="empty-state"><p>Нет уведомлений</p></div>';
   // mark admin notifs as read after showing
   adminNotifs.forEach(n=>n.read=true);
-  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  _adminNotifsRef().set(_adminNotifsCache).catch(e => console.error('[Firebase] admin_notifs', e));
   updateAdminBadge();
   const slots=load('slots')||[];
   const ul=document.getElementById('upcoming-list');
@@ -1978,14 +2122,18 @@ function getCheckedModalStudents(containerId){
   if(!el) return [];
   return [...el.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
 }
-function closeModal(id){
+function closeModal(id, force){
+  // Редакторы — через guard с подтверждением
+  if (_DIRTY_MODALS && _DIRTY_MODALS.includes(id)) {
+    _safeClose(id, force);
+    return;
+  }
   const el=document.getElementById(id);
   if(el) el.classList.remove('open');
   if(id==='modal-add-theory'){
     _theoryFiles=[];
   }
 }
-
 function getVideoEmbedUrl(url){
   if(!url) return null;
   url = url.trim();
@@ -2414,6 +2562,7 @@ function submitCheck(itemId,qId,itemType){
 
 // ── OVERALL REVIEW for test / hw / trial ──
 function openItemOverallReview(itemId, itemType){
+  requireAdmin('openItemOverallReview');
   const storeKey=itemType==='test'?'tests':itemType==='hw'?'hw':'trials';
   const items=load(storeKey)||[];
   const item=items.find(t=>t.id===itemId); if(!item) return;
@@ -2643,6 +2792,7 @@ function deleteTest(id){ requireAdmin('deleteTest'); save('tests',(load('tests')
 // ─── ASSIGN STUDENTS TO EXISTING ITEM ───
 let _assignType=null, _assignId=null;
 function openAssignStudents(type, id){
+  requireAdmin('openAssignStudents');
   _assignType=type; _assignId=id;
   const students=(load('users')||[]).filter(u=>u.role==='student');
   // Find which students already have this item
@@ -3417,6 +3567,24 @@ let _editTheoryFiles=[];
 // ─── TEST EDITOR ───
 let _editTestId='';
 let _editTestQuestions=[];
+
+// ── Защита от потери несохранённых изменений ──
+const _DIRTY_MODALS = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial'];
+let _editorDirty = false;
+
+function _setDirty(val) {
+  _editorDirty = !!val;
+}
+
+function _safeClose(id, force) {
+  if (!force && _DIRTY_MODALS.includes(id) && _editorDirty) {
+    if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
+  }
+  _editorDirty = false;
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+  if (id === 'modal-add-theory') { _theoryFiles = []; }
+}
 // ── EDIT TEST ──
 function openEditTest(id){
   const t=(load('tests')||[]).find(t=>t.id===id);
@@ -3435,6 +3603,7 @@ function openEditTest(id){
   document.getElementById('et-max-attempts').value=t.maxAttempts??0;
   document.getElementById('et-grade-mode').value=t.gradeMode||'best';
   renderEditTestBuilder();
+  _setDirty(false);
   document.getElementById('modal-edit-test').classList.add('open');
 }
 function qTypeLabel(type){
@@ -3552,10 +3721,12 @@ function handleEditQImgUpload(input, store, idx, previewId){
 }
 function addEditTestQuestion(type){
   _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
+  _setDirty(true);
   renderEditTestBuilder();
 }
-function removeEditQ(i){ _editTestQuestions.splice(i,1); renderEditTestBuilder(); }
+function removeEditQ(i){ _editTestQuestions.splice(i,1); _setDirty(true); renderEditTestBuilder(); }
 function saveEditTest(){
+  requireAdmin('saveEditTest');
   const title=document.getElementById('et-title').value.trim();
   if(!title){ showNotif('Введите название теста'); return; }
   if(!_editTestQuestions.length){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -3572,7 +3743,8 @@ function saveEditTest(){
   t.questions=_editTestQuestions;
   t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('tests',tests);
-  closeModal('modal-edit-test');
+  _setDirty(false);
+  closeModal('modal-edit-test', true);
   renderTestsAdmin();
   showNotif('✅ Тест обновлён');
 }
@@ -3595,6 +3767,7 @@ function openEditHW(id){
   document.getElementById('ehw-max-attempts').value=h.maxAttempts??0;
   document.getElementById('ehw-grade-mode').value=h.gradeMode||'best';
   renderEditHWBuilder();
+  _setDirty(false);
   document.getElementById('modal-edit-hw').classList.add('open');
 }
 function renderEditHWBuilder(){
@@ -3650,10 +3823,11 @@ function renderEditHWBuilder(){
   }).join('');
 }
 function addEditHWQuestion(type){
+  _setDirty(true);
   _editHWQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
   renderEditHWBuilder();
 }
-function removeEditHWQ(i){ _editHWQuestions.splice(i,1); renderEditHWBuilder(); }
+function removeEditHWQ(i){ _editHWQuestions.splice(i,1); _setDirty(true); renderEditHWBuilder(); }
 
 // ═══════════════════════════════════════
 // 📄 DOCX → AI → Questions Import
@@ -3822,8 +3996,8 @@ async function importDocxToHW(input) {
     setDocxStatus(statusEl, '❌ Ошибка: ' + (e.message || 'не удалось обработать файл'), true);
   }
 }
-
 function saveEditHW(){
+  requireAdmin('saveEditHW');
   const id=document.getElementById('ehw-id').value;
   const title=document.getElementById('ehw-title').value.trim();
   if(!title){ showNotif('Введите тему'); return; }
@@ -3840,7 +4014,8 @@ function saveEditHW(){
   h.questions=_editHWQuestions;
   h.autoTotal=_editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
   save('hw',hws);
-  closeModal('modal-edit-hw');
+  _setDirty(false);
+  closeModal('modal-edit-hw', true);
   renderHWAdmin();
   showNotif('✅ ДЗ обновлено');
 }
@@ -4482,7 +4657,8 @@ function trialAdminItemHTML(t){
 
   </div>`;
 }
-function deleteTrial(id){ save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
+function deleteTrial(id){
+  requireAdmin('deleteTrial'); save('trials',(load('trials')||[]).filter(t=>t.id!==id)); renderTrialAdmin(); }
 
 // ── EDIT TRIAL ──
 let _editTrialSections = [];
@@ -4519,6 +4695,7 @@ function openEditTrial(id){
   if(hint) hint.textContent='(считается автоматически из вопросов)';
 
   renderEditTrialBuilder();
+  _setDirty(false);
   document.getElementById('modal-edit-trial').classList.add('open');
 }
 
@@ -4543,18 +4720,22 @@ function toggleEditTrialMaxPts(){
 }
 
 function addEditTrialSection(){
+  _setDirty(true);
   _editTrialSections.push({id:'ts_'+Date.now(), title:'Часть '+(+_editTrialSections.length+1), questions:[]});
   renderEditTrialBuilder();
 }
 function removeEditTrialSection(idx){
+  _setDirty(true);
   _editTrialSections.splice(idx,1);
   renderEditTrialBuilder();
 }
 function addEditTrialQuestion(sIdx, type){
+  _setDirty(true);
   _editTrialSections[sIdx].questions.push(initQuestion('tq_'+Date.now(), type));
   renderEditTrialBuilder();
 }
 function removeEditTrialQuestion(sIdx, qIdx){
+  _setDirty(true);
   _editTrialSections[sIdx].questions.splice(qIdx,1);
   renderEditTrialBuilder();
 }
@@ -4683,6 +4864,7 @@ function handleEditTrialQImgUpload(input, si, qi, previewId){
 }
 
 function saveEditTrial(){
+  try{ requireAdmin('saveEditTrial'); } catch(e){ return; }
   const title=document.getElementById('etr-title').value.trim();
   if(!title){ showNotif('Введите название'); return; }
   if(!_editTrialSections.some(s=>s.questions.length)){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -4705,7 +4887,8 @@ function saveEditTrial(){
   t.maxPts=autoPts;
   t.autoTotal=allQ.filter(q=>q.type==='auto').reduce((a,q)=>a+(+q.points||1),0)||autoPts;
   save('trials',trials);
-  closeModal('modal-edit-trial');
+  _setDirty(false);
+  closeModal('modal-edit-trial', true);
   renderTrialAdmin();
   showNotif('✅ Пробник обновлён');
 }
@@ -4818,7 +5001,6 @@ function saveTrialOverallReview(tid){
   renderTrialAdmin();
   showNotif(`✅ Оценка ${grade} сохранена`);
 }
-
 // ── STUDENT RENDER ──
 let _trialFilter='all';
 function setTrialFilter(f,el){
@@ -4839,20 +5021,28 @@ function renderStudentTrial(){
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
     const hasOpen=allQ.some(q=>q.type==='open');
     const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
+    const statusIcon=!t.submitted?'⏳':fullyChecked?'✅':'🔍';
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
         ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.autoTotal?(' · Оценка '+(t.autoGrade||calcGrade(pct,t.gradeConfig))):''}</span>`
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
-    return `<div class="card">
-      <div class="card-title"><span class="dot"></span>🎯 ${esc(t.title)}</div>
-      <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
-        ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
-        ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
+    const grade=t.autoGrade||(t.autoTotal?calcGrade(pct,t.gradeConfig):null);
+    return `<div class="card collapsible-card" data-item-id="${t.id}">
+      <div class="card-title collapsible collapsed" onclick="toggleCollapse('tr_${t.id}',this)">
+        <span class="dot"></span>${statusIcon} ${esc(t.title)}
+        ${grade&&t.submitted?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
+        <span class="collapse-arrow">▼</span>
       </div>
-      <div style="margin-bottom:12px">${statusBadge}</div>
-      ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
-      <div id="cmt-trial-${t.id}"></div>
+      <div class="card-collapse-body collapsed" id="cb-tr_${t.id}">
+        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
+          ${t.subject?`📚 ${t.subject} · `:''}⏱ ${t.timeMins} мин · ⭐ ${t.maxPts} б.
+          ${t.passThresh?` · Порог: ${t.passThresh}%`:''}
+        </div>
+        <div style="margin-bottom:12px">${statusBadge}</div>
+        ${!t.submitted ? availGate(t,'startTrial') : viewTrialResultHTML(t)}
+        <div id="cmt-trial-${t.id}"></div>
+      </div>
     </div>`;
   }).join('');
   // Inject comment threads
@@ -4867,6 +5057,9 @@ let _activeTrial=null, _trialAnswers={}, _trialTimerInterval=null, _trialSeconds
 function startTrial(id){
   const t=(load('trials')||[]).find(t=>t.id===id);
   if(!t) return;
+  if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
+    showNotif('⛔ Нет доступа к этому пробнику'); console.warn('IDOR attempt startTrial',id); return;
+  }
   _activeTrial=t;
   _trialAnswers={};
   _trialSecondsLeft=t.timeMins*60;
@@ -4925,6 +5118,7 @@ function submitTrial(timeout=false){
   clearInterval(_trialTimerInterval);
   const trials=load('trials')||[];
   const t=trials.find(t=>t.id===_activeTrial.id);
+  if(!t){ showNotif('Ошибка: пробник не найден'); return; }
   t.submitted=true; t.answers={..._trialAnswers};
   let score=0, total=0;
   (t.sections||[]).forEach(s=>s.questions.forEach(q=>{
@@ -4942,9 +5136,7 @@ function submitTrial(timeout=false){
   renderStudentTrial();
   showNotif(timeout?`⏰ Время вышло! Авто: ${score}/${t.autoTotal} б.`:`✅ Пробник сдан! Авто: ${score}/${t.autoTotal} б. (${pct}%)`);
   // notify admin
-  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`🧪 ${currentUser.name} сдал(а) пробник «${esc(t.title)}»${timeout?' (время вышло)':''}`, date:new Date().toLocaleDateString('ru'), read:false});
-  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+_addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`🧪 ${currentUser.name} сдал(а) пробник «${esc(t.title)}»${timeout?' (время вышло)':''}`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
 }
 function viewTrialResultHTML(t){
@@ -6023,10 +6215,10 @@ function renderParentDashboard(){
   const el = document.getElementById('page-parent-dashboard');
   if(!el) return;
 
-  // Find linked student
+  // Find linked student — verify it's actually a student role (not admin)
   const sid = currentUser.linkedStudentId;
   const users = load('users')||[];
-  const student = users.find(u=>u.id===sid);
+  const student = users.find(u=>u.id===sid && u.role==='student');
 
   if(!student){
     el.innerHTML = `<div class="page-title">👨‍👩‍👧 Дашборд родителя</div>
@@ -6288,12 +6480,12 @@ function renderStudentTests(){
     const gradeMode = t.gradeMode||'best';
     const statusIcon = !t.submitted ? '⏳' : (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
     return `<div class="card collapsible-card" data-item-id="${t.id}">
-      <div class="card-title collapsible" onclick="toggleCollapse('t_${t.id}', this)">
+      <div class="card-title collapsible collapsed" onclick="toggleCollapse('t_${t.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
         ${grade?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body" id="cb-t_${t.id}">
+      <div class="card-collapse-body collapsed" id="cb-t_${t.id}">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
           ${(()=>{
             const hasOpen=(t.questions||[]).some(q=>q.type==='open');
@@ -6329,6 +6521,10 @@ let _takingTest=null; let _testAnswers={};
 function takeTest(id){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===id);
+  if(!t){ showNotif('Тест не найден'); return; }
+  if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
+    showNotif('⛔ Нет доступа к этому тесту'); console.warn('IDOR attempt takeTest',id); return;
+  }
   const maxAttempts=t.maxAttempts||0;
   const attemptsUsed=(t.attempts||[]).length;
   if(maxAttempts>0 && attemptsUsed>=maxAttempts){
@@ -6371,6 +6567,7 @@ function calcGrade(pct, gradeConfig){
 function submitTest(){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===_takingTest.id);
+  if(!t){ showNotif('Ошибка: тест не найден'); return; }
   let score=0, total=0;
   t.questions.forEach(q=>{
     const pts=+q.points||1;
@@ -6414,9 +6611,7 @@ function submitTest(){
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
   showNotif(`✅ Тест сдан! ${score}/${t.autoTotal||0} б. (${pct}%) — оценка ${grade}${attemptsMsg}`);
   // notify admin
-  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}» (попытка ${t.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
-  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+_addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}» (попытка ${t.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
 }
 
@@ -6451,13 +6646,13 @@ function renderStudentHW(){
     const gradeMode = h.gradeMode||'best';
     const statusIcon = !h.submitted ? '⏳' : (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
     return `<div class="card collapsible-card" data-item-id="${h.id}">
-      <div class="card-title collapsible" onclick="toggleCollapse('hw_${h.id}', this)">
+      <div class="card-title collapsible collapsed" onclick="toggleCollapse('hw_${h.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(h.title)}
         ${h.autoGrade?`<span class="grade-result-badge grade-${h.autoGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.autoGrade}</span>`:''}
         ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
-      <div class="card-collapse-body" id="cb-hw_${h.id}">
+      <div class="card-collapse-body collapsed" id="cb-hw_${h.id}">
         ${h.desc?`<div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>`:''}
         ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
@@ -6607,9 +6802,7 @@ function submitHW(){
   const gradeMsg = h.autoGrade ? ` — оценка ${h.autoGrade}` : '';
   showNotif(`✅ ДЗ сдано! ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${gradeMsg}${attemptsMsg}`);
   // notify admin
-  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-  adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
-  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+_addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
 }
 
@@ -6956,7 +7149,6 @@ function renderStudentSchedule(){
   // Объединяем: сначала назначенные, потом заявки (без дублей по slotId)
   const assignedSlotIds=new Set(assignedSlots.map(s=>s.id));
   const bookingItems=myBookings.filter(b=>!assignedSlotIds.has(b.slotId));
-
   const assignedItems=assignedSlots.map(s=>{
     const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
     const c=s.courseId?courses.find(c=>c.id===s.courseId):null;
@@ -7827,6 +8019,20 @@ function showNotif(msg){
 }
 
 // ═══════════════════════════════════════════
+// STARTUP — restore lesson session if page was refreshed
+(function _restoreLessonSession(){
+  const code = sessionStorage.getItem('biohim_active_lesson_code');
+  if(!code) return;
+  // Восстановим кэш из Firebase при перезагрузке страницы
+  loadLessonDataAsync(code).then(data => {
+    if(!data) { sessionStorage.removeItem('biohim_active_lesson_code'); return; }
+    _lessonCode = code;
+    _lessonRoom = data.room || ('biohim-lesson-' + code);
+    _lessonStart = data.startedAt || Date.now();
+    _lessonActive = true;
+  }).catch(()=>{});
+})();
+
 // STARTUP — load from Firebase then show login
 // ═══════════════════════════════════════════
 (async () => {
@@ -7990,7 +8196,6 @@ function getCalEvents(){
 
   return events;
 }
-
 function renderCalendar(){
   const grid = document.getElementById('cal-grid');
   const label = document.getElementById('cal-month-label');
@@ -8382,19 +8587,78 @@ function renderTodoList(mode){
   }
 }
 // ══════════════════════════════════════════
+// ADMIN NOTIFS (Firebase — ранее localStorage)
+// ══════════════════════════════════════════
+let _adminNotifsCache = [];
+
+function _adminNotifsRef(){ return _fbInit().ref('admin_notifs'); }
+
+function loadAdminNotifs(){ return _adminNotifsCache; }
+
+function _addAdminNotif(notif){
+  _adminNotifsCache = [..._adminNotifsCache, notif];
+  _adminNotifsRef().set(_adminNotifsCache).catch(e => console.error('[Firebase] admin_notifs error', e));
+}
+
+function _markAdminNotifsRead(){
+  let changed = false;
+  _adminNotifsCache = _adminNotifsCache.map(n => { if(!n.read){ changed=true; return {...n, read:true}; } return n; });
+  if(changed) _adminNotifsRef().set(_adminNotifsCache).catch(e => console.error('[Firebase] admin_notifs error', e));
+}
+
+// ══════════════════════════════════════════
 // CHAT
 // ══════════════════════════════════════════
-function chatKey(sid){ return 'chat_'+sid; }
-function loadChat(sid){ return JSON.parse(localStorage.getItem(chatKey(sid))||'[]'); }
-function saveChat(sid, msgs){ localStorage.setItem(chatKey(sid), JSON.stringify(msgs)); }
+// ══ CHAT — Firebase Realtime DB ══
+// Путь: chats/<sid>/messages  (массив сообщений)
+// Путь: chats/<sid>/unread_<role>  (счётчик непрочитанных)
+
+function _chatRef(sid){ return _fbInit().ref('chats/' + sid); }
+function _chatMsgsRef(sid){ return _chatRef(sid).child('messages'); }
+
+// Синхронный кэш чата: { [sid]: msg[] }
+const _chatCache = {};
+// Активные подписки: { [sid]: unsubscribe fn }
+const _chatSubs = {};
+
+/** Подписаться на обновления чата по sid (вызывается при открытии чата) */
+function subscribeChatSid(sid, onUpdate){
+  if(_chatSubs[sid]) return; // уже подписаны
+  const ref = _chatMsgsRef(sid);
+  const handler = ref.on('value', snap => {
+    _chatCache[sid] = _fbMsgsToArray(snap.val());
+    if(typeof onUpdate === 'function') onUpdate(sid);
+    updateChatBadge();
+  });
+  _chatSubs[sid] = () => ref.off('value', handler);
+}
+function unsubscribeChatSid(sid){
+  if(_chatSubs[sid]){ _chatSubs[sid](); delete _chatSubs[sid]; }
+}
+
+function _fbMsgsToArray(val){
+  if(!val) return [];
+  if(Array.isArray(val)) return val;
+  // Firebase может вернуть объект {0:{...},1:{...}} если push не использовался
+  return Object.values(val);
+}
+
+function loadChat(sid){
+  return _chatCache[sid] || [];
+}
+
+function saveChat(sid, msgs){
+  _chatCache[sid] = msgs;
+  _chatMsgsRef(sid).set(msgs).catch(e => console.error('[Firebase] chat save error', sid, e));
+}
 
 function chatUnread(sid){
   const msgs = loadChat(sid);
-  const role = currentUser.role;
+  const role = currentUser ? currentUser.role : 'admin';
   return msgs.filter(m=> m.from !== role && !m.read).length;
 }
 function markChatRead(sid){
-  const role = currentUser.role;
+  const role = currentUser ? currentUser.role : 'admin';
   const msgs = loadChat(sid);
   let changed = false;
   msgs.forEach(m=>{ if(m.from!==role && !m.read){ m.read=true; changed=true; } });
@@ -8417,7 +8681,7 @@ function renderChatAdmin(){
       <div class="chat-avatar">${initials}</div>
       <div style="flex:1;min-width:0">
         <div class="chat-contact-name">${esc(s.name)}</div>
-        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+last.text:'Нет сообщений'}</div>
+        <div class="chat-contact-last">${last?(last.from==='admin'?'Вы: ':'')+esc(last.text):'Нет сообщений'}</div>
       </div>
       ${unread?`<div class="chat-unread">${unread}</div>`:''}
     </div>`;
@@ -8441,6 +8705,11 @@ function openAdminChat(sid){
       <textarea id="chat-admin-input" placeholder="Написать сообщение..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdminMsg()}"></textarea>
       <button class="chat-send-btn" onclick="sendAdminMsg()">➤</button>
     </div>`;
+  // Подписываемся на реалтайм — новые сообщения появятся без F5
+  subscribeChatSid(sid, (updSid) => {
+    if(updSid === _chatActiveSid) renderChatMessages('chat-admin-messages', updSid, 'admin');
+    renderChatAdmin();
+  });
   renderChatMessages('chat-admin-messages', sid, 'admin');
 }
 
@@ -8485,9 +8754,16 @@ function renderChatMessages(containerId, sid, myRole){
 
 // ─ STUDENT ─
 function renderStudentChat(){
-  markChatRead(currentUser.id);
+  const sid = currentUser.id;
+  markChatRead(sid);
   updateChatBadge();
-  renderChatMessages('chat-student-messages', currentUser.id, 'student');
+  // Подписываемся на реалтайм — ученик видит ответы без F5
+  subscribeChatSid(sid, (updSid) => {
+    renderChatMessages('chat-student-messages', updSid, 'student');
+    markChatRead(updSid);
+    updateChatBadge();
+  });
+  renderChatMessages('chat-student-messages', sid, 'student');
   const inp = document.getElementById('chat-student-input');
   if(inp) inp.value = '';
 }
@@ -8500,17 +8776,15 @@ function sendStudentMsg(){
   const msgs = loadChat(sid);
   msgs.push({id:'m'+Date.now(), from:'student', text, time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}), date: new Date().toLocaleDateString('ru'), read: false});
   saveChat(sid, msgs);
-  inp.value = '';
+  if(inp) inp.value = '';
+  // Firebase-подписка обновит UI сама; рендерим сразу для отзывчивости
   renderChatMessages('chat-student-messages', sid, 'student');
-  // notify admin (global notif with type chat)
-  const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-  adminNotifs.push({id:'an'+Date.now(), studentId:sid, studentName: currentUser.name, type:'chat', text:`💬 ${currentUser.name}: ${text.substring(0,60)}`, time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}), date: new Date().toLocaleDateString('ru'), read:false});
-  localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+  // Уведомить администратора через Firebase admin_notifs
+  _addAdminNotif({id:'an'+Date.now(), studentId:sid, studentName: currentUser.name, type:'chat', text:`💬 ${currentUser.name}: ${text.substring(0,60)}`, time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}), date: new Date().toLocaleDateString('ru'), read:false});
   updateChatBadge();
 }
 
 function updateChatBadge(){
-  // Student: count unread from admin
   if(currentUser && currentUser.role==='student'){
     const count = chatUnread(currentUser.id);
     document.querySelectorAll('#nav-student-chat').forEach(el=>{
@@ -8518,10 +8792,10 @@ function updateChatBadge(){
       if(count>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${count}</span>`);
     });
   }
-  // Admin: count all unread
   if(currentUser && currentUser.role==='admin'){
     const total = getStudents().reduce((s,st)=>s+chatUnread(st.id),0);
-    const adminTotal = total + (JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]').filter(n=>!n.read).length);
+    const adminNotifCount = (_adminNotifsCache||[]).filter(n=>!n.read).length;
+    const adminTotal = total + adminNotifCount;
     document.querySelectorAll('#nav-chat-admin').forEach(el=>{
       el.querySelectorAll('.chat-badge').forEach(b=>b.remove());
       if(adminTotal>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${adminTotal}</span>`);
@@ -8529,7 +8803,7 @@ function updateChatBadge(){
   }
 }
 
-function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\n/g,'<br>'); }
 
 // Helper to send chat message from a work item context (with ref)
 function sendChatWithRef(sid, refText){
@@ -8650,9 +8924,7 @@ function addComment(type, itemId, threadEl){
   if(currentUser.role==='admin' && item){
     addNotif(item.studentId, {type:'comment', text:`💬 Преподаватель прокомментировал ${typeLabel} «${itemTitle}»`, nav: type==='hw'?'student-hw':type==='test'?'student-tests':'student-trial'});
   } else if(currentUser.role==='student' && item){
-    const adminNotifs = JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]');
-    adminNotifs.push({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'comment', text:`💬 ${currentUser.name} прокомментировал(а) ${typeLabel} «${itemTitle}»`, date:now.toLocaleDateString('ru'), read:false});
-    localStorage.setItem('biohim_admin_notifs', JSON.stringify(adminNotifs));
+_addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'comment', text:`💬 ${currentUser.name} прокомментировал(а) ${typeLabel} «${itemTitle}»`, date:now.toLocaleDateString('ru'), read:false});
   }
 
   // Append new comment into this thread's list
@@ -8678,7 +8950,7 @@ function addComment(type, itemId, threadEl){
 function updateAdminBadge(){
   if(currentUser && currentUser.role==='admin'){
     const total = getStudents().reduce((s,st)=>s+chatUnread(st.id),0)
-      + (JSON.parse(localStorage.getItem('biohim_admin_notifs')||'[]').filter(n=>!n.read).length);
+      + (loadAdminNotifs().filter(n=>!n.read).length);
     document.querySelectorAll('#nav-chat-admin').forEach(el=>{
       el.querySelectorAll('.chat-badge').forEach(b=>b.remove());
       if(total>0) el.insertAdjacentHTML('beforeend',`<span class="rep-badge chat-badge">${total}</span>`);
@@ -8975,10 +9247,8 @@ function addNotif(studentId, {type, text, nav}){
   sendTelegramNotif(studentId, type, text);
 }
 
-// ── Отправка через Telegram Bot API ──
+// ── Отправка через Telegram Bot API (через серверный прокси /api/telegram) ──
 async function sendTelegramNotif(sid, type, text){
-  const token = localStorage.getItem(adminTgTokenKey());
-  if(!token) return;
   const settings = loadNotifSettings(sid);
   if(!settings.tgChatId) return;
   const mappedType = NOTIF_TYPE_MAP[type] || type;
@@ -8989,14 +9259,20 @@ async function sendTelegramNotif(sid, type, text){
   const msg = `📚 *BioХим* — ${name}\n\n${text}`;
 
   try{
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' })
-    });
+    await tgApiCall('sendMessage', { chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' });
   } catch(e){
     console.warn('TG send error:', e);
   }
+}
+
+// Единая точка вызова Telegram через серверный прокси (токен не покидает сервер)
+async function tgApiCall(method, payload){
+  const r = await fetch('/api/telegram', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ method, payload })
+  });
+  return r.json();
 }
 
 // ── Страница ученика ──
@@ -9112,26 +9388,18 @@ async function testNotifChannel(){
   const sid = currentUser.id;
   const settings = loadNotifSettings(sid);
   if(!settings.tgChatId){ showNotif('Telegram не подключён'); return; }
-  const token = localStorage.getItem(adminTgTokenKey());
-  if(!token){ showNotif('Токен бота не настроен администратором'); return; }
   try{
-    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ chat_id: settings.tgChatId,
-        text:'🔔 *Тест уведомлений*\n\nЕсли вы получили это сообщение — Telegram подключён успешно! ✅', parse_mode:'Markdown' })
-    });
-    const d = await r.json();
+    const d = await tgApiCall('sendMessage', { chat_id: settings.tgChatId,
+      text:'🔔 *Тест уведомлений*\n\nЕсли вы получили это сообщение — Telegram подключён успешно! ✅', parse_mode:'Markdown' });
     showNotif(d.ok ? '✅ Тест отправлен — проверьте Telegram!' : '❌ Ошибка: ' + (d.description||''));
   } catch(e){ showNotif('❌ Ошибка соединения: ' + e.message); }
 }
 
 // ── Страница администратора ──
 function renderNotifSettingsAdmin(){
-  const token    = localStorage.getItem(adminTgTokenKey()) || '';
+  // Токен хранится на сервере, не читаем из localStorage
   const botName  = localStorage.getItem(adminTgBotKey())  || '';
-  const elToken  = document.getElementById('admin-tg-token');
   const elBot    = document.getElementById('admin-tg-botname');
-  if(elToken) elToken.value = token;
   if(elBot)   elBot.value   = botName;
 
   const statusEl = document.getElementById('admin-notif-student-status');
@@ -9152,21 +9420,18 @@ function renderNotifSettingsAdmin(){
 }
 
 function saveAdminTgBot(){
-  const token   = (document.getElementById('admin-tg-token')  ||{}).value?.trim();
+  // Токен НЕ сохраняется в localStorage — он хранится только в переменной окружения Vercel (TELEGRAM_BOT_TOKEN).
+  // Здесь сохраняем только публичное имя бота для ссылки на него.
   const botName = (document.getElementById('admin-tg-botname')||{}).value?.trim();
-  if(token)   localStorage.setItem(adminTgTokenKey(), token);
-  if(botName) localStorage.setItem(adminTgBotKey(),   botName.startsWith('@')?botName:'@'+botName);
+  if(botName) localStorage.setItem(adminTgBotKey(), botName.startsWith('@')?botName:'@'+botName);
   testBotToken();
 }
 
 async function testBotToken(){
-  const token = localStorage.getItem(adminTgTokenKey());
   const statusEl = document.getElementById('bot-connection-status');
-  if(!token){ if(statusEl){ statusEl.textContent='Введите токен'; statusEl.style.color='var(--text3)'; } return; }
   if(statusEl){ statusEl.textContent='⏳ Проверяем...'; statusEl.style.color='var(--text3)'; }
   try{
-    const r = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-    const d = await r.json();
+    const d = await tgApiCall('getMe', {});
     if(d.ok){
       const name = d.result.first_name + ' (@' + d.result.username + ')';
       if(statusEl){ statusEl.innerHTML=`✅ Бот найден: <b>${name}</b>`; statusEl.style.color='var(--green-deep)'; }
@@ -9677,6 +9942,7 @@ function libSection(label, count, inner){
 // ── Edit Availability ──
 let _eavType=null, _eavId=null;
 function openEditAvail(type,id){
+  requireAdmin('openEditAvail');
   _eavType=type; _eavId=id;
   let item=null;
   if(type==='content') item=(load('content')||[]).find(c=>c.id===id);
@@ -10185,13 +10451,6 @@ function importTrial(data) {
   showNotif(`✅ Пробник «${data.title}» импортирован (${allQ.length} вопр., ${maxPts} б.)`);
 }
 
-// Инициализация темы при загрузке
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initTheme);
-} else {
-  initTheme();
-}
-
 // ═══════════════════════════════════════════════
 // WEB PUSH — VAPID + Vercel Function
 // ═══════════════════════════════════════════════
@@ -10348,4 +10607,593 @@ if ('serviceWorker' in navigator) {
       navigateTo(e.data.nav);
     }
   });
+}
+
+// ═══════════════════════════════════════════════
+// ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ — beforeunload + backdrop
+// ═══════════════════════════════════════════════
+
+// Предупреждение при закрытии/обновлении вкладки
+window.addEventListener('beforeunload', function(e) {
+  if (_editorDirty) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// Клик по backdrop (мимо .modal) — через guard
+document.addEventListener('click', function(e) {
+  if (!e.target.classList.contains('modal-bg')) return;
+  const modal = e.target;
+  if (!modal.classList.contains('open')) return;
+  closeModal(modal.id);
+});
+
+// Помечаем dirty при вводе текста в полях редакторов
+document.addEventListener('input', function(e) {
+  if (!_editorDirty && e.target.closest) {
+    const inEditor = _DIRTY_MODALS.some(id => {
+      const el = document.getElementById(id);
+      return el && el.classList.contains('open') && el.contains(e.target);
+    });
+    if (inEditor) _setDirty(true);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FLASHCARDS MODULE — BioХим Platform
+// ═══════════════════════════════════════════════════════════════
+
+const FC_DECKS_KEY   = 'flashcard_decks';
+const FC_SR_PREFIX   = 'fc_sr_';
+
+function fcLoad()         { return load(FC_DECKS_KEY) || []; }
+function fcSave(decks)    { save(FC_DECKS_KEY, decks); }
+
+function fcSRKey(sid)     { return FC_SR_PREFIX + sid; }
+function fcGetSR(sid)     {
+  try { return JSON.parse(localStorage.getItem('biohim_' + fcSRKey(sid)) || '{}'); }
+  catch(e) { return {}; }
+}
+function fcSaveSR(sid, data) {
+  localStorage.setItem('biohim_' + fcSRKey(sid), JSON.stringify(data));
+}
+
+function fcNextInterval(cardId, quality, srData) {
+  const item = srData[cardId] || { interval: 1, repetitions: 0, ef: 2.5 };
+  if (quality === 0) {
+    item.repetitions = 0;
+    item.interval    = 1;
+  } else {
+    const n = item.repetitions;
+    if (n === 0)      item.interval = 1;
+    else if (n === 1) item.interval = 3;
+    else              item.interval = Math.round(item.interval * item.ef);
+    const q5  = quality === 1 ? 4 : 1;
+    item.ef   = Math.max(1.3, item.ef + 0.1 - (5 - q5) * (0.08 + (5 - q5) * 0.02));
+    item.repetitions += 1;
+  }
+  const due = new Date();
+  due.setDate(due.getDate() + item.interval);
+  item.nextDue  = due.toISOString().slice(0, 10);
+  item.lastRated = todayStr();
+  srData[cardId] = item;
+  return item;
+}
+
+function fcDeckVisibleFor(deck, sid) {
+  if (!deck.published) return false;
+  if (!deck.assignedTo || deck.assignedTo.length === 0) return true;
+  return deck.assignedTo.includes(sid);
+}
+
+function fcDueCards(sid) {
+  const decks  = fcLoad();
+  const srData = fcGetSR(sid);
+  const today  = todayStr();
+  const result = [];
+  decks.forEach(deck => {
+    if (!fcDeckVisibleFor(deck, sid)) return;
+    (deck.cards || []).forEach(card => {
+      const sr = srData[card.id];
+      if (!sr || sr.nextDue <= today) result.push({ ...card, deckId: deck.id, deckTitle: deck.title });
+    });
+  });
+  return result;
+}
+
+function fcAllCards(sid) {
+  const decks = fcLoad();
+  const result = [];
+  decks.forEach(deck => {
+    if (!fcDeckVisibleFor(deck, sid)) return;
+    (deck.cards || []).forEach(card => result.push({ ...card, deckId: deck.id, deckTitle: deck.title }));
+  });
+  return result;
+}
+
+// ── Admin: render ──────────────────────────────────────────────
+
+function renderFlashcardsAdmin() {
+  const decks    = fcLoad();
+  const students = (load('users') || []).filter(u => u.role === 'student' && u.active !== false);
+  const el       = document.getElementById('flashcards-admin-ui');
+  if (!el) return;
+
+  el.innerHTML = `
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:22px;flex-wrap:wrap">
+    <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--accent);flex:1">🃏 Флешкарты</h2>
+    <button class="btn btn-green" onclick="fcOpenCreateDeck()">+ Новая колода</button>
+  </div>
+  ${decks.length === 0 ? `
+    <div class="card" style="text-align:center;padding:40px;color:var(--text3)">
+      <div style="font-size:2.5rem;margin-bottom:12px">🃏</div>
+      <div style="font-weight:600;font-size:1rem;margin-bottom:6px">Колод пока нет</div>
+      <div style="font-size:0.85rem">Создайте первую колоду — добавьте термины и определения для учеников</div>
+    </div>
+  ` : decks.map(deck => fcRenderDeckCard(deck, students)).join('')}
+  ${fcModalCreateDeckHTML(students)}
+  ${fcModalEditCardHTML()}
+  `;
+}
+
+function fcRenderDeckCard(deck, students) {
+  const cards = deck.cards || [];
+  const assignedNames = (deck.assignedTo || []).map(sid => {
+    const u = (students || []).find(u => u.id === sid);
+    return u ? u.name : sid;
+  });
+  const who = assignedNames.length ? assignedNames.join(', ') : 'Все ученики';
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="font-size:2rem;flex-shrink:0">🗂</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--accent);font-weight:700">${esc(deck.title)}</span>
+          <span class="badge ${deck.published ? 'badge-green' : 'badge-red'}">${deck.published ? 'Опубликована' : 'Черновик'}</span>
+          <span class="badge badge-blue">${cards.length} карточек</span>
+        </div>
+        ${deck.description ? `<div style="font-size:0.83rem;color:var(--text3);margin-top:4px">${esc(deck.description)}</div>` : ''}
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:4px">👤 ${esc(who)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0">
+        <button class="btn btn-outline btn-sm" onclick="fcOpenAddCard('${escAttr(deck.id)}')">+ Карточка</button>
+        <button class="btn btn-outline btn-sm" onclick="fcTogglePublish('${escAttr(deck.id)}')">${deck.published ? '🙈 Скрыть' : '📢 Опубликовать'}</button>
+        <button class="btn btn-outline btn-sm" onclick="fcOpenEditDeck('${escAttr(deck.id)}')">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="fcDeleteDeck('${escAttr(deck.id)}')">🗑</button>
+      </div>
+    </div>
+    ${cards.length > 0 ? `
+    <div style="margin-top:16px;border-top:1px solid var(--green-xpale);padding-top:14px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px">
+        ${cards.map(card => `
+        <div style="background:var(--bg);border:1px solid var(--green-pale);border-radius:10px;padding:10px 12px;min-width:180px;max-width:240px">
+          <div style="font-weight:700;font-size:0.85rem;color:var(--green-deep);margin-bottom:4px">${esc(card.term)}</div>
+          <div style="font-size:0.78rem;color:var(--text2);line-height:1.4">${esc(card.definition)}</div>
+          <div style="display:flex;gap:4px;margin-top:8px">
+            <button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.72rem" onclick="fcEditCard('${escAttr(deck.id)}','${escAttr(card.id)}')">✏️</button>
+            <button class="btn btn-red btn-sm" style="padding:3px 8px;font-size:0.72rem" onclick="fcDeleteCard('${escAttr(deck.id)}','${escAttr(card.id)}')">✕</button>
+          </div>
+        </div>`).join('')}
+      </div>
+    </div>
+    ` : `<div style="margin-top:12px;font-size:0.83rem;color:var(--text3)">Карточек ещё нет — нажмите «+ Карточка»</div>`}
+  </div>`;
+}
+
+function fcModalCreateDeckHTML(students) {
+  students = students || (load('users') || []).filter(u => u.role === 'student' && u.active !== false);
+  return `
+  <div class="modal-bg" id="fc-modal-deck" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center">
+    <div class="modal" style="max-width:500px;width:94%">
+      <div class="modal-title" id="fc-deck-modal-title">🗂 Новая колода</div>
+      <span class="modal-close" onclick="fcCloseDeckModal()">✕</span>
+      <input type="hidden" id="fc-edit-deck-id">
+      <div class="form-group">
+        <label>Название колоды</label>
+        <input id="fc-deck-title" placeholder="Биология: Клетка, Химия: Органика…">
+      </div>
+      <div class="form-group">
+        <label>Описание <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <input id="fc-deck-desc" placeholder="Краткое описание темы">
+      </div>
+      <div class="form-group">
+        <label>Назначить ученикам <span style="font-weight:400;color:var(--text3)">(пусто = все)</span></label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px" id="fc-assign-list">
+          ${students.map(s => `
+            <label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;cursor:pointer;padding:5px 10px;border:1.5px solid var(--green-pale);border-radius:8px;user-select:none">
+              <input type="checkbox" class="fc-assign-cb" value="${escAttr(s.id)}" style="accent-color:var(--green-mid)"> ${esc(s.name)}
+            </label>`).join('')}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-green" onclick="fcSaveDeck()">Сохранить</button>
+        <button class="btn btn-outline" onclick="fcCloseDeckModal()">Отмена</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function fcModalEditCardHTML() {
+  return `
+  <div class="modal-bg" id="fc-modal-card" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1001;align-items:center;justify-content:center">
+    <div class="modal" style="max-width:480px;width:94%">
+      <div class="modal-title" id="fc-card-modal-title">➕ Новая карточка</div>
+      <span class="modal-close" onclick="fcCloseCardModal()">✕</span>
+      <input type="hidden" id="fc-edit-card-deck-id">
+      <input type="hidden" id="fc-edit-card-id">
+      <div class="form-group">
+        <label>Термин / Вопрос <span style="font-size:0.75rem;color:var(--text3)">(лицевая сторона)</span></label>
+        <textarea id="fc-card-term" rows="2" placeholder="Митохондрия"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Определение / Ответ <span style="font-size:0.75rem;color:var(--text3)">(оборотная сторона)</span></label>
+        <textarea id="fc-card-def" rows="3" placeholder="Органелла клетки — «энергетическая станция»…"></textarea>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-green" onclick="fcSaveCard()">Сохранить</button>
+        <button class="btn btn-outline" onclick="fcCloseCardModal()">Отмена</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Admin: actions ─────────────────────────────────────────────
+
+function fcOpenCreateDeck() {
+  const m = document.getElementById('fc-modal-deck');
+  if (!m) { renderFlashcardsAdmin(); setTimeout(fcOpenCreateDeck, 50); return; }
+  document.getElementById('fc-deck-modal-title').textContent = '🗂 Новая колода';
+  document.getElementById('fc-edit-deck-id').value = '';
+  document.getElementById('fc-deck-title').value   = '';
+  document.getElementById('fc-deck-desc').value    = '';
+  document.querySelectorAll('.fc-assign-cb').forEach(cb => cb.checked = false);
+  m.style.display = 'flex';
+}
+
+function fcOpenEditDeck(deckId) {
+  const deck = fcLoad().find(d => d.id === deckId);
+  if (!deck) return;
+  const m = document.getElementById('fc-modal-deck');
+  if (!m) { renderFlashcardsAdmin(); setTimeout(() => fcOpenEditDeck(deckId), 50); return; }
+  document.getElementById('fc-deck-modal-title').textContent = '✏️ Редактировать колоду';
+  document.getElementById('fc-edit-deck-id').value = deck.id;
+  document.getElementById('fc-deck-title').value   = deck.title || '';
+  document.getElementById('fc-deck-desc').value    = deck.description || '';
+  document.querySelectorAll('.fc-assign-cb').forEach(cb => {
+    cb.checked = (deck.assignedTo || []).includes(cb.value);
+  });
+  m.style.display = 'flex';
+}
+
+function fcCloseDeckModal() {
+  const m = document.getElementById('fc-modal-deck');
+  if (m) m.style.display = 'none';
+}
+
+function fcSaveDeck() {
+  const title = (document.getElementById('fc-deck-title').value || '').trim();
+  if (!title) { showNotif('⚠️ Введите название колоды'); return; }
+  const desc     = (document.getElementById('fc-deck-desc').value || '').trim();
+  const assigned = [...document.querySelectorAll('.fc-assign-cb:checked')].map(cb => cb.value);
+  const editId   = document.getElementById('fc-edit-deck-id').value;
+  const decks    = fcLoad();
+  if (editId) {
+    const idx = decks.findIndex(d => d.id === editId);
+    if (idx !== -1) { decks[idx].title = title; decks[idx].description = desc; decks[idx].assignedTo = assigned; }
+  } else {
+    decks.push({ id: 'fc_' + Date.now(), title, description: desc, assignedTo: assigned, published: false, cards: [], createdAt: todayStr() });
+  }
+  fcSave(decks);
+  fcCloseDeckModal();
+  renderFlashcardsAdmin();
+  showNotif('✅ Колода сохранена');
+}
+
+function fcTogglePublish(deckId) {
+  const decks = fcLoad();
+  const deck  = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  if (!deck.cards || deck.cards.length === 0) { showNotif('⚠️ Добавьте хотя бы одну карточку перед публикацией'); return; }
+  deck.published = !deck.published;
+  fcSave(decks);
+  renderFlashcardsAdmin();
+  showNotif(deck.published ? '📢 Колода опубликована' : '🙈 Колода скрыта');
+}
+
+function fcDeleteDeck(deckId) {
+  if (!confirm('Удалить колоду со всеми карточками?')) return;
+  fcSave(fcLoad().filter(d => d.id !== deckId));
+  renderFlashcardsAdmin();
+  showNotif('🗑 Колода удалена');
+}
+
+function fcOpenAddCard(deckId) {
+  const m = document.getElementById('fc-modal-card');
+  if (!m) { renderFlashcardsAdmin(); setTimeout(() => fcOpenAddCard(deckId), 50); return; }
+  document.getElementById('fc-card-modal-title').textContent = '➕ Новая карточка';
+  document.getElementById('fc-edit-card-deck-id').value = deckId;
+  document.getElementById('fc-edit-card-id').value      = '';
+  document.getElementById('fc-card-term').value         = '';
+  document.getElementById('fc-card-def').value          = '';
+  m.style.display = 'flex';
+}
+
+function fcEditCard(deckId, cardId) {
+  const deck = fcLoad().find(d => d.id === deckId);
+  const card = (deck?.cards || []).find(c => c.id === cardId);
+  if (!card) return;
+  const m = document.getElementById('fc-modal-card');
+  if (!m) return;
+  document.getElementById('fc-card-modal-title').textContent = '✏️ Редактировать карточку';
+  document.getElementById('fc-edit-card-deck-id').value = deckId;
+  document.getElementById('fc-edit-card-id').value      = cardId;
+  document.getElementById('fc-card-term').value         = card.term || '';
+  document.getElementById('fc-card-def').value          = card.definition || '';
+  m.style.display = 'flex';
+}
+
+function fcCloseCardModal() {
+  const m = document.getElementById('fc-modal-card');
+  if (m) m.style.display = 'none';
+}
+
+function fcSaveCard() {
+  const term = (document.getElementById('fc-card-term').value || '').trim();
+  const def  = (document.getElementById('fc-card-def').value || '').trim();
+  if (!term || !def) { showNotif('⚠️ Заполните термин и определение'); return; }
+  const deckId = document.getElementById('fc-edit-card-deck-id').value;
+  const cardId = document.getElementById('fc-edit-card-id').value;
+  const decks  = fcLoad();
+  const deck   = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  if (cardId) {
+    const card = (deck.cards || []).find(c => c.id === cardId);
+    if (card) { card.term = term; card.definition = def; }
+  } else {
+    deck.cards = deck.cards || [];
+    deck.cards.push({ id: 'card_' + Date.now() + '_' + Math.random().toString(36).slice(2,6), term, definition: def });
+  }
+  fcSave(decks);
+  fcCloseCardModal();
+  renderFlashcardsAdmin();
+  showNotif('✅ Карточка сохранена');
+}
+
+function fcDeleteCard(deckId, cardId) {
+  if (!confirm('Удалить карточку?')) return;
+  const decks = fcLoad();
+  const deck  = decks.find(d => d.id === deckId);
+  if (!deck) return;
+  deck.cards = (deck.cards || []).filter(c => c.id !== cardId);
+  fcSave(decks);
+  renderFlashcardsAdmin();
+  showNotif('🗑 Карточка удалена');
+}
+
+// ── Student: render ────────────────────────────────────────────
+
+function renderStudentFlashcards() {
+  const sid    = currentUser.id;
+  const decks  = fcLoad().filter(d => fcDeckVisibleFor(d, sid));
+  const srData = fcGetSR(sid);
+  const today  = todayStr();
+  const el     = document.getElementById('student-flashcards-ui');
+  if (!el) return;
+
+  let totalCards = 0, dueCards = 0, learnedCards = 0;
+  decks.forEach(deck => {
+    (deck.cards || []).forEach(card => {
+      totalCards++;
+      const sr = srData[card.id];
+      if (!sr || sr.nextDue <= today) dueCards++;
+      if (sr && (sr.repetitions || 0) > 0 && sr.nextDue > today) learnedCards++;
+    });
+  });
+
+  el.innerHTML = `
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">
+    <div class="stat-card"><div class="stat-icon">🃏</div><div class="stat-num">${totalCards}</div><div class="stat-label">Всего карточек</div></div>
+    <div class="stat-card"><div class="stat-icon">🔥</div><div class="stat-num" style="color:${dueCards>0?'var(--gold)':'var(--green-deep)'}">${dueCards}</div><div class="stat-label">К повторению</div></div>
+    <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num">${learnedCards}</div><div class="stat-label">Усвоено</div></div>
+  </div>
+
+  ${dueCards > 0 ? `
+  <div style="background:linear-gradient(135deg,#fff3cd,#ffe08a);border:1.5px solid var(--gold);border-radius:14px;padding:18px 22px;display:flex;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap">
+    <div style="font-size:2rem">🔥</div>
+    <div style="flex:1">
+      <div style="font-weight:700;color:#7d5a00;font-size:1rem">Есть ${dueCards} карточек для повторения!</div>
+      <div style="font-size:0.83rem;color:#9a7200;margin-top:3px">Запустите сессию — переверните карточку, оцените себя</div>
+    </div>
+    <button class="btn btn-green" onclick="fcStartSession('${escAttr(sid)}')">▶ Начать сессию</button>
+  </div>
+  ` : `
+  <div style="background:var(--green-xpale);border-radius:14px;padding:16px 20px;margin-bottom:22px;text-align:center;color:var(--green-deep);font-weight:600">
+    🎉 Отличная работа! На сегодня нечего повторять. Возвращайтесь завтра.
+  </div>
+  `}
+
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>Мои колоды</div>
+    ${decks.length === 0 ? `
+      <div style="text-align:center;padding:30px;color:var(--text3)">
+        <div style="font-size:2rem;margin-bottom:8px">🃏</div>
+        <div>Преподаватель ещё не создал флешкарты</div>
+      </div>
+    ` : decks.map(deck => {
+      const cards = deck.cards || [];
+      let deckDue = 0, deckLearned = 0;
+      cards.forEach(card => {
+        const sr = srData[card.id];
+        if (!sr || sr.nextDue <= today) deckDue++;
+        else if ((sr.repetitions || 0) > 0) deckLearned++;
+      });
+      const pct = cards.length ? Math.round(deckLearned / cards.length * 100) : 0;
+      return `
+      <div style="display:flex;align-items:center;gap:14px;padding:14px;border:1px solid var(--green-xpale);border-radius:12px;margin-bottom:10px;cursor:pointer;transition:box-shadow 0.18s"
+           onmouseenter="this.style.boxShadow='var(--shadow)'" onmouseleave="this.style.boxShadow=''"
+           onclick="fcStartDeckSession('${escAttr(sid)}','${escAttr(deck.id)}')">
+        <div style="font-size:2rem">🗂</div>
+        <div style="flex:1">
+          <div style="font-weight:700;color:var(--accent)">${esc(deck.title)}</div>
+          ${deck.description ? `<div style="font-size:0.78rem;color:var(--text3)">${esc(deck.description)}</div>` : ''}
+          <div style="margin-top:8px;background:var(--green-xpale);border-radius:20px;height:6px;width:100%;overflow:hidden">
+            <div style="background:var(--green-mid);height:100%;width:${pct}%;border-radius:20px"></div>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">${deckLearned}/${cards.length} усвоено · ${deckDue > 0 ? `🔥 ${deckDue} к повторению` : '✅ всё усвоено'}</div>
+        </div>
+        ${deckDue > 0 ? `<span class="badge badge-gold">${deckDue} карточек</span>` : `<span class="badge badge-green">✓</span>`}
+      </div>`;
+    }).join('')}
+  </div>
+
+  <div id="fc-session-container" style="display:none"></div>
+  `;
+}
+
+// ── Session ────────────────────────────────────────────────────
+
+let _fcSession = { queue:[], index:0, known:0, unknown:0, sid:null, srData:{} };
+let _fcFlipped = false;
+
+function fcStartSession(sid) {
+  _fcSession = { queue: fcDueCards(sid).sort(()=>Math.random()-0.5), index:0, known:0, unknown:0, sid, srData: fcGetSR(sid) };
+  if (!_fcSession.queue.length) { showNotif('🎉 Нечего повторять!'); return; }
+  fcShowCard();
+}
+
+function fcStartDeckSession(sid, deckId) {
+  const deck   = fcLoad().find(d => d.id === deckId);
+  if (!deck) return;
+  const today  = todayStr();
+  const srData = fcGetSR(sid);
+  const queue  = (deck.cards || [])
+    .map(c => ({ ...c, deckId: deck.id, deckTitle: deck.title }))
+    .filter(c => { const sr = srData[c.id]; return !sr || sr.nextDue <= today; })
+    .sort(() => Math.random() - 0.5);
+  if (!queue.length) { showNotif(`✅ Все карточки колоды «${deck.title}» усвоены!`); return; }
+  _fcSession = { queue, index:0, known:0, unknown:0, sid, srData };
+  fcShowCard();
+}
+
+function fcShowCard() {
+  const el = document.getElementById('fc-session-container');
+  if (!el) return;
+  const { queue, index, known, unknown } = _fcSession;
+  if (index >= queue.length) { fcShowResults(); return; }
+  const card  = queue[index];
+  const total = queue.length;
+  const pct   = Math.round(index / total * 100);
+  _fcFlipped  = false;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior:'smooth', block:'start' });
+  el.innerHTML = `
+  <div style="background:var(--card);border-radius:20px;border:1px solid var(--green-xpale);box-shadow:var(--shadow2);padding:28px;margin-top:20px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div style="flex:1;background:var(--green-xpale);border-radius:20px;height:8px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,var(--green-mid),var(--green-light));height:100%;width:${pct}%;border-radius:20px;transition:width 0.4s"></div>
+      </div>
+      <span style="font-size:0.82rem;color:var(--text3);white-space:nowrap">${index+1} / ${total}</span>
+      <button class="btn btn-outline btn-sm" onclick="fcEndSession()">✕ Завершить</button>
+    </div>
+    <div style="font-size:0.75rem;color:var(--text3);text-align:center;margin-bottom:12px;letter-spacing:0.08em;text-transform:uppercase">${esc(card.deckTitle)}</div>
+
+    <div class="fc-flip-scene" style="cursor:pointer;margin:0 auto;max-width:560px;height:260px" onclick="fcFlipCard()">
+      <div id="fc-flip-card" class="fc-flip-card">
+        <div class="fc-face" style="background:linear-gradient(135deg,var(--accent) 0%,var(--green-mid) 100%);box-shadow:0 8px 32px rgba(45,106,79,0.25)">
+          <div style="font-size:0.72rem;letter-spacing:0.14em;color:rgba(255,255,255,0.55);text-transform:uppercase;margin-bottom:14px">Термин</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.55rem;color:#fff;text-align:center;line-height:1.3;font-weight:600">${esc(card.term)}</div>
+          <div style="margin-top:22px;font-size:0.78rem;color:rgba(255,255,255,0.45)">нажмите, чтобы перевернуть</div>
+        </div>
+        <div class="fc-back" style="background:linear-gradient(135deg,#fff 0%,var(--green-xpale) 100%);border:2px solid var(--green-pale)">
+          <div style="font-size:0.72rem;letter-spacing:0.14em;color:var(--text3);text-transform:uppercase;margin-bottom:14px">Определение</div>
+          <div style="font-size:1.05rem;color:var(--text);text-align:center;line-height:1.6">${esc(card.definition)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="fc-rate-btns" style="display:none;justify-content:center;gap:20px;margin-top:24px">
+      <button onclick="fcRate(0)" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 36px;border-radius:14px;border:2px solid #f5c6c2;background:#fdecea;color:var(--red);cursor:pointer;font-family:Nunito,sans-serif;font-size:0.95rem;font-weight:700;transition:transform 0.18s" onmouseenter="this.style.transform='translateY(-3px)'" onmouseleave="this.style.transform=''">
+        <span style="font-size:1.6rem">😕</span> Не знаю
+      </button>
+      <button onclick="fcRate(1)" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 36px;border-radius:14px;border:none;background:linear-gradient(135deg,var(--green-deep),var(--green-mid));color:#fff;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.95rem;font-weight:700;transition:transform 0.18s;box-shadow:0 4px 16px rgba(45,106,79,0.22)" onmouseenter="this.style.transform='translateY(-3px)'" onmouseleave="this.style.transform=''">
+        <span style="font-size:1.6rem">✅</span> Знаю!
+      </button>
+    </div>
+
+    <div style="display:flex;justify-content:center;gap:24px;margin-top:20px;font-size:0.83rem">
+      <span style="color:var(--green-mid);font-weight:700">✅ ${known} знаю</span>
+      <span style="color:var(--red);font-weight:700">😕 ${unknown} не знаю</span>
+    </div>
+  </div>`;
+}
+
+function fcFlipCard() {
+  const card = document.getElementById('fc-flip-card');
+  const btns = document.getElementById('fc-rate-btns');
+  if (!card) return;
+  _fcFlipped = !_fcFlipped;
+  if (_fcFlipped) card.classList.add('flipped'); else card.classList.remove('flipped');
+  if (_fcFlipped && btns) setTimeout(() => { btns.style.display = 'flex'; }, 300);
+  else if (btns) btns.style.display = 'none';
+}
+
+function fcRate(quality) {
+  const { queue, index, sid } = _fcSession;
+  const card = queue[index];
+  if (!card) return;
+  fcNextInterval(card.id, quality, _fcSession.srData);
+  fcSaveSR(sid, _fcSession.srData);
+  if (quality === 1) _fcSession.known++; else _fcSession.unknown++;
+  _fcSession.index++;
+  fcShowCard();
+}
+
+function fcEndSession() {
+  if (_fcSession.sid) fcSaveSR(_fcSession.sid, _fcSession.srData);
+  const el = document.getElementById('fc-session-container');
+  if (el) el.style.display = 'none';
+  showNotif('📊 Сессия завершена');
+  renderStudentFlashcards();
+}
+
+function fcShowResults() {
+  const { known, unknown, sid } = _fcSession;
+  fcSaveSR(sid, _fcSession.srData);
+  const total = known + unknown;
+  const pct   = total ? Math.round(known / total * 100) : 0;
+  const el    = document.getElementById('fc-session-container');
+  if (!el) return;
+  let msg, color;
+  if (pct >= 80)      { msg = '🏆 Отличный результат!';   color = 'var(--green-mid)'; }
+  else if (pct >= 50) { msg = '👍 Хороший прогресс!';     color = 'var(--gold)'; }
+  else                { msg = '💪 Продолжайте учиться!';  color = 'var(--red)'; }
+  const circ = 2 * Math.PI * 50;
+  el.innerHTML = `
+  <div style="background:var(--card);border-radius:20px;border:1px solid var(--green-xpale);box-shadow:var(--shadow2);padding:40px 28px;margin-top:20px;text-align:center">
+    <div style="font-size:3.5rem;margin-bottom:12px">${pct>=80?'🏆':pct>=50?'🌱':'💪'}</div>
+    <div style="font-family:'Playfair Display',serif;font-size:1.8rem;color:${color};margin-bottom:6px">${msg}</div>
+    <div style="font-size:0.9rem;color:var(--text3);margin-bottom:28px">Сессия завершена</div>
+    <div style="position:relative;width:120px;height:120px;margin:0 auto 24px;display:flex;align-items:center;justify-content:center">
+      <svg viewBox="0 0 120 120" style="position:absolute;inset:0;transform:rotate(-90deg)">
+        <circle cx="60" cy="60" r="50" fill="none" stroke="var(--green-xpale)" stroke-width="10"/>
+        <circle cx="60" cy="60" r="50" fill="none" stroke="${color}" stroke-width="10"
+          stroke-dasharray="${circ.toFixed(1)}"
+          stroke-dashoffset="${(circ*(1-pct/100)).toFixed(1)}"
+          stroke-linecap="round" style="transition:stroke-dashoffset 1s ease"/>
+      </svg>
+      <div style="font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:700;color:${color}">${pct}%</div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:32px;margin-bottom:28px">
+      <div><div style="font-size:2rem;font-weight:800;color:var(--green-mid)">${known}</div><div style="font-size:0.8rem;color:var(--text3)">Знаю</div></div>
+      <div style="width:1px;background:var(--green-xpale)"></div>
+      <div><div style="font-size:2rem;font-weight:800;color:var(--red)">${unknown}</div><div style="font-size:0.8rem;color:var(--text3)">Не знаю</div></div>
+    </div>
+    ${unknown > 0 ? `<div style="font-size:0.83rem;color:var(--text3);margin-bottom:20px">Карточки «Не знаю» будут показаны завтра по алгоритму SM-2</div>` : ''}
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <button class="btn btn-green" onclick="fcStartSession('${escAttr(sid)}')">🔁 Ещё раз</button>
+      <button class="btn btn-outline" onclick="fcEndSession()">← К колодам</button>
+    </div>
+  </div>`;
 }
