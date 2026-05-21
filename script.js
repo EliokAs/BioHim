@@ -2644,7 +2644,7 @@ function submitCheck(itemId,qId,itemType){
     item.autoScore=total;
     const pct=Math.round(total/item.autoTotal*100);
     item.autoPct=pct;
-    item.autoGrade=calcGrade(pct,item.gradeConfig);
+    // НЕ ставим autoGrade — итоговую оценку преподаватель поставит отдельно
   }
   save(storeKey,items);
   const notifs=load('notifs')||[];
@@ -2707,14 +2707,16 @@ function saveItemOverallReview(itemId, itemType){
   item.autoScore=score;
   if(item.autoTotal){ item.autoPct=Math.round(score/item.autoTotal*100); }
   item.autoGrade=grade;
+  item.finalGrade=grade;   // итоговая оценка — видна ученику только после этого
   item.teacherFeedback=feedback;
   item.openChecked=true;
   save(storeKey,items);
   const navMap={test:'student-tests',hw:'student-hw',trial:'student-trial'};
   const labelMap={test:'Тест',hw:'ДЗ',trial:'Пробник'};
+  const pctStr=item.autoTotal?` · ${score}/${item.autoTotal} б. (${item.autoPct}%)`:'';
   const notifs=load('notifs')||[];
   notifs.push({id:'n'+Date.now(),studentId:item.studentId,
-    text:`📊 ${labelMap[itemType]||''} «${item.title}» проверен. Оценка: ${grade}${feedback?'. Преподаватель оставил отзыв':''}`,
+    text:`🎓 ${labelMap[itemType]||''} «${item.title}» проверен. Итоговая оценка: ${grade}${pctStr}${feedback?' · Есть отзыв преподавателя':''}`,
     date:new Date().toLocaleDateString('ru'),read:false,nav:navMap[itemType]||''});
   save('notifs',notifs);
   closeModal('modal-check-answer');
@@ -5032,14 +5034,11 @@ function checkTrialOpenAnswer(tid,qid){
   t.openScore=openScore;
   const totalScore=(t.autoScoreBase||t.autoScore||0)+openScore;
   t.autoScore=totalScore;
-  if(t.autoTotal){
-    const pct=Math.round(totalScore/t.autoTotal*100);
-    t.autoPct=pct;
-    t.autoGrade=calcGrade(pct,t.gradeConfig);
-  }
+  if(t.autoTotal){ const pct=Math.round(totalScore/t.autoTotal*100); t.autoPct=pct; }
+  // НЕ ставим autoGrade — итоговую оценку преподаватель поставит отдельно через «Итоговая оценка»
   save('trials',trials);
   renderTrialAdmin();
-  showNotif(`✅ Ответ засчитан: +${pts} б.${t.openChecked?' · Оценка: '+t.autoGrade:''}`);}
+  showNotif(`✅ Ответ засчитан: +${pts} б.${t.openChecked?' · Все открытые проверены — не забудьте поставить итоговую оценку!':''}`);}
 
 // ── OVERALL TRIAL REVIEW (grade + feedback for whole trial) ──
 function openTrialOverallReview(tid){
@@ -5089,11 +5088,13 @@ function saveTrialOverallReview(tid){
   t.autoScore=score;
   if(t.autoTotal){ t.autoPct=Math.round(score/t.autoTotal*100); }
   t.autoGrade=grade;
+  t.finalGrade=grade;   // итоговая оценка — видна ученику только после этого
   t.teacherFeedback=feedback;
   t.openChecked=true;
   save('trials',trials);
+  const pctStr=t.autoTotal?` · ${score}/${t.autoTotal} б. (${t.autoPct}%)`:'';
   const notifs=load('notifs')||[];
-  notifs.push({id:'n'+Date.now(),studentId:t.studentId,text:`📊 Пробник «${t.title}» проверен. Оценка: ${grade}${feedback?'. Отзыв: '+feedback.substring(0,60)+'...':''}`,date:new Date().toLocaleDateString('ru'),read:false,nav:'student-trial'});
+  notifs.push({id:'n'+Date.now(),studentId:t.studentId,text:`🎓 Пробник «${t.title}» проверен. Итоговая оценка: ${grade}${pctStr}${feedback?' · Есть отзыв преподавателя':''}`,date:new Date().toLocaleDateString('ru'),read:false,nav:'student-trial'});
   save('notifs',notifs);
   closeModal('modal-check-answer');
   renderTrialAdmin();
@@ -5123,9 +5124,9 @@ function renderStudentTrial(){
     const statusBadge=!t.submitted
       ?`<span class="badge badge-gold">⏳ Не пройден</span>`
       :fullyChecked
-        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.autoTotal?(' · Оценка '+(t.autoGrade||calcGrade(pct,t.gradeConfig))):''}</span>`
+        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.finalGrade?' · Оценка '+t.finalGrade:''}</span>`
         :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
-    const grade=t.autoGrade||(t.autoTotal?calcGrade(pct,t.gradeConfig):null);
+    const grade=t.finalGrade||null;   // показываем только оценку от преподавателя
     return `<div class="card collapsible-card" data-item-id="${t.id}">
       <div class="card-title collapsible collapsed" onclick="toggleCollapse('tr_${t.id}',this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
@@ -5228,7 +5229,8 @@ function submitTrial(timeout=false){
   t.autoTotal=t.maxPts||total; // maxPts = full trial max (auto+open), used as denominator
   t.autoScoreBase=score; // store auto-only score for later open question addition
   const pct=t.autoTotal?Math.round(score/t.autoTotal*100):0;
-  t.autoGrade=pct!=null?calcGrade(pct,t.gradeConfig):null; t.autoPct=pct;
+  // НЕ сохраняем autoGrade — итоговая оценка ставится только преподавателем
+  t.autoPct=pct;
   save('trials',trials);
   _collectAndSaveWrongAnswersTrial(t, _trialAnswers);
   document.getElementById('modal-take-trial').classList.remove('open');
@@ -5242,12 +5244,13 @@ _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:curren
 function viewTrialResultHTML(t){
   const allQ=(t.sections||[]).flatMap(s=>s.questions);
   const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
-  const _trialGrade = t.autoGrade || (t.autoTotal ? calcGrade(pct, t.gradeConfig) : null);
   return `<div style="margin-top:4px">
-    ${_trialGrade?`<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span class="grade-result-badge grade-${_trialGrade}">🎓 Оценка: ${_trialGrade}</span>
-      <span class="badge badge-green">${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%</span>
-    </div>`:''}
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="badge badge-blue">⭐ Авто-баллы: ${t.autoScore||0}/${t.autoTotal||0} б. (${pct}%)</span>
+      ${t.finalGrade
+        ?`<span class="grade-result-badge grade-${t.finalGrade}">🎓 Итоговая оценка: ${t.finalGrade}</span>`
+        :`<span class="badge badge-gold">⏳ Итоговая оценка ожидает преподавателя</span>`}
+    </div>
     ${t.teacherFeedback?`<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>`:''}
     ${allQ.map(q=>renderReviewQuestion(q,t.answers||{})).join('')}
   </div>`;
@@ -6859,7 +6862,7 @@ function renderStudentTests(){
   }
   el.innerHTML=tests.map(t=>{
     const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-    const grade = t.submitted && t.autoTotal ? (t.autoGrade || calcGrade(pct, t.gradeConfig)) : null;
+    const grade = t.submitted ? (t.finalGrade||null) : null;   // только оценка от преподавателя
     const maxAttempts = t.maxAttempts||0;
     const attemptsUsed = (t.attempts||[]).length;
     const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
@@ -6880,8 +6883,8 @@ function renderStudentTests(){
             if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
             return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
           })()}
-          ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
-          ${grade?`<span class="grade-result-badge grade-${grade}">Оценка: ${grade}</span>`:''}
+          ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
+          ${grade?`<span class="grade-result-badge grade-${grade}">🎓 Итоговая оценка: ${grade}</span>`:`${t.submitted?`<span class="badge badge-gold">⏳ Ожидает оценки преподавателя</span>`:''}`}
           ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
           ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
           ${(!t.submitted && (t.timeLimit||t.timeMins)) ? `<span class="badge" style="background:#fff3f3;color:#c0392b;border-color:#f5c6c2">⏱ ${t.timeLimit||t.timeMins} мин</span>` : ''}
@@ -7047,7 +7050,7 @@ function submitTest(autoSubmit){
   t.autoScore=finalAttempt.score;
   t.autoScoreBase=finalAttempt.score; // base auto-only score for open question addition
   t.autoTotal=finalAttempt.total||t.autoTotal||0;
-  t.autoGrade=finalAttempt.grade;
+  // НЕ сохраняем autoGrade — итоговая оценка ставится только преподавателем
   t.autoPct=finalAttempt.pct;
   save('tests',tests);
   _collectAndSaveWrongAnswers('test', t, _testAnswers);
@@ -7057,7 +7060,7 @@ function submitTest(autoSubmit){
   const maxAttempts=t.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - t.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  showNotif(`✅ Тест сдан! ${score}/${t.autoTotal||0} б. (${pct}%) — оценка ${grade}${attemptsMsg}`);
+  showNotif(`✅ Тест сдан! Авто-баллы: ${score}/${t.autoTotal||0} б. (${pct}%)${attemptsMsg} — итоговая оценка появится после проверки преподавателем`);
   // notify admin
 _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}» (попытка ${t.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
@@ -7096,7 +7099,7 @@ function renderStudentHW(){
     return `<div class="card collapsible-card" data-item-id="${h.id}">
       <div class="card-title collapsible collapsed" onclick="toggleCollapse('hw_${h.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(h.title)}
-        ${h.autoGrade?`<span class="grade-result-badge grade-${h.autoGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.autoGrade}</span>`:''}
+        ${h.finalGrade?`<span class="grade-result-badge grade-${h.finalGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.finalGrade}</span>`:''}
         ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
@@ -7115,7 +7118,10 @@ function renderStudentHW(){
         </div>
         ${renderAttemptsHistory(h)}
         ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
-        ${h.submitted && h.autoGrade ? `<div style="margin-bottom:10px"><span class="grade-result-badge grade-${h.autoGrade}">🎓 Оценка: ${h.autoGrade}</span>${h.autoTotal?` <span class="badge badge-blue">⭐ ${h.autoScore||0}/${h.autoTotal} б. (${Math.round((h.autoScore||0)/h.autoTotal*100)}%)</span>`:''}</div>` : ''}
+        ${h.submitted?`<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          ${h.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${h.autoScore||0}/${h.autoTotal} б. (${Math.round((h.autoScore||0)/h.autoTotal*100)}%)</span>`:''}
+          ${h.finalGrade?`<span class="grade-result-badge grade-${h.finalGrade}">🎓 Итоговая оценка: ${h.finalGrade}</span>`:`<span class="badge badge-gold">⏳ Ожидает оценки преподавателя</span>`}
+        </div>`:''}
         ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
         ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
         ${h.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
@@ -7240,7 +7246,7 @@ function submitHW(){
   h.autoScoreBase=finalAttempt.score;
   h.autoTotal=finalAttempt.total||h.autoTotal||0;
   h.autoPct=finalAttempt.pct;
-  if(h.autoTotal){ h.autoGrade=calcGrade(finalAttempt.pct, h.gradeConfig); }
+  // НЕ сохраняем autoGrade — итоговая оценка ставится только преподавателем
   save('hw',hws);
   _collectAndSaveWrongAnswers('hw', h, _hwAnswers);
   closeModal('modal-take-test');
@@ -7249,8 +7255,7 @@ function submitHW(){
   const maxAttempts=h.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - h.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  const gradeMsg = h.autoGrade ? ` — оценка ${h.autoGrade}` : '';
-  showNotif(`✅ ДЗ сдано! ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${gradeMsg}${attemptsMsg}`);
+  showNotif(`✅ ДЗ сдано! Авто-баллы: ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${attemptsMsg} — итоговая оценка появится после проверки преподавателем`);
   // notify admin
 _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
@@ -7279,7 +7284,7 @@ function renderStudentGrades(){
     } else if(t.submitted){
       const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
       items.push({type:'test', icon:'📋', title:t.title, date:t.date, time:'',
-        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true});
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.finalGrade||null, attemptN:1, totalAttempts:1, isFinal:true});
     }
   });
   hws.forEach(h=>{
@@ -7298,9 +7303,8 @@ function renderStudentGrades(){
   trials.forEach(t=>{
     if(t.submitted){
       const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
-      const trialGrade = t.autoGrade || (pct!=null ? calcGrade(pct, t.gradeConfig) : null);
       items.push({type:'trial', icon:'🎯', title:t.title, date:t.date, time:'',
-        score:t.autoScore, total:t.autoTotal, pct, grade:trialGrade, attemptN:1, totalAttempts:1, isFinal:true});
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.finalGrade||null, attemptN:1, totalAttempts:1, isFinal:true});
     }
   });
 
@@ -7337,10 +7341,10 @@ function renderStudentGrades(){
     // Sort by date desc (approximate)
     return filtered.map(i=>{
       const gradeHTML = i.grade
-        ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">Оценка: ${i.grade}</span>`
-        : (i.pending ? `<span class="badge badge-gold" style="font-size:0.72rem">⏳ На проверке</span>` : '');
+        ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">🎓 Оценка: ${i.grade}</span>`
+        : `<span class="badge badge-gold" style="font-size:0.72rem">⏳ Ожидает оценки</span>`;
       const scoreHTML = (i.pct!=null)
-        ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
+        ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ Авто: ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
         : '';
       const attemptBadge = i.totalAttempts>1
         ? `<span class="badge" style="font-size:0.68rem;background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">Попытка ${i.attemptN}/${i.totalAttempts}</span>`
@@ -7386,8 +7390,8 @@ function switchGradesTab(type, el){
   if(!filtered.length){ listEl.innerHTML=`<div class="empty-state"><p>Нет данных</p></div>`; return; }
   listEl.innerHTML = filtered.map(i=>{
     const gradeHTML = i.grade
-      ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">Оценка: ${i.grade}</span>`
-      : (i.pending ? `<span class="badge badge-gold" style="font-size:0.72rem">⏳ На проверке</span>` : '');
+      ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">🎓 Оценка: ${i.grade}</span>`
+      : `<span class="badge badge-gold" style="font-size:0.72rem">⏳ Ожидает оценки</span>`;
     const scoreHTML = (i.pct!=null)
       ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
       : '';
@@ -7445,7 +7449,7 @@ function renderGradesAdmin(){
     } else if(t.submitted){
       const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
       items.push({type:'test', icon:'📋', title:t.title, date:t.date, time:'',
-        score:t.autoScore, total:t.autoTotal, pct, grade:t.autoGrade, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.finalGrade||null, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
     }
   });
   hws.forEach(h=>{
@@ -7465,9 +7469,8 @@ function renderGradesAdmin(){
   trials.forEach(t=>{
     if(t.submitted){
       const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : null;
-      const trialGrade = t.autoGrade || (pct!=null ? calcGrade(pct, t.gradeConfig) : null);
       items.push({type:'trial', icon:'🎯', title:t.title, date:t.date, time:'',
-        score:t.autoScore, total:t.autoTotal, pct, grade:trialGrade, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
+        score:t.autoScore, total:t.autoTotal, pct, grade:t.finalGrade||null, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best'});
     }
   });
 
