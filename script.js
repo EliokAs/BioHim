@@ -2566,6 +2566,10 @@ function testItemHTML(t){
       </div>
     </div>
     ${t.teacherFeedback?`<div class="feedback-box" style="margin-top:6px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback.substring(0,100))}${t.teacherFeedback.length>100?'…':''}</div>`:''}
+    ${t.autoGrade?`<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="grade-result-badge grade-${t.autoGrade}">🎓 Оценка: ${t.autoGrade}</span>
+      ${t.autoPct!=null?`<span class="badge badge-green">${t.autoScore||0}/${t.autoTotal||0} б. · ${t.autoPct}%</span>`:''}
+    </div>`:''}
     <div style="margin-top:2px">${availBadge(t)}</div>
     ${needsReview ? `<div id="test-review-panel-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
@@ -2573,7 +2577,12 @@ function testItemHTML(t){
         <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
           <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
           <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${t.answers[q.id]||'—'}</div>
-          <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input type="number" id="pts-test-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="${q.earnedPts!=null?q.earnedPts:0}"
+              style="width:70px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem">
+            <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
+            <button class="btn btn-green btn-sm" onclick="checkTestOpenAnswerInline('${t.id}','${q.id}')">✅ Зачесть</button>
+          </div>
         </div>`).join('')}
       <div style="margin-top:10px;border-top:1px solid var(--green-xpale);padding-top:10px">
         <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')">🎓 Поставить итоговую оценку и отзыв</button>
@@ -3115,6 +3124,10 @@ function hwItemHTML(h){
       </div>
     </div>
     ${h.teacherFeedback?`<div class="feedback-box" style="margin-top:6px"><strong>💬 Отзыв:</strong> ${esc(h.teacherFeedback.substring(0,100))}${h.teacherFeedback.length>100?'…':''}</div>`:''}
+    ${h.autoGrade?`<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="grade-result-badge grade-${h.autoGrade}">🎓 Оценка: ${h.autoGrade}</span>
+      ${h.autoPct!=null?`<span class="badge badge-green">${h.autoScore||0}/${h.autoTotal||0} б. · ${h.autoPct}%</span>`:''}
+    </div>`:''}
     <div style="margin-top:2px">${availBadge(h)}</div>
     ${needsReview ? `<div id="hw-review-panel-${h.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
@@ -3123,7 +3136,10 @@ function hwItemHTML(h){
           <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
           <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${h.answers[q.id]||'—'}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <button class="btn btn-green btn-sm" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
+            <input type="number" id="pts-hw-${h.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="${q.earnedPts!=null?q.earnedPts:0}"
+              style="width:70px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem">
+            <label style="font-size:0.8rem;color:var(--text3)">/ ${+q.points||1} б.</label>
+            <button class="btn btn-green btn-sm" onclick="checkHWOpenAnswerInline('${h.id}','${q.id}')">✅ Зачесть</button>
           </div>
         </div>`).join('')}
       <div style="margin-top:10px;border-top:1px solid var(--green-xpale);padding-top:10px">
@@ -5039,6 +5055,42 @@ function checkTrialOpenAnswer(tid,qid){
   save('trials',trials);
   renderTrialAdmin();
   showNotif(`✅ Ответ засчитан: +${pts} б.${t.openChecked?' · Все открытые проверены — не забудьте поставить итоговую оценку!':''}`);}
+
+function checkTestOpenAnswerInline(tid,qid){
+  const tests=load('tests')||[];
+  const t=tests.find(t=>t.id===tid); if(!t) return;
+  const pts=+(document.getElementById(`pts-test-${tid}-${qid}`)?.value)||0;
+  const allQ=t.questions||[];
+  allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; q.grade=pts; } });
+  const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  t.openChecked=openDone;
+  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
+  t.openScore=openScore;
+  const base=t.autoScoreBase!=null?t.autoScoreBase:(t.autoScore||0);
+  const totalScore=base+openScore;
+  t.autoScore=totalScore;
+  if(t.autoTotal){ t.autoPct=Math.round(totalScore/t.autoTotal*100); }
+  save('tests',tests);
+  renderTestsAdmin();
+  showNotif(`✅ Ответ засчитан: +${pts} б.${t.openChecked?' · Все открытые проверены — не забудьте поставить итоговую оценку!':''}`);}
+
+function checkHWOpenAnswerInline(hwid,qid){
+  const hws=load('hw')||[];
+  const h=hws.find(h=>h.id===hwid); if(!h) return;
+  const pts=+(document.getElementById(`pts-hw-${hwid}-${qid}`)?.value)||0;
+  const allQ=h.questions||[];
+  allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; q.grade=pts; } });
+  const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  h.openChecked=openDone;
+  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
+  h.openScore=openScore;
+  const base=h.autoScoreBase!=null?h.autoScoreBase:(h.autoScore||0);
+  const totalScore=base+openScore;
+  h.autoScore=totalScore;
+  if(h.autoTotal){ h.autoPct=Math.round(totalScore/h.autoTotal*100); }
+  save('hw',hws);
+  renderHWAdmin();
+  showNotif(`✅ Ответ засчитан: +${pts} б.${h.openChecked?' · Все открытые проверены — не забудьте поставить итоговую оценку!':''}`);}
 
 // ── OVERALL TRIAL REVIEW (grade + feedback for whole trial) ──
 function openTrialOverallReview(tid){
