@@ -2476,6 +2476,7 @@ function deleteContent(id){
 
 // ─── TESTS ADMIN ───
 let _tempQuestions=[];
+let _testMaxPtsManual = false;
 let _testsSelectedSid = 'all';
 function renderTestsAdmin(){
   const students = (load('users')||[]).filter(u=>u.role==='student');
@@ -2688,20 +2689,11 @@ function openItemOverallReview(itemId, itemType){
       </div>
     </div>
     <div class="form-group">
-      <label>🎓 Итоговая оценка</label>
-      <select id="ca-final-grade" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;background:var(--white)">
-        <option value="5" ${grade=='5'?'selected':''}>5 — Отлично</option>
-        <option value="4" ${grade=='4'?'selected':''}>4 — Хорошо</option>
-        <option value="3" ${grade=='3'?'selected':''}>3 — Удовлетворительно</option>
-        <option value="2" ${grade=='2'?'selected':''}>2 — Неудовлетворительно</option>
-      </select>
-    </div>
-    <div class="form-group">
       <label>📝 Отзыв для ученика <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
       <textarea id="ca-final-feedback" rows="4" placeholder="Общий комментарий по работе..."
         style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;box-sizing:border-box">${item.teacherFeedback||''}</textarea>
     </div>
-    <button class="btn btn-green" onclick="saveItemOverallReview('${itemId}','${itemType}')">💾 Сохранить оценку и отзыв</button>
+    <button class="btn btn-green" onclick="saveItemOverallReview('${itemId}','${itemType}')">💾 Сохранить отзыв</button>
   `;
   document.getElementById('modal-check-answer').querySelector('.modal-title').textContent=`📊 Итоговая оценка ${labels[itemType]||''}`;
   openModal('modal-check-answer');
@@ -2711,12 +2703,12 @@ function saveItemOverallReview(itemId, itemType){
   const items=load(storeKey)||[];
   const item=items.find(t=>t.id===itemId); if(!item) return;
   const score=+(document.getElementById('ca-total-score').value)||0;
-  const grade=document.getElementById('ca-final-grade').value;
   const feedback=document.getElementById('ca-final-feedback').value.trim();
   item.autoScore=score;
   if(item.autoTotal){ item.autoPct=Math.round(score/item.autoTotal*100); }
+  const grade=calcGrade(item.autoTotal?Math.round(score/item.autoTotal*100):0,item.gradeConfig)||'';
   item.autoGrade=grade;
-  item.finalGrade=grade;   // итоговая оценка — видна ученику только после этого
+  item.finalGrade=grade;   // итоговая оценка — ставится автоматически по %
   item.teacherFeedback=feedback;
   item.openChecked=true;
   save(storeKey,items);
@@ -2743,11 +2735,103 @@ function renderTestBuilder(){
   const el=document.getElementById('nt-questions-list');
   const totalPts = _tempQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempQuestions.map((q,i)=>buildQuestionHTML(q,i,'test')).join('');
-  // Show total points hint
   const hint = document.getElementById('nt-total-pts');
   if(hint) hint.textContent = 'Итого: '+totalPts+' '+ptWord(totalPts);
+  // Sync maxpts field if not manual
+  if(!_testMaxPtsManual){
+    const maxEl = document.getElementById('nt-maxpts');
+    if(maxEl) maxEl.value = totalPts || 0;
+  }
 }
 function ptWord(n){ return n===1?'балл':n<5?'балла':'баллов'; }
+
+// ── MaxPts toggle (Тест — создание) ──
+function toggleTestMaxPts(){
+  _testMaxPtsManual = !_testMaxPtsManual;
+  const input = document.getElementById('nt-maxpts');
+  const btn   = document.getElementById('nt-maxpts-btn');
+  const hint  = document.getElementById('nt-maxpts-hint');
+  if(!input) return;
+  if(_testMaxPtsManual){
+    input.removeAttribute('readonly');
+    input.style.background='var(--white)'; input.style.color='var(--accent)';
+    input.focus(); input.select();
+    if(btn)  btn.textContent='🔄 Авто';
+    if(hint) hint.textContent='(задан вручную)';
+  } else {
+    input.setAttribute('readonly','');
+    input.style.background='var(--bg)'; input.style.color='var(--text3)';
+    if(btn)  btn.textContent='✏️ Изменить';
+    if(hint) hint.textContent='(считается автоматически из вопросов)';
+    renderTestBuilder();
+  }
+}
+
+// ── MaxPts toggle (ДЗ — создание) ──
+function toggleHWMaxPts(){
+  _hwMaxPtsManual = !_hwMaxPtsManual;
+  const input = document.getElementById('nhw-maxpts');
+  const btn   = document.getElementById('nhw-maxpts-btn');
+  const hint  = document.getElementById('nhw-maxpts-hint');
+  if(!input) return;
+  if(_hwMaxPtsManual){
+    input.removeAttribute('readonly');
+    input.style.background='var(--white)'; input.style.color='var(--accent)';
+    input.focus(); input.select();
+    if(btn)  btn.textContent='🔄 Авто';
+    if(hint) hint.textContent='(задан вручную)';
+  } else {
+    input.setAttribute('readonly','');
+    input.style.background='var(--bg)'; input.style.color='var(--text3)';
+    if(btn)  btn.textContent='✏️ Изменить';
+    if(hint) hint.textContent='(считается автоматически из вопросов)';
+    renderHWBuilder();
+  }
+}
+
+// ── MaxPts toggle (Тест — редактирование) ──
+function toggleEditTestMaxPts(){
+  _editTestMaxPtsManual = !_editTestMaxPtsManual;
+  const input = document.getElementById('et-maxpts');
+  const btn   = document.getElementById('et-maxpts-btn');
+  const hint  = document.getElementById('et-maxpts-hint');
+  if(!input) return;
+  if(_editTestMaxPtsManual){
+    input.removeAttribute('readonly');
+    input.style.background='var(--white)'; input.style.color='var(--accent)';
+    input.focus(); input.select();
+    if(btn)  btn.textContent='🔄 Авто';
+    if(hint) hint.textContent='(задан вручную)';
+  } else {
+    input.setAttribute('readonly','');
+    input.style.background='var(--bg)'; input.style.color='var(--text3)';
+    if(btn)  btn.textContent='✏️ Изменить';
+    if(hint) hint.textContent='(считается автоматически из вопросов)';
+    renderEditTestBuilder();
+  }
+}
+
+// ── MaxPts toggle (ДЗ — редактирование) ──
+function toggleEditHWMaxPts(){
+  _editHWMaxPtsManual = !_editHWMaxPtsManual;
+  const input = document.getElementById('ehw-maxpts');
+  const btn   = document.getElementById('ehw-maxpts-btn');
+  const hint  = document.getElementById('ehw-maxpts-hint');
+  if(!input) return;
+  if(_editHWMaxPtsManual){
+    input.removeAttribute('readonly');
+    input.style.background='var(--white)'; input.style.color='var(--accent)';
+    input.focus(); input.select();
+    if(btn)  btn.textContent='🔄 Авто';
+    if(hint) hint.textContent='(задан вручную)';
+  } else {
+    input.setAttribute('readonly','');
+    input.style.background='var(--bg)'; input.style.color='var(--text3)';
+    if(btn)  btn.textContent='✏️ Изменить';
+    if(hint) hint.textContent='(считается автоматически из вопросов)';
+    renderEditHWBuilder();
+  }
+}
 
 function buildQuestionHTML(q,i,ctx){
   const pfx = ctx==='test'?'_tempQuestions':'_tempHWQuestions';
@@ -2875,17 +2959,24 @@ function saveTest(){
   const gradeMode=document.getElementById('nt-grade-mode')?.value||'best';
   const timeLimit=+(document.getElementById('nt-time-limit')?.value)||0;
   const autoTotal=_tempQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  const allTotal=_tempQuestions.reduce((s,q)=>s+(+q.points||1),0);
+  const maxPtsInput = +(document.getElementById('nt-maxpts')?.value)||0;
+  const maxPts = _testMaxPtsManual && maxPtsInput > 0 ? maxPtsInput : allTotal || autoTotal;
   const tests=load('tests')||[];
   if(sids.length){
-    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]}));
+    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]}));
   } else {
-    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
+    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
   }
   save('tests',tests);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'test',text:`📝 Новый тест: ${title}`,nav:'student-tests'}));
   _tempQuestions=[];
+  _testMaxPtsManual=false;
   ['nt-questions-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['nt-title','nt-open-at','nt-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const ntMaxPts=document.getElementById('nt-maxpts'); if(ntMaxPts){ ntMaxPts.value='0'; ntMaxPts.setAttribute('readonly',''); ntMaxPts.style.background='var(--bg)'; ntMaxPts.style.color='var(--text3)'; }
+  const ntMaxPtsBtn=document.getElementById('nt-maxpts-btn'); if(ntMaxPtsBtn) ntMaxPtsBtn.textContent='✏️ Изменить';
+  const ntMaxPtsHint=document.getElementById('nt-maxpts-hint'); if(ntMaxPtsHint) ntMaxPtsHint.textContent='(считается автоматически из вопросов)';
   const ntMaxAttempts=document.getElementById('nt-max-attempts'); if(ntMaxAttempts) ntMaxAttempts.value='0';
   const ntGradeMode=document.getElementById('nt-grade-mode'); if(ntGradeMode) ntGradeMode.value='best';
   const hint=document.getElementById('nt-total-pts'); if(hint) hint.textContent='';
@@ -3041,6 +3132,7 @@ function toggleReviewPanelFromBanner(type, itemId){
 
 // ─── HW ADMIN ───
 let _tempHWQuestions=[];
+let _hwMaxPtsManual = false;
 let _hwSelectedSid = 'all';
 function renderHWAdmin(){
   const students = (load('users')||[]).filter(u=>u.role==='student');
@@ -3214,6 +3306,11 @@ function renderHWBuilder(){
   el.innerHTML=_tempHWQuestions.map((q,i)=>buildQuestionHTML(q,i,'hw')).join('');
   const hint = document.getElementById('nhw-total-pts');
   if(hint) hint.textContent = totalPts ? 'Итого: '+totalPts+' '+ptWord(totalPts) : '';
+  // Sync maxpts field if not manual
+  if(!_hwMaxPtsManual){
+    const maxEl = document.getElementById('nhw-maxpts');
+    if(maxEl) maxEl.value = totalPts || 0;
+  }
 }
 function removeHWQ(i){ _tempHWQuestions.splice(i,1); renderHWBuilder(); }
 function saveHW(){
@@ -3230,16 +3327,23 @@ function saveHW(){
   const sids=getCheckedModalStudents('modal-hw-students');
   const hws=load('hw')||[];
   const hwAutoTotal=_tempHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  const hwAllTotal=_tempHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
+  const hwMaxPtsInput=+(document.getElementById('nhw-maxpts')?.value)||0;
+  const hwMaxPts = _hwMaxPtsManual && hwMaxPtsInput > 0 ? hwMaxPtsInput : hwAllTotal || hwAutoTotal;
   if(sids.length){
-    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwAutoTotal,date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
+    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
   } else {
-    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwAutoTotal,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
+    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
   }
   save('hw',hws);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'hw',text:`✏️ Новое домашнее задание: ${title}`,nav:'student-hw'}));
   _tempHWQuestions=[];
+  _hwMaxPtsManual=false;
   ['nhw-questions-list'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=''; });
   ['nhw-title','nhw-desc','nhw-fileurl','nhw-open-at','nhw-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const nhwMaxPts=document.getElementById('nhw-maxpts'); if(nhwMaxPts){ nhwMaxPts.value='0'; nhwMaxPts.setAttribute('readonly',''); nhwMaxPts.style.background='var(--bg)'; nhwMaxPts.style.color='var(--text3)'; }
+  const nhwMaxPtsBtn=document.getElementById('nhw-maxpts-btn'); if(nhwMaxPtsBtn) nhwMaxPtsBtn.textContent='✏️ Изменить';
+  const nhwMaxPtsHint=document.getElementById('nhw-maxpts-hint'); if(nhwMaxPtsHint) nhwMaxPtsHint.textContent='(считается автоматически из вопросов)';
   const nhwMaxAttempts=document.getElementById('nhw-max-attempts'); if(nhwMaxAttempts) nhwMaxAttempts.value='0';
   const nhwGradeMode=document.getElementById('nhw-grade-mode'); if(nhwGradeMode) nhwGradeMode.value='best';
   closeModal('modal-create-hw');
@@ -3681,6 +3785,7 @@ let _editTheoryFiles=[];
 // ─── TEST EDITOR ───
 let _editTestId='';
 let _editTestQuestions=[];
+let _editTestMaxPtsManual = false;
 
 // ── Защита от потери несохранённых изменений ──
 const _DIRTY_MODALS = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial'];
@@ -3705,6 +3810,7 @@ function openEditTest(id){
   if(!t) return;
   _editTestId=id;
   _editTestQuestions=JSON.parse(JSON.stringify(t.questions||[]));
+  _editTestMaxPtsManual=false;
   document.getElementById('et-id').value=id;
   document.getElementById('et-title').value=t.title||'';
   document.getElementById('et-desc').value=t.desc||'';
@@ -3716,6 +3822,13 @@ function openEditTest(id){
   document.getElementById('et-g3').value=gc[3]??45;
   document.getElementById('et-max-attempts').value=t.maxAttempts??0;
   document.getElementById('et-grade-mode').value=t.gradeMode||'best';
+  // Reset maxpts UI to auto mode
+  const maxEl=document.getElementById('et-maxpts');
+  const maxBtn=document.getElementById('et-maxpts-btn');
+  const maxHint=document.getElementById('et-maxpts-hint');
+  if(maxEl){ maxEl.setAttribute('readonly',''); maxEl.style.background='var(--bg)'; maxEl.style.color='var(--text3)'; }
+  if(maxBtn) maxBtn.textContent='✏️ Изменить';
+  if(maxHint) maxHint.textContent='(считается автоматически из вопросов)';
   renderEditTestBuilder();
   _setDirty(false);
   document.getElementById('modal-edit-test').classList.add('open');
@@ -3776,6 +3889,11 @@ function renderEditTestBuilder(){
   const totalPts=_editTestQuestions.reduce((s,q)=>s+(+q.points||1),0);
   const hint=document.getElementById('et-total-hint');
   if(hint) hint.textContent=_editTestQuestions.length?`· ${_editTestQuestions.length} вопросов · итого ${totalPts} б.`:'';
+  // Sync maxpts if not manual
+  if(!_editTestMaxPtsManual){
+    const maxEl=document.getElementById('et-maxpts');
+    if(maxEl) maxEl.value=totalPts||0;
+  }
   el.innerHTML=_editTestQuestions.map((q,i)=>{
     const typeBody = editQTypeBody(q,'_editTestQuestions',i,'renderEditTestBuilder()');
     const showText = q.type!=='fillin';
@@ -3855,7 +3973,10 @@ function saveEditTest(){
   t.maxAttempts=+document.getElementById('et-max-attempts').value||0;
   t.gradeMode=document.getElementById('et-grade-mode').value||'best';
   t.questions=_editTestQuestions;
-  t.autoTotal=_editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  const etAllTotal=_editTestQuestions.reduce((s,q)=>s+(+q.points||1),0);
+  const etMaxPtsInput=+(document.getElementById('et-maxpts')?.value)||0;
+  t.autoTotal=_editTestMaxPtsManual && etMaxPtsInput > 0 ? etMaxPtsInput : etAllTotal || _editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  _editTestMaxPtsManual=false;
   save('tests',tests);
   _setDirty(false);
   closeModal('modal-edit-test', true);
@@ -3865,10 +3986,12 @@ function saveEditTest(){
 
 // ── EDIT HW ──
 let _editHWQuestions=[];
+let _editHWMaxPtsManual = false;
 function openEditHW(id){
   const h=(load('hw')||[]).find(h=>h.id===id);
   if(!h) return;
   _editHWQuestions=JSON.parse(JSON.stringify(h.questions||[]));
+  _editHWMaxPtsManual=false;
   document.getElementById('ehw-id').value=h.id;
   document.getElementById('ehw-title').value=h.title||'';
   document.getElementById('ehw-desc').value=h.desc||'';
@@ -3880,6 +4003,13 @@ function openEditHW(id){
   document.getElementById('ehw-g3').value=gc[3]??45;
   document.getElementById('ehw-max-attempts').value=h.maxAttempts??0;
   document.getElementById('ehw-grade-mode').value=h.gradeMode||'best';
+  // Reset maxpts UI to auto mode
+  const maxEl=document.getElementById('ehw-maxpts');
+  const maxBtn=document.getElementById('ehw-maxpts-btn');
+  const maxHint=document.getElementById('ehw-maxpts-hint');
+  if(maxEl){ maxEl.setAttribute('readonly',''); maxEl.style.background='var(--bg)'; maxEl.style.color='var(--text3)'; }
+  if(maxBtn) maxBtn.textContent='✏️ Изменить';
+  if(maxHint) maxHint.textContent='(считается автоматически из вопросов)';
   renderEditHWBuilder();
   _setDirty(false);
   document.getElementById('modal-edit-hw').classList.add('open');
@@ -3890,6 +4020,11 @@ function renderEditHWBuilder(){
   const totalPts=_editHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
   const hint=document.getElementById('ehw-total-hint');
   if(hint) hint.textContent=_editHWQuestions.length?`· ${_editHWQuestions.length} вопросов · итого ${totalPts} б.`:'';
+  // Sync maxpts if not manual
+  if(!_editHWMaxPtsManual){
+    const maxEl=document.getElementById('ehw-maxpts');
+    if(maxEl) maxEl.value=totalPts||0;
+  }
   el.innerHTML=_editHWQuestions.map((q,i)=>{
     const typeBody = editQTypeBody(q,'_editHWQuestions',i,'renderEditHWBuilder()');
     const showText = q.type!=='fillin';
@@ -4126,7 +4261,10 @@ function saveEditHW(){
   h.maxAttempts=+document.getElementById('ehw-max-attempts').value||0;
   h.gradeMode=document.getElementById('ehw-grade-mode').value||'best';
   h.questions=_editHWQuestions;
-  h.autoTotal=_editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  const ehwAllTotal=_editHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
+  const ehwMaxPtsInput=+(document.getElementById('ehw-maxpts')?.value)||0;
+  h.autoTotal=_editHWMaxPtsManual && ehwMaxPtsInput > 0 ? ehwMaxPtsInput : ehwAllTotal || _editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  _editHWMaxPtsManual=false;
   save('hw',hws);
   _setDirty(false);
   closeModal('modal-edit-hw', true);
@@ -5113,20 +5251,11 @@ function openTrialOverallReview(tid){
       </div>
     </div>
     <div class="form-group">
-      <label>🎓 Итоговая оценка</label>
-      <select id="ca-final-grade" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;background:var(--white)">
-        <option value="5" ${grade=='5'?'selected':''}>5 — Отлично</option>
-        <option value="4" ${grade=='4'?'selected':''}>4 — Хорошо</option>
-        <option value="3" ${grade=='3'?'selected':''}>3 — Удовлетворительно</option>
-        <option value="2" ${grade=='2'?'selected':''}>2 — Неудовлетворительно</option>
-      </select>
-    </div>
-    <div class="form-group">
       <label>📝 Отзыв для ученика <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
       <textarea id="ca-final-feedback" rows="4" placeholder="Напишите общий комментарий, что получилось хорошо, что нужно доработать..."
         style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;resize:vertical;outline:none;box-sizing:border-box">${t.teacherFeedback||''}</textarea>
     </div>
-    <button class="btn btn-green" onclick="saveTrialOverallReview('${tid}')">💾 Сохранить оценку и отзыв</button>
+    <button class="btn btn-green" onclick="saveTrialOverallReview('${tid}')">💾 Сохранить отзыв</button>
   `;
   document.getElementById('modal-check-answer').querySelector('.modal-title').textContent='📊 Итоговая оценка пробника';
   openModal('modal-check-answer');
@@ -5135,12 +5264,12 @@ function saveTrialOverallReview(tid){
   const trials=load('trials')||[];
   const t=trials.find(t=>t.id===tid); if(!t) return;
   const score=+(document.getElementById('ca-total-score').value)||0;
-  const grade=document.getElementById('ca-final-grade').value;
   const feedback=document.getElementById('ca-final-feedback').value.trim();
   t.autoScore=score;
   if(t.autoTotal){ t.autoPct=Math.round(score/t.autoTotal*100); }
+  const grade=calcGrade(t.autoTotal?Math.round(score/t.autoTotal*100):0,t.gradeConfig)||'';
   t.autoGrade=grade;
-  t.finalGrade=grade;   // итоговая оценка — видна ученику только после этого
+  t.finalGrade=grade;   // итоговая оценка — ставится автоматически по %
   t.teacherFeedback=feedback;
   t.openChecked=true;
   save('trials',trials);
@@ -6914,7 +7043,6 @@ function renderStudentTests(){
   }
   el.innerHTML=tests.map(t=>{
     const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-    const grade = t.submitted ? (t.finalGrade||null) : null;   // только оценка от преподавателя
     const maxAttempts = t.maxAttempts||0;
     const attemptsUsed = (t.attempts||[]).length;
     const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
@@ -6924,7 +7052,6 @@ function renderStudentTests(){
     return `<div class="card collapsible-card" data-item-id="${t.id}">
       <div class="card-title collapsible collapsed" onclick="toggleCollapse('t_${t.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
-        ${grade?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
       <div class="card-collapse-body collapsed" id="cb-t_${t.id}">
@@ -6936,7 +7063,7 @@ function renderStudentTests(){
             return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
           })()}
           ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
-          ${grade?`<span class="grade-result-badge grade-${grade}">🎓 Итоговая оценка: ${grade}</span>`:`${t.submitted?`<span class="badge badge-gold">⏳ Ожидает оценки преподавателя</span>`:''}`}
+
           ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
           ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
           ${(!t.submitted && (t.timeLimit||t.timeMins)) ? `<span class="badge" style="background:#fff3f3;color:#c0392b;border-color:#f5c6c2">⏱ ${t.timeLimit||t.timeMins} мин</span>` : ''}
@@ -7078,14 +7205,15 @@ function submitTest(autoSubmit){
       if(scoreQuestion(q,ans)) score+=pts;
     }
   });
-  const pct = (total||t.autoTotal||0) ? Math.round(score/(total||t.autoTotal||1)*100) : 0;
+  const denominator = t.autoTotal || total; // autoTotal = maxPts (все вопросы включая открытые)
+  const pct = denominator ? Math.round(score/denominator*100) : 0;
   const grade = calcGrade(pct, t.gradeConfig);
   // Save attempt to history
   if(!t.attempts) t.attempts=[];
   t.attempts.push({
     n: t.attempts.length+1,
     answers: {..._testAnswers},
-    score, total: total||t.autoTotal||0, pct, grade,
+    score, total: denominator, pct, grade,
     date: new Date().toLocaleDateString('ru'),
     time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
   });
@@ -7101,8 +7229,7 @@ function submitTest(autoSubmit){
   t.answers=finalAttempt.answers;
   t.autoScore=finalAttempt.score;
   t.autoScoreBase=finalAttempt.score; // base auto-only score for open question addition
-  t.autoTotal=finalAttempt.total||t.autoTotal||0;
-  // НЕ сохраняем autoGrade — итоговая оценка ставится только преподавателем
+  // НЕ перезаписываем t.autoTotal — он = maxPts (сумма всех вопросов), задан при создании
   t.autoPct=finalAttempt.pct;
   save('tests',tests);
   _collectAndSaveWrongAnswers('test', t, _testAnswers);
@@ -7112,7 +7239,7 @@ function submitTest(autoSubmit){
   const maxAttempts=t.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - t.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  showNotif(`✅ Тест сдан! Авто-баллы: ${score}/${t.autoTotal||0} б. (${pct}%)${attemptsMsg} — итоговая оценка появится после проверки преподавателем`);
+  showNotif(`✅ Тест сдан! Баллы: ${score}/${t.autoTotal||0} б. (${pct}%)${attemptsMsg}`);
   // notify admin
 _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}» (попытка ${t.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
@@ -7151,7 +7278,6 @@ function renderStudentHW(){
     return `<div class="card collapsible-card" data-item-id="${h.id}">
       <div class="card-title collapsible collapsed" onclick="toggleCollapse('hw_${h.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(h.title)}
-        ${h.finalGrade?`<span class="grade-result-badge grade-${h.finalGrade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${h.finalGrade}</span>`:''}
         ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
@@ -7171,8 +7297,7 @@ function renderStudentHW(){
         ${renderAttemptsHistory(h)}
         ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
         ${h.submitted?`<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          ${h.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${h.autoScore||0}/${h.autoTotal} б. (${Math.round((h.autoScore||0)/h.autoTotal*100)}%)</span>`:''}
-          ${h.finalGrade?`<span class="grade-result-badge grade-${h.finalGrade}">🎓 Итоговая оценка: ${h.finalGrade}</span>`:`<span class="badge badge-gold">⏳ Ожидает оценки преподавателя</span>`}
+          ${h.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${h.autoScore||0}/${h.autoTotal} б. (${Math.min(100,Math.round((h.autoScore||0)/h.autoTotal*100))}%)</span>`:''}
         </div>`:''}
         ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
         ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
@@ -7272,14 +7397,15 @@ function submitHW(){
       if(scoreQuestion(q,ans)) score+=pts;
     }
   });
-  const pct = total ? Math.round(score/total*100) : 0;
-  const hwAttemptGrade = total ? calcGrade(pct, h.gradeConfig) : null;
+  const denominator = h.autoTotal || total; // autoTotal = maxPts (все вопросы включая открытые)
+  const pct = denominator ? Math.round(score/denominator*100) : 0;
+  const hwAttemptGrade = denominator ? calcGrade(pct, h.gradeConfig) : null;
   // Save attempt to history
   if(!h.attempts) h.attempts=[];
   h.attempts.push({
     n: h.attempts.length+1,
     answers: {..._hwAnswers},
-    freeAnswer, score, total, pct, grade: hwAttemptGrade,
+    freeAnswer, score, total: denominator, pct, grade: hwAttemptGrade,
     date: new Date().toLocaleDateString('ru'),
     time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
   });
@@ -7296,9 +7422,8 @@ function submitHW(){
   if(finalAttempt.freeAnswer) h.freeAnswer=finalAttempt.freeAnswer;
   h.autoScore=finalAttempt.score;
   h.autoScoreBase=finalAttempt.score;
-  h.autoTotal=finalAttempt.total||h.autoTotal||0;
+  // НЕ перезаписываем h.autoTotal — он = maxPts (сумма всех вопросов), задан при создании
   h.autoPct=finalAttempt.pct;
-  // НЕ сохраняем autoGrade — итоговая оценка ставится только преподавателем
   save('hw',hws);
   _collectAndSaveWrongAnswers('hw', h, _hwAnswers);
   closeModal('modal-take-test');
@@ -7307,7 +7432,7 @@ function submitHW(){
   const maxAttempts=h.maxAttempts||0;
   const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - h.attempts.length;
   const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  showNotif(`✅ ДЗ сдано! Авто-баллы: ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${attemptsMsg} — итоговая оценка появится после проверки преподавателем`);
+  showNotif(`✅ ДЗ сдано! Баллы: ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${attemptsMsg}`);
   // notify admin
 _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
