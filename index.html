@@ -2268,6 +2268,15 @@ textarea.q-input{resize:vertical;min-height:70px}
         <span id="nt-total-pts" style="font-size:0.78rem;color:var(--text3)"></span>
       </div>
     </div>
+    <!-- MAXPTS -->
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0;padding:12px 14px;background:var(--bg);border-radius:10px;border:1px solid var(--green-xpale)">
+      <label style="font-size:0.85rem;font-weight:700;color:var(--text2);white-space:nowrap;margin:0">⭐ Максимум баллов:</label>
+      <input id="nt-maxpts" type="number" min="1" value="0" placeholder="авто" readonly
+        style="width:80px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)">
+      <button type="button" id="nt-maxpts-btn" onclick="toggleTestMaxPts()"
+        style="padding:7px 14px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--white);font-family:Nunito,sans-serif;font-size:0.8rem;cursor:pointer;color:var(--green-deep)">✏️ Изменить</button>
+      <span id="nt-maxpts-hint" style="font-size:0.78rem;color:var(--text3)">(считается автоматически из вопросов)</span>
+    </div>
     <!-- GRADE CONFIG -->
     <div style="margin-top:20px;background:var(--bg);border-radius:12px;padding:16px;border:1px solid var(--green-xpale)">
       <div class="card-title" style="margin-bottom:12px"><span class="dot"></span>🎓 Шкала оценок (от % правильных ответов)</div>
@@ -2348,6 +2357,15 @@ textarea.q-input{resize:vertical;min-height:70px}
         </select>
         <span id="nhw-total-pts" style="font-size:0.78rem;color:var(--text3)"></span>
       </div>
+    </div>
+    <!-- MAXPTS -->
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0;padding:12px 14px;background:var(--bg);border-radius:10px;border:1px solid var(--green-xpale)">
+      <label style="font-size:0.85rem;font-weight:700;color:var(--text2);white-space:nowrap;margin:0">⭐ Максимум баллов:</label>
+      <input id="nhw-maxpts" type="number" min="1" value="0" placeholder="авто" readonly
+        style="width:80px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)">
+      <button type="button" id="nhw-maxpts-btn" onclick="toggleHWMaxPts()"
+        style="padding:7px 14px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--white);font-family:Nunito,sans-serif;font-size:0.8rem;cursor:pointer;color:var(--green-deep)">✏️ Изменить</button>
+      <span id="nhw-maxpts-hint" style="font-size:0.78rem;color:var(--text3)">(считается автоматически из вопросов)</span>
     </div>
     <div class="form-group" style="margin-top:16px">
       <label>Отправить ученикам <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
@@ -2700,6 +2718,16 @@ textarea.q-input{resize:vertical;min-height:70px}
     </div>
     <div id="et-questions-list"></div>
 
+    <!-- MAXPTS -->
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0;padding:12px 14px;background:var(--bg);border-radius:10px;border:1px solid var(--green-xpale)">
+      <label style="font-size:0.85rem;font-weight:700;color:var(--text2);white-space:nowrap;margin:0">⭐ Максимум баллов:</label>
+      <input id="et-maxpts" type="number" min="1" value="0" placeholder="авто" readonly
+        style="width:80px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)">
+      <button type="button" id="et-maxpts-btn" onclick="toggleEditTestMaxPts()"
+        style="padding:7px 14px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--white);font-family:Nunito,sans-serif;font-size:0.8rem;cursor:pointer;color:var(--green-deep)">✏️ Изменить</button>
+      <span id="et-maxpts-hint" style="font-size:0.78rem;color:var(--text3)">(считается автоматически из вопросов)</span>
+    </div>
+
     <hr class="divider">
     <div style="background:var(--bg);border-radius:12px;padding:14px 16px;border:1px solid var(--green-xpale);margin-bottom:16px">
       <div style="font-weight:700;font-size:0.88rem;color:var(--text1);margin-bottom:10px">🔁 Попытки и результат</div>
@@ -2789,6 +2817,16 @@ textarea.q-input{resize:vertical;min-height:70px}
       </div>
     </div>
     <div id="ehw-questions-list"></div>
+
+    <!-- MAXPTS -->
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0;padding:12px 14px;background:var(--bg);border-radius:10px;border:1px solid var(--green-xpale)">
+      <label style="font-size:0.85rem;font-weight:700;color:var(--text2);white-space:nowrap;margin:0">⭐ Максимум баллов:</label>
+      <input id="ehw-maxpts" type="number" min="1" value="0" placeholder="авто" readonly
+        style="width:80px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;background:var(--bg);color:var(--text3)">
+      <button type="button" id="ehw-maxpts-btn" onclick="toggleEditHWMaxPts()"
+        style="padding:7px 14px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--white);font-family:Nunito,sans-serif;font-size:0.8rem;cursor:pointer;color:var(--green-deep)">✏️ Изменить</button>
+      <span id="ehw-maxpts-hint" style="font-size:0.78rem;color:var(--text3)">(считается автоматически из вопросов)</span>
+    </div>
 
     <hr class="divider">
     <div style="background:var(--bg);border-radius:12px;padding:14px 16px;border:1px solid var(--green-xpale);margin-bottom:16px">
