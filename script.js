@@ -6854,7 +6854,7 @@ function _buildParentGrades(sid){
   hws.forEach(h=>{
     const attempts = h.attempts||[];
     if(attempts.length) attempts.forEach(a=>items.push({icon:'✏️',title:h.title,date:a.date,pct:a.pct,grade:a.grade}));
-    else if(h.submitted){ const _hc=h.openChecked||!(h.questions||[]).some(q=>q.type==='open'); const _hp=h.autoTotal?Math.round((h.autoScore||0)/h.autoTotal*100):(h.autoPct||null); items.push({icon:'✏️',title:h.title,date:h.date,pct:_hc?_hp:null,grade:_hc?(h.finalGrade||h.autoGrade||null):null,pending:!_hc}); }
+    else if(h.submitted){ const _hcp=h.openChecked||!(h.questions||[]).some(q=>q.type==='open'); const _hpp=h.autoTotal?Math.round((h.autoScore||0)/h.autoTotal*100):(h.autoPct||null); items.push({icon:'✏️',title:h.title,date:h.date,pct:_hcp?_hpp:null,grade:_hcp?(h.finalGrade||h.autoGrade||null):null,pending:!_hcp}); }
   });
   trials.forEach(t=>{
     if(t.submitted){ const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null; items.push({icon:'🎯',title:t.title,date:t.date,pct,grade:t.autoGrade||(pct!=null?calcGrade(pct,t.gradeConfig):null)}); }
@@ -7400,15 +7400,15 @@ function renderStudentGrades(){
           isFinal: h.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct))});
       });
     } else if(h.submitted){
-      const _hwChecked = h.openChecked || !(h.questions||[]).some(q=>q.type==='open');
-      const _hwPct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : (h.autoPct||null);
+      const _hc1 = h.openChecked || !(h.questions||[]).some(q=>q.type==='open');
+      const _hp1 = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : (h.autoPct||null);
       items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
-        score: _hwChecked ? (h.autoScore!=null ? h.autoScore : null) : null,
-        total: _hwChecked ? (h.autoTotal||null) : null,
-        pct:   _hwChecked ? _hwPct : null,
-        grade: _hwChecked ? (h.finalGrade||h.autoGrade||null) : null,
+        score: _hc1 ? (h.autoScore!=null ? h.autoScore : null) : null,
+        total: _hc1 ? (h.autoTotal||null) : null,
+        pct:   _hc1 ? _hp1 : null,
+        grade: _hc1 ? (h.finalGrade||h.autoGrade||null) : null,
         attemptN:1, totalAttempts:1, isFinal:true,
-        pending: !_hwChecked,
+        pending: !_hc1,
         teacherFeedback: h.teacherFeedback||null});
     }
   });
@@ -7476,7 +7476,7 @@ function renderStudentGrades(){
           <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">${i.date}${i.time?' · '+i.time:''}</div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end">
-          ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}${feedbackHTML}
+          ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}${feedbackHTML||''}
         </div>
       </div>`;
     }).join('');
@@ -7579,8 +7579,16 @@ function renderGradesAdmin(){
           maxAttempts:h.maxAttempts||0, gradeMode:h.gradeMode||'best'});
       });
     } else if(h.submitted){
+      const _hc2 = h.openChecked || !(h.questions||[]).some(q=>q.type==='open');
+      const _hp2 = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : (h.autoPct||null);
       items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
-        score:null, total:null, pct:null, grade:null, attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best', pending:true});
+        score: _hc2 ? (h.autoScore!=null ? h.autoScore : null) : null,
+        total: _hc2 ? (h.autoTotal||null) : null,
+        pct:   _hc2 ? _hp2 : null,
+        grade: _hc2 ? (h.finalGrade||h.autoGrade||null) : null,
+        attemptN:1, totalAttempts:1, isFinal:true, maxAttempts:0, gradeMode:'best',
+        pending: !_hc2,
+        teacherFeedback: h.teacherFeedback||null});
     }
   });
   trials.forEach(t=>{
