@@ -2532,44 +2532,39 @@ function renderTestsAdmin(){
   }
 }
 function testItemHTML(t){
-  const totalPts = (t.questions||[]).reduce((s,q)=>s+(+q.points||1),0);
+  const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
   const hasOpen=(t.questions||[]).some(q=>q.type==='open');
   const openUnchecked = t.submitted
     ? (t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
     : [];
   const needsReview = t.submitted && !t.openChecked && openUnchecked.length > 0;
+  const fullyChecked = t.submitted && (!hasOpen || t.openChecked || openUnchecked.length === 0);
+  const statusBadge = !t.submitted
+    ? `<span class="badge badge-gold">⏳ Не сдан</span>`
+    : fullyChecked
+      ? `<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoTotal?' · '+pct+'%':''}</span>`
+      : `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
   return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="content-icon">📋</div>
       <div class="content-info">
         <div class="content-name">${esc(t.title)}</div>
-        <div class="content-meta">${t.questions.length} вопросов · ${totalPts} ${ptWord(totalPts)} · Создан: ${t.date}${t.maxAttempts>0?` · Лимит попыток: ${t.maxAttempts}`:''}</div>
-        <div class="content-meta" style="margin-top:4px">
-          ${(()=>{
-            if(!t.submitted) return '<span class="badge badge-gold">Не сдан</span>';
-            const attemptsUsed=(t.attempts||[]).length;
-            const attemptsStr = attemptsUsed>0 ? ` · 🔁 ${attemptsUsed} поп.` : '';
-            const gradeStr = t.gradeMode==='last' ? ' [последний]' : t.gradeMode==='best' ? ' [лучший]' : '';
-            const scoreStr = t.autoTotal ? ` ${t.autoScore||0}/${t.autoTotal||0} б.${t.autoPct!=null?' ('+t.autoPct+'%)':''}${gradeStr}` : '';
-            if(t.openChecked || !hasOpen || openUnchecked.length === 0) return `<span class="badge badge-green">✓ Проверено</span>${scoreStr}${attemptsStr}`;
-            return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>${scoreStr}${attemptsStr}`;
-          })()}
-          ${t.autoGrade?`<span class="grade-result-badge grade-${t.autoGrade}" style="font-size:0.72rem;padding:3px 10px">Оценка: ${t.autoGrade}</span>`:''}
-        </div>
+        <div class="content-meta">📋 ${t.questions.length} вопр. · ⭐ ${t.maxPts||t.autoTotal||0} б. · ${t.date}${t.timeLimit?` · ⏱ ${t.timeLimit} мин`:''}</div>
+        <div style="margin-top:4px">${statusBadge}</div>
       </div>
-      <div class="content-actions" style="flex-shrink:0">
+      <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTestReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${t.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
-        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')">👤</button>
+        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('test','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
       </div>
     </div>
-    ${t.teacherFeedback?`<div class="feedback-box" style="margin-top:6px"><strong>💬 Отзыв:</strong> ${esc(t.teacherFeedback.substring(0,100))}${t.teacherFeedback.length>100?'…':''}</div>`:''}
     ${t.autoGrade?`<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span class="grade-result-badge grade-${t.autoGrade}">🎓 Оценка: ${t.autoGrade}</span>
       ${t.autoPct!=null?`<span class="badge badge-green">${t.autoScore||0}/${t.autoTotal||0} б. · ${t.autoPct}%</span>`:''}
+      ${t.teacherFeedback?`<span style="font-size:0.8rem;color:var(--text2)">💬 ${esc(t.teacherFeedback.substring(0,60))}${t.teacherFeedback.length>60?'…':''}</span>`:''}
     </div>`:''}
     <div style="margin-top:2px">${availBadge(t)}</div>
     ${needsReview ? `<div id="test-review-panel-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
@@ -2964,9 +2959,9 @@ function saveTest(){
   const maxPts = _testMaxPtsManual && maxPtsInput > 0 ? maxPtsInput : allTotal || autoTotal;
   const tests=load('tests')||[];
   if(sids.length){
-    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]}));
+    sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,maxPts,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]}));
   } else {
-    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
+    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,maxPts,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
   }
   save('tests',tests);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'test',text:`📝 Новый тест: ${title}`,nav:'student-tests'}));
@@ -3187,38 +3182,39 @@ function renderHWAdmin(){
   }
 }
 function hwItemHTML(h){
+  const pct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : 0;
   const hasOpen=(h.questions||[]).some(q=>q.type==='open');
   const openUnchecked = h.submitted
     ? (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked)
     : [];
   const needsReview = h.submitted && !h.openChecked && openUnchecked.length > 0;
+  const fullyChecked = h.submitted && (!hasOpen || h.openChecked || openUnchecked.length === 0);
+  const statusBadge = !h.submitted
+    ? `<span class="badge badge-gold">⏳ Ожидается</span>`
+    : fullyChecked
+      ? `<span class="badge badge-green">✅ Проверено · ${h.autoScore||0}/${h.autoTotal||0} б.${h.autoTotal?' · '+pct+'%':''}</span>`
+      : `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
   return `<div class="content-item" style="flex-direction:column;align-items:stretch${needsReview?';border-left:3px solid #ef4444':''}">
     <div style="display:flex;align-items:center;gap:14px">
       <div class="content-icon">✏️</div>
       <div class="content-info">
         <div class="content-name">${esc(h.title)}</div>
-        <div class="content-meta">${esc(h.desc||'')} · Срок: ${esc(h.due||'—')}</div>
-        <div class="content-meta" style="margin-top:4px">
-          ${(()=>{
-            if(!h.submitted) return '<span class="badge badge-gold">Ожидается</span>';
-            if(h.openChecked || !hasOpen || openUnchecked.length === 0) return '<span class="badge badge-green">✓ Проверено</span>';
-            return `<span class="badge" style="background:#fde8e6;color:#c0392b;border-color:#f5c6c1">🔴 На проверке (${openUnchecked.length} отв.)</span>`;
-          })()}
-        </div>
+        <div class="content-meta">✏️ ${h.questions.length} вопр. · ⭐ ${h.maxPts||h.autoTotal||0} б. · ${h.date}${h.due?` · 📅 ${h.due}`:''}</div>
+        <div style="margin-top:4px">${statusBadge}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openHWReviewPanel('${h.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${h.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
-        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')">👤</button>
+        <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('hw','${h.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
         <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
       </div>
     </div>
-    ${h.teacherFeedback?`<div class="feedback-box" style="margin-top:6px"><strong>💬 Отзыв:</strong> ${esc(h.teacherFeedback.substring(0,100))}${h.teacherFeedback.length>100?'…':''}</div>`:''}
     ${h.autoGrade?`<div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span class="grade-result-badge grade-${h.autoGrade}">🎓 Оценка: ${h.autoGrade}</span>
       ${h.autoPct!=null?`<span class="badge badge-green">${h.autoScore||0}/${h.autoTotal||0} б. · ${h.autoPct}%</span>`:''}
+      ${h.teacherFeedback?`<span style="font-size:0.8rem;color:var(--text2)">💬 ${esc(h.teacherFeedback.substring(0,60))}${h.teacherFeedback.length>60?'…':''}</span>`:''}
     </div>`:''}
     <div style="margin-top:2px">${availBadge(h)}</div>
     ${needsReview ? `<div id="hw-review-panel-${h.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid #f5c6c1">
@@ -3331,9 +3327,9 @@ function saveHW(){
   const hwMaxPtsInput=+(document.getElementById('nhw-maxpts')?.value)||0;
   const hwMaxPts = _hwMaxPtsManual && hwMaxPtsInput > 0 ? hwMaxPtsInput : hwAllTotal || hwAutoTotal;
   if(sids.length){
-    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
+    sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,maxPts:hwMaxPts,date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
   } else {
-    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
+    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,maxPts:hwMaxPts,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
   }
   save('hw',hws);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'hw',text:`✏️ Новое домашнее задание: ${title}`,nav:'student-hw'}));
@@ -3975,7 +3971,9 @@ function saveEditTest(){
   t.questions=_editTestQuestions;
   const etAllTotal=_editTestQuestions.reduce((s,q)=>s+(+q.points||1),0);
   const etMaxPtsInput=+(document.getElementById('et-maxpts')?.value)||0;
-  t.autoTotal=_editTestMaxPtsManual && etMaxPtsInput > 0 ? etMaxPtsInput : etAllTotal || _editTestQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  const etMaxPts = _editTestMaxPtsManual && etMaxPtsInput > 0 ? etMaxPtsInput : etAllTotal;
+  t.maxPts = etMaxPts;
+  t.autoTotal = etMaxPts;
   _editTestMaxPtsManual=false;
   save('tests',tests);
   _setDirty(false);
@@ -4263,7 +4261,9 @@ function saveEditHW(){
   h.questions=_editHWQuestions;
   const ehwAllTotal=_editHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
   const ehwMaxPtsInput=+(document.getElementById('ehw-maxpts')?.value)||0;
-  h.autoTotal=_editHWMaxPtsManual && ehwMaxPtsInput > 0 ? ehwMaxPtsInput : ehwAllTotal || _editHWQuestions.filter(q=>q.type==='auto').reduce((s,q)=>s+(+q.points||1),0);
+  const ehwMaxPts = _editHWMaxPtsManual && ehwMaxPtsInput > 0 ? ehwMaxPtsInput : ehwAllTotal;
+  h.maxPts = ehwMaxPts;
+  h.autoTotal = ehwMaxPts;
   _editHWMaxPtsManual=false;
   save('hw',hws);
   _setDirty(false);
@@ -7043,36 +7043,28 @@ function renderStudentTests(){
   }
   el.innerHTML=tests.map(t=>{
     const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-    const maxAttempts = t.maxAttempts||0;
-    const attemptsUsed = (t.attempts||[]).length;
-    const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
-    const canRetry = !t.submitted ? true : (maxAttempts===0 || attemptsLeft>0);
-    const gradeMode = t.gradeMode||'best';
-    const statusIcon = !t.submitted ? '⏳' : (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
+    const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+    const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
+    const statusIcon=!t.submitted?'⏳':fullyChecked?'✅':'🔍';
+    const statusBadge=!t.submitted
+      ?`<span class="badge badge-gold">⏳ Не сдан</span>`
+      :fullyChecked
+        ?`<span class="badge badge-green">✅ Проверено · ${t.autoScore||0}/${t.autoTotal||0} б. · ${pct}%${t.finalGrade?' · Оценка '+t.finalGrade:''}</span>`
+        :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${t.autoScore||0}/${t.autoTotal||0} б.</span>`;
+    const grade=t.finalGrade||null;
     return `<div class="card collapsible-card" data-item-id="${t.id}">
       <div class="card-title collapsible collapsed" onclick="toggleCollapse('t_${t.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(t.title)}
+        ${grade&&t.submitted?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
       <div class="card-collapse-body collapsed" id="cb-t_${t.id}">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-          ${(()=>{
-            const hasOpen=(t.questions||[]).some(q=>q.type==='open');
-            if(!t.submitted) return `<span class="badge badge-gold">⏳ Не сдан</span>`;
-            if(t.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
-            return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
-          })()}
-          ${t.submitted&&t.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${t.autoScore||0}/${t.autoTotal} б. (${pct}%)</span>`:''}
-
-          ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
-          ${t.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
-          ${(!t.submitted && (t.timeLimit||t.timeMins)) ? `<span class="badge" style="background:#fff3f3;color:#c0392b;border-color:#f5c6c2">⏱ ${t.timeLimit||t.timeMins} мин</span>` : ''}
+        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
+          ⭐ ${t.maxPts||t.autoTotal||0} б.${t.timeLimit?` · ⏱ ${t.timeLimit} мин`:''}
         </div>
-        ${renderAttemptsHistory(t)}
+        <div style="margin-bottom:12px">${statusBadge}</div>
         ${t.submitted && t.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>` : ''}
         ${t.submitted ? renderTestResults(t) : availGate(t,'takeTest')}
-        ${t.submitted && canRetry ? `<div style="margin-top:10px">${availGate(t,'takeTest','🔄 Пройти ещё раз')}</div>` : ''}
-        ${t.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
         <div id="cmt-test-${t.id}"></div>
       </div>
     </div>`;
@@ -7084,7 +7076,17 @@ function renderStudentTests(){
   });
 }
 function renderTestResults(t){
-  return (t.questions||[]).map(q=>renderReviewQuestion(q,t.answers||{})).join('');
+  const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):0;
+  return `<div style="margin-top:4px">
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="badge badge-blue">⭐ Авто-баллы: ${t.autoScore||0}/${t.autoTotal||0} б. (${pct}%)</span>
+      ${t.finalGrade
+        ?`<span class="grade-result-badge grade-${t.finalGrade}">🎓 Итоговая оценка: ${t.finalGrade}</span>`
+        :`<span class="badge badge-gold">⏳ Итоговая оценка ожидает преподавателя</span>`}
+    </div>
+    ${t.teacherFeedback?`<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>`:''}
+    ${(t.questions||[]).map(q=>renderReviewQuestion(q,t.answers||{})).join('')}
+  </div>`;
 }
 
 let _takingTest=null; let _testAnswers={};
@@ -7195,53 +7197,26 @@ function submitTest(autoSubmit){
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===_takingTest.id);
   if(!t){ showNotif('Ошибка: тест не найден'); return; }
-  _clearTestTimer(); // останавливаем таймер
+  _clearTestTimer();
+  t.submitted=true; t.answers={..._testAnswers};
   let score=0, total=0;
   t.questions.forEach(q=>{
     const pts=+q.points||1;
     const ans=_testAnswers[q.id]||'';
-    if(q.type!=='open'){
-      total+=pts;
-      if(scoreQuestion(q,ans)) score+=pts;
-    }
+    if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
   });
-  const denominator = t.autoTotal || total; // autoTotal = maxPts (все вопросы включая открытые)
-  const pct = denominator ? Math.round(score/denominator*100) : 0;
-  const grade = calcGrade(pct, t.gradeConfig);
-  // Save attempt to history
-  if(!t.attempts) t.attempts=[];
-  t.attempts.push({
-    n: t.attempts.length+1,
-    answers: {..._testAnswers},
-    score, total: denominator, pct, grade,
-    date: new Date().toLocaleDateString('ru'),
-    time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
-  });
-  // Calculate final result based on gradeMode
-  const gradeMode = t.gradeMode||'best';
-  let finalAttempt;
-  if(gradeMode==='best'){
-    finalAttempt = t.attempts.reduce((best,a)=>a.pct>=best.pct?a:best, t.attempts[0]);
-  } else {
-    finalAttempt = t.attempts[t.attempts.length-1];
-  }
-  t.submitted=true;
-  t.answers=finalAttempt.answers;
-  t.autoScore=finalAttempt.score;
-  t.autoScoreBase=finalAttempt.score; // base auto-only score for open question addition
-  // НЕ перезаписываем t.autoTotal — он = maxPts (сумма всех вопросов), задан при создании
-  t.autoPct=finalAttempt.pct;
+  t.autoScore=score;
+  t.autoTotal=t.maxPts||total; // maxPts = сумма всех вопросов включая открытые
+  t.autoScoreBase=score;
+  const pct=t.autoTotal?Math.round(score/t.autoTotal*100):0;
+  t.autoPct=pct;
   save('tests',tests);
   _collectAndSaveWrongAnswers('test', t, _testAnswers);
   closeModal('modal-take-test');
   renderStudentTests();
   updateMistakesBadge();
-  const maxAttempts=t.maxAttempts||0;
-  const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - t.attempts.length;
-  const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  showNotif(`✅ Тест сдан! Баллы: ${score}/${t.autoTotal||0} б. (${pct}%)${attemptsMsg}`);
-  // notify admin
-_addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}» (попытка ${t.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
+  showNotif(`✅ Тест сдан! Авто: ${score}/${t.autoTotal} б. (${pct}%)`);
+  _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`📋 ${currentUser.name} сдал(а) тест «${esc(t.title)}»`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
 }
 
@@ -7269,39 +7244,32 @@ function renderStudentHW(){
     return;
   }
   el.innerHTML=hws.map(h=>{
-    const maxAttempts = h.maxAttempts||0;
-    const attemptsUsed = (h.attempts||[]).length;
-    const attemptsLeft = maxAttempts===0 ? null : maxAttempts - attemptsUsed;
-    const canRetry = !h.submitted ? true : (maxAttempts===0 || attemptsLeft>0);
-    const gradeMode = h.gradeMode||'best';
-    const statusIcon = !h.submitted ? '⏳' : (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')) ? '✅' : '📝';
+    const pct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : 0;
+    const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+    const fullyChecked=h.submitted&&(!hasOpen||h.openChecked);
+    const statusIcon=!h.submitted?'⏳':fullyChecked?'✅':'🔍';
+    const statusBadge=!h.submitted
+      ?`<span class="badge badge-gold">⏳ Не сдано</span>`
+      :fullyChecked
+        ?`<span class="badge badge-green">✅ Проверено · ${h.autoScore||0}/${h.autoTotal||0} б. · ${pct}%${h.finalGrade?' · Оценка '+h.finalGrade:''}</span>`
+        :`<span class="badge" style="background:#e8f4fd;color:#1565c0;border-color:#90caf9">🔍 На проверке · авто: ${h.autoScore||0}/${h.autoTotal||0} б.</span>`;
+    const grade=h.finalGrade||null;
     return `<div class="card collapsible-card" data-item-id="${h.id}">
       <div class="card-title collapsible collapsed" onclick="toggleCollapse('hw_${h.id}', this)">
         <span class="dot"></span>${statusIcon} ${esc(h.title)}
+        ${grade&&h.submitted?`<span class="grade-result-badge grade-${grade}" style="font-size:0.7rem;padding:2px 8px;margin-left:4px">${grade}</span>`:''}
         ${h.due?`<span style="font-size:0.7rem;color:var(--text3);margin-left:4px">📅 ${h.due}</span>`:''}
         <span class="collapse-arrow">▼</span>
       </div>
       <div class="card-collapse-body collapsed" id="cb-hw_${h.id}">
         ${h.desc?`<div style="font-size:0.87rem;color:var(--text2);margin-bottom:10px">${esc(h.desc)}</div>`:''}
         ${h.due?`<div class="content-meta" style="margin-bottom:10px">📅 Срок: ${h.due}</div>`:''}
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-          ${(()=>{
-            const hasOpen=(h.questions||[]).some(q=>q.type==='open');
-            if(!h.submitted) return `<span class="badge badge-gold">⏳ Не сдано</span>`;
-            if(h.openChecked || !hasOpen) return `<span class="badge badge-green">✅ Проверено</span>`;
-            return `<span class="badge badge-gold">📝 Ожидает проверки</span>`;
-          })()}
-          ${maxAttempts>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попытки: ${attemptsUsed}/${maxAttempts}</span>`:(attemptsUsed>0?`<span class="badge" style="background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">🔁 Попыток: ${attemptsUsed}</span>`:'')}
-          ${h.submitted&&attemptsUsed>1?`<span class="badge" style="background:#f5f5f5;color:var(--text2);border-color:#ddd">📊 ${gradeMode==='best'?'Лучший':'Последний'} результат</span>`:''}
+        <div style="font-size:0.85rem;color:var(--text3);margin-bottom:10px">
+          ⭐ ${h.maxPts||h.autoTotal||0} б.
         </div>
-        ${renderAttemptsHistory(h)}
+        <div style="margin-bottom:12px">${statusBadge}</div>
         ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
-        ${h.submitted?`<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          ${h.autoTotal?`<span class="badge badge-blue">⭐ Авто-баллы: ${h.autoScore||0}/${h.autoTotal} б. (${Math.min(100,Math.round((h.autoScore||0)/h.autoTotal*100))}%)</span>`:''}
-        </div>`:''}
         ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
-        ${h.submitted && canRetry ? `<div style="margin-top:10px">${availGate(h,'doHW','🔄 Пересдать ДЗ')}</div>` : ''}
-        ${h.submitted && maxAttempts>0 && attemptsLeft===0 ? `<div style="font-size:0.8rem;color:var(--text3);margin-top:8px;text-align:center">⛔ Попытки исчерпаны</div>` : ''}
         <div id="cmt-hw-${h.id}"></div>
       </div>
     </div>`;
@@ -7313,30 +7281,17 @@ function renderStudentHW(){
   });
 }
 function renderHWResults(h){
-  if(!h.questions||!h.questions.length) return `<div class="feedback-box">Свободная форма — ответ сдан</div>`;
-  return h.questions.map(q=>{
-    const pts = +q.points||1;
-    if(q.type==='auto'){
-      const ua=h.answers&&h.answers[q.id]; const correct=ua===q.correct;
-      return `<div class="question-block">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="question-num">⚡ Авто</div>
-          <span style="font-size:0.78rem;color:${correct?'var(--green-mid)':'var(--red)'}">⭐ ${correct?pts:0}/${pts} б.</span>
-        </div>
-        <div class="question-text">${q.text}</div>
-        ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
-        <div class="option-item ${correct?'correct':'wrong'}">${ua||'—'} ${correct?'✅':'❌ '+q.correct}</div>
-      </div>`;
-    } else {
-      return `<div class="question-block">
-        <div class="question-num">📝 Открытый <span style="font-size:0.75rem;color:var(--text3)">(⭐ ${pts} б.)</span></div>
-        <div class="question-text">${q.text}</div>
-        ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
-        <div class="feedback-box"><b>Ответ:</b> ${h.answers&&h.answers[q.id]||'—'}</div>
-        ${q.checked?`<div class="feedback-box" style="border-color:var(--gold);margin-top:6px"><b>Оценка: ${q.grade}</b><br>${q.comment}</div>`:'<div style="font-size:0.8rem;color:var(--text3);margin-top:4px">⏳ Ожидает проверки</div>'}
-      </div>`;
-    }
-  }).join('');
+  const pct=h.autoTotal?Math.round((h.autoScore||0)/h.autoTotal*100):0;
+  return `<div style="margin-top:4px">
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="badge badge-blue">⭐ Авто-баллы: ${h.autoScore||0}/${h.autoTotal||0} б. (${pct}%)</span>
+      ${h.finalGrade
+        ?`<span class="grade-result-badge grade-${h.finalGrade}">🎓 Итоговая оценка: ${h.finalGrade}</span>`
+        :`<span class="badge badge-gold">⏳ Итоговая оценка ожидает преподавателя</span>`}
+    </div>
+    ${h.teacherFeedback?`<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>`:''}
+    ${(h.questions||[]).map(q=>renderReviewQuestion(q,h.answers||{})).join('')}
+  </div>`;
 }
 let _doingHW=null; let _hwAnswers={};
 function doHW(id){
@@ -7387,54 +7342,26 @@ function submitHW(){
   const h=hws.find(h=>h.id===_doingHW.id);
   const freeEl=document.getElementById('hw-free-answer');
   const freeAnswer=freeEl?freeEl.value:'';
-  // Calculate score for auto questions
+  h.submitted=true; h.answers={..._hwAnswers};
+  if(freeAnswer) h.freeAnswer=freeAnswer;
   let score=0, total=0;
   (h.questions||[]).forEach(q=>{
     const pts=+q.points||1;
     const ans=_hwAnswers[q.id]||'';
-    if(q.type!=='open'){
-      total+=pts;
-      if(scoreQuestion(q,ans)) score+=pts;
-    }
+    if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
   });
-  const denominator = h.autoTotal || total; // autoTotal = maxPts (все вопросы включая открытые)
-  const pct = denominator ? Math.round(score/denominator*100) : 0;
-  const hwAttemptGrade = denominator ? calcGrade(pct, h.gradeConfig) : null;
-  // Save attempt to history
-  if(!h.attempts) h.attempts=[];
-  h.attempts.push({
-    n: h.attempts.length+1,
-    answers: {..._hwAnswers},
-    freeAnswer, score, total: denominator, pct, grade: hwAttemptGrade,
-    date: new Date().toLocaleDateString('ru'),
-    time: new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})
-  });
-  // Calculate final result based on gradeMode
-  const gradeMode = h.gradeMode||'best';
-  let finalAttempt;
-  if(gradeMode==='best'){
-    finalAttempt = h.attempts.reduce((best,a)=>a.pct>=best.pct?a:best, h.attempts[0]);
-  } else {
-    finalAttempt = h.attempts[h.attempts.length-1];
-  }
-  h.submitted=true;
-  h.answers=finalAttempt.answers;
-  if(finalAttempt.freeAnswer) h.freeAnswer=finalAttempt.freeAnswer;
-  h.autoScore=finalAttempt.score;
-  h.autoScoreBase=finalAttempt.score;
-  // НЕ перезаписываем h.autoTotal — он = maxPts (сумма всех вопросов), задан при создании
-  h.autoPct=finalAttempt.pct;
+  h.autoScore=score;
+  h.autoTotal=h.maxPts||total; // maxPts = сумма всех вопросов включая открытые
+  h.autoScoreBase=score;
+  const pct=h.autoTotal?Math.round(score/h.autoTotal*100):0;
+  h.autoPct=pct;
   save('hw',hws);
   _collectAndSaveWrongAnswers('hw', h, _hwAnswers);
   closeModal('modal-take-test');
   renderStudentHW();
   updateMistakesBadge();
-  const maxAttempts=h.maxAttempts||0;
-  const attemptsLeft = maxAttempts===0 ? '∞' : maxAttempts - h.attempts.length;
-  const attemptsMsg = maxAttempts===0 ? '' : ` · Осталось попыток: ${attemptsLeft}`;
-  showNotif(`✅ ДЗ сдано! Баллы: ${finalAttempt.score}/${h.autoTotal||0} б. (${finalAttempt.pct}%)${attemptsMsg}`);
-  // notify admin
-_addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}» (попытка ${h.attempts.length})`, date:new Date().toLocaleDateString('ru'), read:false});
+  showNotif(`✅ ДЗ сдано! Авто: ${score}/${h.autoTotal} б. (${pct}%)`);
+  _addAdminNotif({id:'an'+Date.now(), studentId:currentUser.id, studentName:currentUser.name, type:'submit', text:`✏️ ${currentUser.name} сдал(а) ДЗ «${esc(h.title)}»`, date:new Date().toLocaleDateString('ru'), read:false});
   updateAdminBadge();
 }
 
