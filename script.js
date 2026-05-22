@@ -6854,7 +6854,7 @@ function _buildParentGrades(sid){
   hws.forEach(h=>{
     const attempts = h.attempts||[];
     if(attempts.length) attempts.forEach(a=>items.push({icon:'✏️',title:h.title,date:a.date,pct:a.pct,grade:a.grade}));
-    else if(h.submitted) items.push({icon:'✏️',title:h.title,date:h.date,pct:null,grade:null,pending:true});
+    else if(h.submitted){ const _hc=h.openChecked||!(h.questions||[]).some(q=>q.type==='open'); const _hp=h.autoTotal?Math.round((h.autoScore||0)/h.autoTotal*100):(h.autoPct||null); items.push({icon:'✏️',title:h.title,date:h.date,pct:_hc?_hp:null,grade:_hc?(h.finalGrade||h.autoGrade||null):null,pending:!_hc}); }
   });
   trials.forEach(t=>{
     if(t.submitted){ const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null; items.push({icon:'🎯',title:t.title,date:t.date,pct,grade:t.autoGrade||(pct!=null?calcGrade(pct,t.gradeConfig):null)}); }
@@ -7400,8 +7400,16 @@ function renderStudentGrades(){
           isFinal: h.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct))});
       });
     } else if(h.submitted){
+      const _hwChecked = h.openChecked || !(h.questions||[]).some(q=>q.type==='open');
+      const _hwPct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : (h.autoPct||null);
       items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
-        score:null, total:null, pct:null, grade:null, attemptN:1, totalAttempts:1, isFinal:true, pending:true});
+        score: _hwChecked ? (h.autoScore!=null ? h.autoScore : null) : null,
+        total: _hwChecked ? (h.autoTotal||null) : null,
+        pct:   _hwChecked ? _hwPct : null,
+        grade: _hwChecked ? (h.finalGrade||h.autoGrade||null) : null,
+        attemptN:1, totalAttempts:1, isFinal:true,
+        pending: !_hwChecked,
+        teacherFeedback: h.teacherFeedback||null});
     }
   });
   trials.forEach(t=>{
@@ -7446,9 +7454,14 @@ function renderStudentGrades(){
     return filtered.map(i=>{
       const gradeHTML = i.grade
         ? `<span class="grade-result-badge grade-${i.grade}" style="font-size:0.75rem;padding:4px 12px">🎓 Оценка: ${i.grade}</span>`
-        : `<span class="badge badge-gold" style="font-size:0.72rem">⏳ Ожидает оценки</span>`;
+        : i.pending
+          ? `<span class="badge" style="font-size:0.72rem;background:#fde8e6;color:#c0392b">🔴 На проверке</span>`
+          : `<span class="badge badge-gold" style="font-size:0.72rem">⏳ Ожидает оценки</span>`;
+      const feedbackHTML = i.teacherFeedback
+        ? `<span class="badge" style="font-size:0.68rem;background:#e8f8f0;color:#27ae60">💬 Есть отзыв</span>`
+        : '';
       const scoreHTML = (i.pct!=null)
-        ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ Авто: ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
+        ? `<span class="badge badge-blue" style="font-size:0.72rem">⭐ ${i.score||0}/${i.total||0} б. (${i.pct}%)</span>`
         : '';
       const attemptBadge = i.totalAttempts>1
         ? `<span class="badge" style="font-size:0.68rem;background:#f0f4ff;color:#3b5bdb;border-color:#c5d0e6">Попытка ${i.attemptN}/${i.totalAttempts}</span>`
@@ -7463,7 +7476,7 @@ function renderStudentGrades(){
           <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">${i.date}${i.time?' · '+i.time:''}</div>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end">
-          ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}
+          ${attemptBadge}${scoreHTML}${gradeHTML}${finalBadge}${feedbackHTML}
         </div>
       </div>`;
     }).join('');
@@ -12106,6 +12119,13 @@ function fcNextInterval(cardId, quality, srData) {
 
 function fcDeckVisibleFor(deck, sid) {
   if (!deck.published) return false;
+  // If courseId set — only show to students enrolled in that course
+  if (deck.courseId) {
+    const users = load('users') || [];
+    const user = users.find(u => u.id === sid);
+    if (!user || !(user.enrolledCourses || []).includes(deck.courseId)) return false;
+  }
+  // If assignedTo is empty — it's a library deck (visible to all, or to course members if courseId set)
   if (!deck.assignedTo || deck.assignedTo.length === 0) return true;
   return deck.assignedTo.includes(sid);
 }
@@ -12162,11 +12182,18 @@ function renderFlashcardsAdmin() {
 
 function fcRenderDeckCard(deck, students) {
   const cards = deck.cards || [];
+  const courses = load('courses') || [];
   const assignedNames = (deck.assignedTo || []).map(sid => {
     const u = (students || []).find(u => u.id === sid);
     return u ? u.name : sid;
   });
-  const who = assignedNames.length ? assignedNames.join(', ') : 'Все ученики';
+  // Determine destination: library or specific students
+  const isLibrary = !deck.assignedTo || deck.assignedTo.length === 0;
+  const who = isLibrary ? null : assignedNames.join(', ');
+  // Course badge
+  const course = deck.courseId ? courses.find(c => c.id === deck.courseId) : null;
+  const courseLabel = course ? esc(course.title) : null;
+
   return `
   <div class="card" style="margin-bottom:16px">
     <div style="display:flex;align-items:flex-start;gap:12px">
@@ -12176,9 +12203,15 @@ function fcRenderDeckCard(deck, students) {
           <span style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--accent);font-weight:700">${esc(deck.title)}</span>
           <span class="badge ${deck.published ? 'badge-green' : 'badge-red'}">${deck.published ? 'Опубликована' : 'Черновик'}</span>
           <span class="badge badge-blue">${cards.length} карточек</span>
+          ${isLibrary ? `<span class="badge" style="background:#f3e8ff;color:#7c3aed">📚 Библиотека</span>` : ''}
+          ${courseLabel ? `<span class="badge" style="background:#e0f2fe;color:#0369a1">📘 ${courseLabel}</span>` : ''}
         </div>
         ${deck.description ? `<div style="font-size:0.83rem;color:var(--text3);margin-top:4px">${esc(deck.description)}</div>` : ''}
-        <div style="font-size:0.78rem;color:var(--text3);margin-top:4px">👤 ${esc(who)}</div>
+        <div style="font-size:0.78rem;color:var(--text3);margin-top:4px">
+          ${isLibrary
+            ? `📚 <span style="color:#7c3aed;font-weight:600">В библиотеке</span> — доступна всем ученикам`
+            : `👤 ${esc(who)}`}
+        </div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0">
         <button class="btn btn-outline btn-sm" onclick="fcOpenAddCard('${escAttr(deck.id)}')">+ Карточка</button>
@@ -12207,9 +12240,10 @@ function fcRenderDeckCard(deck, students) {
 
 function fcModalCreateDeckHTML(students) {
   students = students || (load('users') || []).filter(u => u.role === 'student' && u.active !== false);
+  const courses = load('courses') || [];
   return `
-  <div class="modal-bg" id="fc-modal-deck" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center">
-    <div class="modal" style="max-width:500px;width:94%">
+  <div class="modal-bg" id="fc-modal-deck" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;padding:20px">
+    <div class="modal" style="max-width:540px;width:100%">
       <div class="modal-title" id="fc-deck-modal-title">🗂 Новая колода</div>
       <span class="modal-close" onclick="fcCloseDeckModal()">✕</span>
       <input type="hidden" id="fc-edit-deck-id">
@@ -12222,12 +12256,25 @@ function fcModalCreateDeckHTML(students) {
         <input id="fc-deck-desc" placeholder="Краткое описание темы">
       </div>
       <div class="form-group">
-        <label>Назначить ученикам <span style="font-weight:400;color:var(--text3)">(пусто = все)</span></label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px" id="fc-assign-list">
-          ${students.map(s => `
-            <label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;cursor:pointer;padding:5px 10px;border:1.5px solid var(--green-pale);border-radius:8px;user-select:none">
-              <input type="checkbox" class="fc-assign-cb" value="${escAttr(s.id)}" style="accent-color:var(--green-mid)"> ${esc(s.name)}
-            </label>`).join('')}
+        <label>📘 Добавить в курс <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="fc-deck-course" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.93rem;background:var(--white)">
+          <option value="">— Без курса —</option>
+          ${courses.map(c => `<option value="${escAttr(c.id)}">${esc(c.title)}</option>`).join('')}
+        </select>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">Колода появится в разделе «Флешкарты» для учеников этого курса</div>
+      </div>
+      <div class="form-group">
+        <label>👤 Назначить конкретным ученикам <span style="font-weight:400;color:var(--text3)">(не выбрано = в библиотеку)</span></label>
+        <div style="background:#f3e8ff;border:1.5px solid #c4b5fd;border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:#5b21b6">
+          📚 Если не выбрать учеников — колода попадёт в <b>библиотеку</b> и будет доступна всем
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;padding:10px;background:var(--bg);border-radius:10px;border:1.5px solid var(--green-pale);min-height:44px" id="fc-assign-list">
+          ${students.length === 0
+            ? `<span style="font-size:0.82rem;color:var(--text3)">Учеников пока нет</span>`
+            : students.map(s => `
+              <label class="chip-label">
+                <input type="checkbox" class="fc-assign-cb" value="${escAttr(s.id)}" style="accent-color:var(--green-mid)"> ${esc(s.name)}
+              </label>`).join('')}
         </div>
       </div>
       <div style="display:flex;gap:8px">
@@ -12284,6 +12331,8 @@ function fcOpenEditDeck(deckId) {
   document.getElementById('fc-edit-deck-id').value = deck.id;
   document.getElementById('fc-deck-title').value   = deck.title || '';
   document.getElementById('fc-deck-desc').value    = deck.description || '';
+  const courseEl = document.getElementById('fc-deck-course');
+  if (courseEl) courseEl.value = deck.courseId || '';
   document.querySelectorAll('.fc-assign-cb').forEach(cb => {
     cb.checked = (deck.assignedTo || []).includes(cb.value);
   });
@@ -12300,18 +12349,25 @@ function fcSaveDeck() {
   if (!title) { showNotif('⚠️ Введите название колоды'); return; }
   const desc     = (document.getElementById('fc-deck-desc').value || '').trim();
   const assigned = [...document.querySelectorAll('.fc-assign-cb:checked')].map(cb => cb.value);
+  const courseId = (document.getElementById('fc-deck-course')?.value || '') || null;
   const editId   = document.getElementById('fc-edit-deck-id').value;
   const decks    = fcLoad();
+  const isLibrary = assigned.length === 0;
   if (editId) {
     const idx = decks.findIndex(d => d.id === editId);
-    if (idx !== -1) { decks[idx].title = title; decks[idx].description = desc; decks[idx].assignedTo = assigned; }
+    if (idx !== -1) {
+      decks[idx].title = title;
+      decks[idx].description = desc;
+      decks[idx].assignedTo = assigned;
+      decks[idx].courseId = courseId;
+    }
   } else {
-    decks.push({ id: 'fc_' + Date.now(), title, description: desc, assignedTo: assigned, published: false, cards: [], createdAt: todayStr() });
+    decks.push({ id: 'fc_' + Date.now(), title, description: desc, assignedTo: assigned, courseId, published: false, cards: [], createdAt: todayStr() });
   }
   fcSave(decks);
   fcCloseDeckModal();
   renderFlashcardsAdmin();
-  showNotif('✅ Колода сохранена');
+  showNotif(isLibrary ? '📚 Колода сохранена в библиотеку' : '✅ Колода сохранена и назначена ученикам');
 }
 
 function fcTogglePublish(deckId) {
@@ -12404,6 +12460,7 @@ function renderStudentFlashcards() {
   const today  = todayStr();
   const el     = document.getElementById('student-flashcards-ui');
   if (!el) return;
+  const courses = load('courses') || [];
 
   let totalCards = 0, dueCards = 0, learnedCards = 0;
   decks.forEach(deck => {
@@ -12414,6 +12471,54 @@ function renderStudentFlashcards() {
       if (sr && (sr.repetitions || 0) > 0 && sr.nextDue > today) learnedCards++;
     });
   });
+
+  function renderDeckItem(deck) {
+    const cards = deck.cards || [];
+    let deckDue = 0, deckLearned = 0;
+    cards.forEach(card => {
+      const sr = srData[card.id];
+      if (!sr || sr.nextDue <= today) deckDue++;
+      else if ((sr.repetitions || 0) > 0) deckLearned++;
+    });
+    const pct = cards.length ? Math.round(deckLearned / cards.length * 100) : 0;
+    return `
+    <div style="display:flex;align-items:center;gap:14px;padding:14px;border:1px solid var(--green-xpale);border-radius:12px;margin-bottom:10px;cursor:pointer;transition:box-shadow 0.18s"
+         onmouseenter="this.style.boxShadow='var(--shadow)'" onmouseleave="this.style.boxShadow=''"
+         onclick="fcStartDeckSession('${escAttr(sid)}','${escAttr(deck.id)}')">
+      <div style="font-size:2rem">🗂</div>
+      <div style="flex:1">
+        <div style="font-weight:700;color:var(--accent)">${esc(deck.title)}</div>
+        ${deck.description ? `<div style="font-size:0.78rem;color:var(--text3)">${esc(deck.description)}</div>` : ''}
+        <div style="margin-top:8px;background:var(--green-xpale);border-radius:20px;height:6px;width:100%;overflow:hidden">
+          <div style="background:var(--green-mid);height:100%;width:${pct}%;border-radius:20px"></div>
+        </div>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">${deckLearned}/${cards.length} усвоено · ${deckDue > 0 ? `🔥 ${deckDue} к повторению` : '✅ всё усвоено'}</div>
+      </div>
+      ${deckDue > 0 ? `<span class="badge badge-gold">${deckDue} карточек</span>` : `<span class="badge badge-green">✓</span>`}
+    </div>`;
+  }
+
+  // Group: by course, then library (no course, no specific students)
+  const byCourse = {};
+  const libDecks = [];
+  decks.forEach(d => {
+    if (d.courseId) { (byCourse[d.courseId] = byCourse[d.courseId] || []).push(d); }
+    else libDecks.push(d);
+  });
+
+  let decksHtml = '';
+  if (decks.length === 0) {
+    decksHtml = `<div class="card"><div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:2rem;margin-bottom:8px">🃏</div><div>Преподаватель ещё не создал флешкарты</div></div></div>`;
+  } else {
+    Object.keys(byCourse).forEach(cid => {
+      const course = courses.find(c => c.id === cid);
+      const cName  = course ? esc(course.title) : 'Курс';
+      decksHtml += `<div class="card" style="margin-bottom:16px"><div class="card-title" style="margin-bottom:12px"><span class="dot" style="background:#0369a1"></span>📘 ${cName}</div>${byCourse[cid].map(renderDeckItem).join('')}</div>`;
+    });
+    if (libDecks.length) {
+      decksHtml += `<div class="card" style="margin-bottom:16px"><div class="card-title" style="margin-bottom:12px"><span class="dot" style="background:#7c3aed"></span>📚 Библиотека</div>${libDecks.map(renderDeckItem).join('')}</div>`;
+    }
+  }
 
   el.innerHTML = `
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">
@@ -12437,44 +12542,11 @@ function renderStudentFlashcards() {
   </div>
   `}
 
-  <div class="card">
-    <div class="card-title"><span class="dot"></span>Мои колоды</div>
-    ${decks.length === 0 ? `
-      <div style="text-align:center;padding:30px;color:var(--text3)">
-        <div style="font-size:2rem;margin-bottom:8px">🃏</div>
-        <div>Преподаватель ещё не создал флешкарты</div>
-      </div>
-    ` : decks.map(deck => {
-      const cards = deck.cards || [];
-      let deckDue = 0, deckLearned = 0;
-      cards.forEach(card => {
-        const sr = srData[card.id];
-        if (!sr || sr.nextDue <= today) deckDue++;
-        else if ((sr.repetitions || 0) > 0) deckLearned++;
-      });
-      const pct = cards.length ? Math.round(deckLearned / cards.length * 100) : 0;
-      return `
-      <div style="display:flex;align-items:center;gap:14px;padding:14px;border:1px solid var(--green-xpale);border-radius:12px;margin-bottom:10px;cursor:pointer;transition:box-shadow 0.18s"
-           onmouseenter="this.style.boxShadow='var(--shadow)'" onmouseleave="this.style.boxShadow=''"
-           onclick="fcStartDeckSession('${escAttr(sid)}','${escAttr(deck.id)}')">
-        <div style="font-size:2rem">🗂</div>
-        <div style="flex:1">
-          <div style="font-weight:700;color:var(--accent)">${esc(deck.title)}</div>
-          ${deck.description ? `<div style="font-size:0.78rem;color:var(--text3)">${esc(deck.description)}</div>` : ''}
-          <div style="margin-top:8px;background:var(--green-xpale);border-radius:20px;height:6px;width:100%;overflow:hidden">
-            <div style="background:var(--green-mid);height:100%;width:${pct}%;border-radius:20px"></div>
-          </div>
-          <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">${deckLearned}/${cards.length} усвоено · ${deckDue > 0 ? `🔥 ${deckDue} к повторению` : '✅ всё усвоено'}</div>
-        </div>
-        ${deckDue > 0 ? `<span class="badge badge-gold">${deckDue} карточек</span>` : `<span class="badge badge-green">✓</span>`}
-      </div>`;
-    }).join('')}
-  </div>
+  ${decksHtml}
 
   <div id="fc-session-container" style="display:none"></div>
   `;
 }
-
 // ── Session ────────────────────────────────────────────────────
 
 let _fcSession = { queue:[], index:0, known:0, unknown:0, sid:null, srData:{} };
