@@ -7,6 +7,26 @@
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="X-Frame-Options" content="DENY">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+<!-- ИСПРАВЛЕНО: добавлена Content-Security-Policy для блокировки inline-eval и сторонних скриптов -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline'
+    https://cdn.jsdelivr.net
+    https://cdnjs.cloudflare.com
+    https://www.gstatic.com
+    https://meet.jit.si;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data: https:;
+  connect-src 'self'
+    https://*.firebaseio.com
+    https://*.googleapis.com
+    wss://*.firebaseio.com
+    https://api.telegram.org;
+  frame-src https://meet.jit.si https://www.youtube.com https://player.vimeo.com;
+  object-src 'none';
+  base-uri 'self';
+">
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
