@@ -7148,7 +7148,6 @@ function renderStudentProgress(){
     {id:'grades',     icon:'🏅', label:'Оценки'},
     {id:'goals',      icon:'🎯', label:'Цели ЕГЭ'},
     {id:'challenges', icon:'🏆', label:'Челленджи'},
-    {id:'flashcards', icon:'🃏', label:'Флешкарты'},
   ];
   const tabBar = tabs.map(t => `
     <div class="tab ${_progressTab===t.id?'active':''}"
@@ -7165,17 +7164,14 @@ function renderStudentProgress(){
   if(!body) return;
 
   if(_progressTab === 'grades'){
-    body.innerHTML = `<div id="student-grades-content"></div>`;
-    if(typeof renderStudentGrades === 'function') renderStudentGrades();
+    body.innerHTML = `<div id="progress-grades-content"></div>`;
+    if(typeof renderStudentGrades === 'function') renderStudentGrades(document.getElementById('progress-grades-content'));
   } else if(_progressTab === 'goals'){
     body.innerHTML = `<div id="goals-progress-container"></div>`;
     if(typeof renderStudentGoals === 'function') renderStudentGoals('goals-progress-container');
   } else if(_progressTab === 'challenges'){
     body.innerHTML = `<div id="page-student-challenges"></div>`;
     if(typeof renderStudentChallenges === 'function') renderStudentChallenges();
-  } else if(_progressTab === 'flashcards'){
-    body.innerHTML = `<div id="student-flashcards-ui"></div>`;
-    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards();
   }
 }
 
@@ -7465,8 +7461,8 @@ function renderStudentLibrary(){
     // trigger repeat page logic (reuse existing renderRepeatPage)
     if(typeof renderRepeatPage === 'function') renderRepeatPage();
   } else if(_libraryTab === 'flashcards'){
-    body.innerHTML = `<div id="student-flashcards-ui"></div>`;
-    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards();
+    body.innerHTML = `<div id="library-flashcards-ui"></div>`;
+    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards(document.getElementById('library-flashcards-ui'));
   }
 }
 
@@ -7936,9 +7932,9 @@ function submitHW(){
 }
 
 // ─── GRADES — STUDENT VIEW ───
-function renderStudentGrades(){
+function renderStudentGrades(el){
   const sid = currentUser.id;
-  const el = document.getElementById('student-grades-content');
+  if(!el) el = document.getElementById('student-grades-content');
   if(!el) return;
 
   const tests   = (load('tests')||[]).filter(t=>t.studentId===sid && !t.isLibrary);
@@ -13031,12 +13027,12 @@ function fcDeleteCard(deckId, cardId) {
 
 // ── Student: render ────────────────────────────────────────────
 
-function renderStudentFlashcards() {
+function renderStudentFlashcards(el) {
   const sid    = currentUser.id;
   const decks  = fcLoad().filter(d => fcDeckVisibleFor(d, sid));
   const srData = fcGetSR(sid);
   const today  = todayStr();
-  const el     = document.getElementById('student-flashcards-ui');
+  if (!el) el = document.getElementById('student-flashcards-ui');
   if (!el) return;
   const courses = load('courses') || [];
 
