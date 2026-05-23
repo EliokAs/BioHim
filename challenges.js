@@ -480,8 +480,8 @@ async function renderChallengesAdmin(){
   const students = getStudents();
 
   el.innerHTML = `
-  <div class="page-header">
-    <h2 class="page-title">🏆 Управление челленджами</h2>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px">
+    <div class="page-title" style="margin-bottom:0">🏆 Управление челленджами</div>
     <button class="btn btn-green" onclick="openCreateChallengeModal()">+ Создать челлендж</button>
   </div>
 
