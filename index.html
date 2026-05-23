@@ -1998,6 +1998,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
     if (pct >= 90) watchBadge = '<span class="accordion-badge" style="background:#e8f8f0;color:#27ae60">🎬 Просмотрено</span>';
     else if (pct > 0) watchBadge = `<span class="accordion-badge" style="background:#eff6ff;color:#1565c0">🎬 ${pct}%</span>`;
   }
+
   const badges   = [
     hasVideo ? '<span class="accordion-badge has-video">🎬 Видео</span>' : '',
     hasText  ? '<span class="accordion-badge has-text">📖 Текст</span>' : '',
