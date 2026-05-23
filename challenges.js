@@ -278,7 +278,7 @@ async function renderStudentChallenges(){
   const lbHtml = _buildLeaderboardHtml(lbData, currentUser.id, consent);
 
   el.innerHTML = `
-    <div class="page-header"><h2 class="page-title">🏆 Челленджи и достижения</h2></div>
+    <div class="page-title">🏆 Челленджи и достижения</div>
 
     <!-- STREAK BLOCK -->
     ${streakBar}
