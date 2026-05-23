@@ -1505,7 +1505,17 @@ textarea.q-input{resize:vertical;min-height:70px}
       <div id="student-flashcards-ui"></div>
     </div>
 
-    <!-- Student Materials -->
+    <!-- Student Library (unified: Materials + Repeat) -->
+    <div class="page" id="page-student-library">
+      <!-- rendered by renderStudentLibrary() -->
+    </div>
+
+    <!-- Student Works (unified: Tests + HW + Trial) -->
+    <div class="page" id="page-student-works">
+      <!-- rendered by renderStudentWorks() -->
+    </div>
+
+        <!-- Student Materials -->
     <div class="page" id="page-student-materials">
       <div class="page-title">Учебные материалы</div>
       <div class="page-sub">Нажмите на урок, чтобы открыть видео, текст и файлы</div>
@@ -1866,6 +1876,19 @@ textarea.q-input{resize:vertical;min-height:70px}
     <!-- PARENT DASHBOARD PAGE -->
     <div class="page" id="page-parent-dashboard">
       <!-- Rendered by renderParentDashboard() -->
+    </div>
+
+    <!-- STUDENT ANALYTICS PAGE -->
+    <div class="page" id="page-student-goals">
+      <div class="page-title">🎯 Цели ЕГЭ</div>
+      <div class="page-sub">Установи целевой балл, следи за прогрессом и получай персональные рекомендации</div>
+      <div class="page-content"></div>
+    </div>
+
+    <div class="page" id="page-student-analytics">
+      <div class="page-title">📈 Аналитика</div>
+      <div class="page-sub">Прогресс по темам, активность, прогноз ЕГЭ и сравнение с классом</div>
+      <div id="student-analytics-content"></div>
     </div>
 
 </div><!-- /main -->
@@ -2877,6 +2900,86 @@ textarea.q-input{resize:vertical;min-height:70px}
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════ -->
+<!-- STUDENT: CHALLENGES PAGE             -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page" id="page-student-challenges">
+  <div style="padding:40px;text-align:center;color:var(--text3)">Загрузка...</div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- ADMIN: CHALLENGES MANAGEMENT PAGE     -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page" id="page-challenges-admin">
+  <div style="padding:40px;text-align:center;color:var(--text3)">Загрузка...</div>
+</div>
+
+<!-- CHALLENGE FORM MODAL -->
+<div class="modal-bg" id="modal-challenge-form">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-title" id="challenge-modal-title">➕ Создать челлендж</div>
+    <span class="modal-close" onclick="closeModal('modal-challenge-form')">✕</span>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Название <span style="color:var(--red)">*</span></label>
+        <input id="ch-title" placeholder="Решить 100 задач по химии за неделю">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Описание</label>
+        <textarea id="ch-desc" rows="2" placeholder="Краткое описание челленджа..." style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:'Nunito',sans-serif;font-size:0.9rem;resize:vertical;background:var(--bg);color:var(--text)"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Тип</label>
+        <select id="ch-type">
+          <option value="tasks">📋 Кол-во заданий (тест/ДЗ)</option>
+          <option value="score">🎯 Набрать баллов</option>
+          <option value="lessons">🎥 Онлайн-уроков</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Предмет</label>
+        <select id="ch-subject">
+          <option value="both">🔬 Оба</option>
+          <option value="bio">🌿 Биология</option>
+          <option value="chem">⚗️ Химия</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Цель (число)</label>
+        <input id="ch-goal" type="number" min="1" placeholder="100" value="10">
+      </div>
+      <div class="form-group">
+        <label>Единица</label>
+        <input id="ch-unit" placeholder="задач" value="задач">
+      </div>
+
+      <div class="form-group">
+        <label>Дедлайн (оставьте пустым = бессрочно)</label>
+        <input id="ch-deadline" type="date">
+      </div>
+      <div class="form-group">
+        <label>Награда XP</label>
+        <input id="ch-xp" type="number" min="1" placeholder="50" value="50">
+      </div>
+
+      <div class="form-group">
+        <label>Эмодзи медали</label>
+        <input id="ch-emoji" placeholder="🏆" maxlength="4" style="font-size:1.3rem;text-align:center">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Для учеников (выберите нужных, или всех)</label>
+      <div id="ch-students-list" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:var(--bg);border-radius:10px;border:1.5px solid var(--green-pale)"></div>
+    </div>
+
+    <button class="btn btn-green" onclick="submitChallengeForm()">💾 Сохранить</button>
+  </div>
+</div>
+
 <!-- DAY EVENTS POPUP -->
 <div class="cal-popup-bg" id="cal-popup-bg" onclick="if(event.target===this)closeCalPopup()">
   <div class="cal-popup">
@@ -3021,6 +3124,7 @@ textarea.q-input{resize:vertical;min-height:70px}
 <script src="flashcards.js"></script>
 <script src="answer-draft.js"></script>
 <script src="gamification.js"></script>
+<script src="challenges.js"></script>
 <script src="trial-proctor.js"></script>
 
 <script>
