@@ -5,24 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Базовая защита от clickjacking и XSS через мета-теги -->
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
-<meta http-equiv="X-Frame-Options" content="DENY">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
-<!-- ИСПРАВЛЕНО: добавлена Content-Security-Policy для блокировки inline-eval и сторонних скриптов -->
+<!-- CSP: Firebase long-polling requires script-src + connect-src for firebasedatabase.app -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' 'unsafe-inline'
     https://cdn.jsdelivr.net
     https://cdnjs.cloudflare.com
     https://www.gstatic.com
-    https://meet.jit.si;
+    https://meet.jit.si
+    https://*.firebasedatabase.app
+    https://*.firebaseio.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: https:;
   connect-src 'self'
     https://*.firebaseio.com
+    https://*.firebasedatabase.app
     https://*.googleapis.com
     wss://*.firebaseio.com
-    https://api.telegram.org;
+    wss://*.firebasedatabase.app
+    https://api.telegram.org
+    https://*.vercel.app;
   frame-src https://meet.jit.si https://www.youtube.com https://player.vimeo.com;
   object-src 'none';
   base-uri 'self';
@@ -1022,29 +1026,6 @@ body.dark-theme .drawer-footer { background: var(--card); }
   50%      { opacity:1; }
 }
 </style>
-
-<!-- Safety net: if JS crashes and overlay never removes itself, force-remove after 30s -->
-<script>
-(function(){
-  var MAX_WAIT = 30000;
-  var t = setTimeout(function(){
-    var o = document.getElementById('app-loading-overlay');
-    if(!o) return;
-    o.remove();
-    var ls = document.getElementById('login-screen');
-    if(ls) ls.style.visibility = 'visible';
-    var err = document.getElementById('login-err');
-    if(err) err.textContent = '⚠️ Ошибка загрузки скриптов — попробуйте обновить страницу (Ctrl+F5)';
-  }, MAX_WAIT);
-  // If app loaded fine, _loadingDone removes the overlay — then we cancel the timer
-  var orig = document.getElementById.bind(document);
-  var _done = false;
-  Object.defineProperty(window, '_appLoadingDoneSignal', {
-    set: function(v){ if(v){ clearTimeout(t); } },
-    configurable: true
-  });
-})();
-</script>
 
 <!-- NOTIFICATION -->
 <div class="notif" id="notif"></div>
