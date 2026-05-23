@@ -13550,12 +13550,12 @@ function renderStudentFlashcards(el) {
 }
 // ── Session ────────────────────────────────────────────────────
 
-let _fcSession = { queue:[], index:0, known:0, unknown:0, sid:null, srData:{} };
+let _scriptFcSession = { queue:[], index:0, known:0, unknown:0, sid:null, srData:{} };
 let _scriptFcFlipped = false;
 
 function fcStartSession(sid) {
-  _fcSession = { queue: fcDueCards(sid).sort(()=>Math.random()-0.5), index:0, known:0, unknown:0, sid, srData: fcGetSR(sid) };
-  if (!_fcSession.queue.length) { showNotif('🎉 Нечего повторять!'); return; }
+  _scriptFcSession = { queue: fcDueCards(sid).sort(()=>Math.random()-0.5), index:0, known:0, unknown:0, sid, srData: fcGetSR(sid) };
+  if (!_scriptFcSession.queue.length) { showNotif('🎉 Нечего повторять!'); return; }
   fcShowCard();
 }
 
@@ -13569,14 +13569,14 @@ function fcStartDeckSession(sid, deckId) {
     .filter(c => { const sr = srData[c.id]; return !sr || sr.nextDue <= today; })
     .sort(() => Math.random() - 0.5);
   if (!queue.length) { showNotif(`✅ Все карточки колоды «${deck.title}» усвоены!`); return; }
-  _fcSession = { queue, index:0, known:0, unknown:0, sid, srData };
+  _scriptFcSession = { queue, index:0, known:0, unknown:0, sid, srData };
   fcShowCard();
 }
 
 function fcShowCard() {
   const el = document.getElementById('fc-session-container');
   if (!el) return;
-  const { queue, index, known, unknown } = _fcSession;
+  const { queue, index, known, unknown } = _scriptFcSession;
   if (index >= queue.length) { fcShowResults(); return; }
   const card  = queue[index];
   const total = queue.length;
@@ -13636,18 +13636,18 @@ function fcFlipCard() {
 }
 
 function fcRate(quality) {
-  const { queue, index, sid } = _fcSession;
+  const { queue, index, sid } = _scriptFcSession;
   const card = queue[index];
   if (!card) return;
-  fcNextInterval(card.id, quality, _fcSession.srData);
-  fcSaveSR(sid, _fcSession.srData);
-  if (quality === 1) _fcSession.known++; else _fcSession.unknown++;
-  _fcSession.index++;
+  fcNextInterval(card.id, quality, _scriptFcSession.srData);
+  fcSaveSR(sid, _scriptFcSession.srData);
+  if (quality === 1) _scriptFcSession.known++; else _scriptFcSession.unknown++;
+  _scriptFcSession.index++;
   fcShowCard();
 }
 
 function fcEndSession() {
-  if (_fcSession.sid) fcSaveSR(_fcSession.sid, _fcSession.srData);
+  if (_scriptFcSession.sid) fcSaveSR(_scriptFcSession.sid, _scriptFcSession.srData);
   const el = document.getElementById('fc-session-container');
   if (el) el.style.display = 'none';
   showNotif('📊 Сессия завершена');
@@ -13655,8 +13655,8 @@ function fcEndSession() {
 }
 
 function fcShowResults() {
-  const { known, unknown, sid } = _fcSession;
-  fcSaveSR(sid, _fcSession.srData);
+  const { known, unknown, sid } = _scriptFcSession;
+  fcSaveSR(sid, _scriptFcSession.srData);
   const total = known + unknown;
   const pct   = total ? Math.round(known / total * 100) : 0;
   const el    = document.getElementById('fc-session-container');
