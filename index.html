@@ -912,16 +912,20 @@ body.dark-theme .drawer-footer { background: var(--card); }
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
   background: var(--accent); border-top: 1px solid rgba(255,255,255,0.15);
   display: none; align-items: stretch;
+  overflow-x: auto; overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   padding-bottom: env(safe-area-inset-bottom, 0px);
   box-shadow: 0 -4px 20px rgba(27,67,50,0.25);
 }
+#mobile-taskbar::-webkit-scrollbar { display: none; }
 #mobile-taskbar .tb-item {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; padding: 8px 4px 6px;
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 8px 10px 6px; min-width: 64px;
   color: rgba(255,255,255,0.55); font-size: 0.6rem; font-weight: 700;
   letter-spacing: 0.02em; cursor: pointer; transition: color .2s, background .2s;
   border: none; background: none; text-align: center; gap: 3px;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent; white-space: nowrap;
 }
 #mobile-taskbar .tb-item .tb-icon { font-size: 1.35rem; line-height: 1; }
 #mobile-taskbar .tb-item.active,
@@ -1964,6 +1968,11 @@ body.dark-theme .drawer-footer { background: var(--card); }
     <!-- PARENT DASHBOARD PAGE -->
     <div class="page" id="page-parent-dashboard">
       <!-- Rendered by renderParentDashboard() -->
+    </div>
+
+    <!-- PARENT SETTINGS PAGE -->
+    <div class="page" id="page-parent-settings">
+      <!-- Rendered by renderParentSettings() -->
     </div>
 
     <!-- STUDENT ANALYTICS PAGE -->
