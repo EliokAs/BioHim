@@ -1582,6 +1582,7 @@ const studentNav=[
   {section:'Учёба'},
   {id:'student-dashboard',  icon:'🏠', label:'Главная'},
   {id:'student-library',    icon:'📚', label:'Материалы и повторение'},
+  {id:'student-flashcards', icon:'🃏', label:'Флешкарты'},
   {id:'student-works',      icon:'📋', label:'Проверочные работы'},
   {id:'student-taskbank',   icon:'🎲', label:'Банк заданий'},
   {section:'Прогресс'},
@@ -7147,6 +7148,7 @@ function renderStudentProgress(){
     {id:'grades',     icon:'🏅', label:'Оценки'},
     {id:'goals',      icon:'🎯', label:'Цели ЕГЭ'},
     {id:'challenges', icon:'🏆', label:'Челленджи'},
+    {id:'flashcards', icon:'🃏', label:'Флешкарты'},
   ];
   const tabBar = tabs.map(t => `
     <div class="tab ${_progressTab===t.id?'active':''}"
@@ -7171,6 +7173,9 @@ function renderStudentProgress(){
   } else if(_progressTab === 'challenges'){
     body.innerHTML = `<div id="page-student-challenges"></div>`;
     if(typeof renderStudentChallenges === 'function') renderStudentChallenges();
+  } else if(_progressTab === 'flashcards'){
+    body.innerHTML = `<div id="student-flashcards-ui"></div>`;
+    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards();
   }
 }
 
