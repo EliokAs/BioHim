@@ -1708,7 +1708,6 @@ function navigateTo(page){
   if(nav) nav.classList.add('active');
   curPage=page;
   updateMobileTaskbar(page);
-  window.scrollTo({ top: 0, behavior: 'instant' });
   if(currentUser) localStorage.setItem('biohim_last_page_'+currentUser.id, page);
   renderPage(page);
 }
@@ -2258,7 +2257,14 @@ function openModal(id, extra){
       </label>`).join('');
     setTimeout(prefillAttendanceFromSlot, 50);
   }
-  document.getElementById(id).classList.add('open');
+  const _openEl = document.getElementById(id);
+  if(_openEl){
+    if(_openEl.classList.contains('drawer-bg')){
+      const _drawer = _openEl.querySelector('.drawer');
+      if(_drawer) _drawer.style.transform = ''; // reset for animation
+    }
+    _openEl.classList.add('open');
+  }
   // Populate student checkboxes inside modal if present
   const containerId = {
     'modal-add-theory':'modal-theory-students',
@@ -2285,6 +2291,17 @@ function getCheckedModalStudents(containerId){
   if(!el) return [];
   return [...el.querySelectorAll('input[type=checkbox]:checked')].map(cb=>cb.value);
 }
+
+/** Открыть любой overlay (modal-bg или drawer-bg) по id */
+function openModalEl(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(el.classList.contains('drawer-bg')){
+    const drawer = el.querySelector('.drawer');
+    if(drawer) drawer.style.transform = '';
+  }
+  el.classList.add('open');
+}
 function closeModal(id, force){
   // Редакторы — через guard с подтверждением
   if (_DIRTY_MODALS && _DIRTY_MODALS.includes(id)) {
@@ -2292,7 +2309,20 @@ function closeModal(id, force){
     return;
   }
   const el=document.getElementById(id);
-  if(el) el.classList.remove('open');
+  if(el){
+    // Для drawer-bg — убираем open с анимацией
+    if(el.classList.contains('drawer-bg')){
+      const drawer = el.querySelector('.drawer');
+      if(drawer){
+        drawer.style.transform = 'translateX(100%)';
+        setTimeout(() => el.classList.remove('open'), 280);
+      } else {
+        el.classList.remove('open');
+      }
+    } else {
+      el.classList.remove('open');
+    }
+  }
   if(id==='modal-take-test'){
     _clearTestTimer();
   }
@@ -3520,7 +3550,7 @@ function openEditStudent(id){
   const epv = document.getElementById('es-parent-login-val');
   if(ep) ep.value = u.parentLogin||'';
   if(epv) epv.textContent = u.parentLogin ? `Логин: ${u.parentLogin}` : 'Нет аккаунта';
-  document.getElementById('modal-edit-student').classList.add('open');
+  openModalEl('modal-edit-student');
 }
 async function saveEditStudent(){
   const id=document.getElementById('es-id').value;
@@ -3886,7 +3916,7 @@ function openEditContent(id){
   // Load blocks: prefer saved blocks, fall back to legacy
   _nbBlocks = cont.blocks && cont.blocks.length ? JSON.parse(JSON.stringify(cont.blocks)) : nbFromLegacy(cont);
   nbRender();
-  document.getElementById('modal-edit-content').classList.add('open');
+  openModalEl('modal-edit-content');
 }
 function saveEditContent(){
   const id=document.getElementById('ec-id').value;
@@ -3963,7 +3993,7 @@ function openEditTest(id){
   if(maxHint) maxHint.textContent='(считается автоматически из вопросов)';
   renderEditTestBuilder();
   _setDirty(false);
-  document.getElementById('modal-edit-test').classList.add('open');
+  openModalEl('modal-edit-test');
 }
 function qTypeLabel(type){
   return {auto:'⚡ Выбор ответа',multi:'☑️ Несколько ответов',open:'📝 Открытый',fillin:'✏️ Вставить слово',match:'🔗 Соответствие',order:'🔢 Порядок'}[type]||type;
@@ -4146,7 +4176,7 @@ function openEditHW(id){
   if(maxHint) maxHint.textContent='(считается автоматически из вопросов)';
   renderEditHWBuilder();
   _setDirty(false);
-  document.getElementById('modal-edit-hw').classList.add('open');
+  openModalEl('modal-edit-hw');
 }
 function renderEditHWBuilder(){
   const el=document.getElementById('ehw-questions-list');
@@ -5698,7 +5728,7 @@ function openEditTask(id){
   const prev=document.getElementById('ntask-img-preview');
   if(t.imageUrl){prev.src=t.imageUrl;prev.style.display='block';}else{prev.style.display='none';}
   document.querySelector('#modal-add-task .modal-title').textContent='✏️ Редактировать задание';
-  document.getElementById('modal-add-task').classList.add('open');
+  openModalEl('modal-add-task');
 }
 
 function deleteTask(id){
@@ -6998,6 +7028,7 @@ function _buildParentGrades(sid){
 
   const graded = items.filter(i=>i.grade);
   const avgPct = graded.length ? Math.round(graded.reduce((s,i)=>s+(i.pct||0),0)/graded.length) : null;
+
   items.sort((a,b)=>{
     const da=a.date?a.date.split('.').reverse().join('-'):'0000-00-00';
     const db=b.date?b.date.split('.').reverse().join('-'):'0000-00-00';
