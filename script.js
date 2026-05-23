@@ -2508,234 +2508,10 @@ function nbRender(){ nbRenderCanvas(_nbBlocks,'_nbBlocks','nb-canvas'); }
 function nbAddBlock(type){ nbAddBlockToCanvas(type,'_nbBlocks','nb-canvas'); }
 function nbHandleImageUpload(input,idx){ nbHandleUploadFor(input,idx,'_nbBlocks','nb-canvas'); }
 
-// ══════════════════════════════════════════════════════════════
-// QUILL WYSIWYG INTEGRATION
-// ══════════════════════════════════════════════════════════════
-
-let _quillNew  = null;  // instance for modal-add-theory
-let _quillEdit = null;  // instance for modal-edit-content
-let _quillNewMedia  = [];  // [{type,url,name,fileType,timestamps}]
-let _quillEditMedia = [];
-
-const _QUILL_TOOLBAR = [
-  [{ header: [1, 2, 3, false] }],
-  ['bold', 'italic', 'underline', 'strike'],
-  [{ list: 'ordered' }, { list: 'bullet' }],
-  ['blockquote', 'code-block'],
-  ['link', 'image'],
-  [{ color: [] }, { background: [] }],
-  ['clean']
-];
-
-function _quillInit(editorId, toolbarId){
-  const q = new Quill('#' + editorId, {
-    theme: 'snow',
-    placeholder: 'Начните писать урок...',
-    modules: {
-      toolbar: {
-        container: _QUILL_TOOLBAR,
-      }
-    },
-    formats: ['header','bold','italic','underline','strike',
-              'list','bullet','blockquote','code-block',
-              'link','image','color','background','indent','align']
-  });
-
-  // Move Quill's auto-generated toolbar into our container div, then add media buttons
-  const toolbarEl = document.getElementById(toolbarId);
-  const qlToolbar = q.container.previousElementSibling; // Quill places toolbar before editor
-  if(toolbarEl && qlToolbar){
-    toolbarEl.appendChild(qlToolbar);
-  }
-
-  // Add Video/File buttons to toolbar
-  const which = editorId === 'quill-new' ? 'new' : 'edit';
-  const extraSpan = document.createElement('span');
-  extraSpan.className = 'ql-formats';
-  extraSpan.style.cssText = 'border-left:1px solid #ccc;padding-left:8px;margin-left:4px';
-  extraSpan.innerHTML = `
-    <button onclick="quillInsertVideo('${which}')" title="Вставить видео"
-      style="font-size:0.73rem;padding:2px 8px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:700;height:auto;width:auto">🎬 Видео</button>
-    <button onclick="quillInsertFile('${which}')" title="Прикрепить файл"
-      style="font-size:0.73rem;padding:2px 8px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:700;height:auto;width:auto;margin-left:4px">📎 Файл</button>`;
-  if(qlToolbar) qlToolbar.appendChild(extraSpan);
-
-  return q;
-}
-
-function _quillEnsure(){
-  if(!_quillNew && document.getElementById('quill-new')){
-    _quillNew = _quillInit('quill-new','quill-new-toolbar');
-  }
-  if(!_quillEdit && document.getElementById('quill-edit')){
-    _quillEdit = _quillInit('quill-edit','quill-edit-toolbar');
-  }
-}
-
-// Convert Quill delta HTML + media blocks → legacy format used by nbToLegacy/nbRenderView
-function _quillGetBlocks(which){
-  _quillEnsure();
-  const q = which==='new' ? _quillNew : _quillEdit;
-  const mediaArr = which==='new' ? _quillNewMedia : _quillEditMedia;
-  const html = q ? q.root.innerHTML : '';
-  const blocks = [];
-
-  // Parse HTML into rough block array
-  const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  tmp.querySelectorAll(':scope > *').forEach(el => {
-    const tag = el.tagName.toLowerCase();
-    const text = el.innerText || '';
-    if(!text.trim() && tag !== 'hr') return;
-    if(tag === 'h1') blocks.push({type:'h1', content: text});
-    else if(tag === 'h2') blocks.push({type:'h2', content: text});
-    else if(tag === 'h3') blocks.push({type:'h3', content: text});
-    else if(tag === 'blockquote') blocks.push({type:'quote', content: text});
-    else if(tag === 'pre') blocks.push({type:'code', content: text});
-    else if(tag === 'hr') blocks.push({type:'divider'});
-    else if(tag === 'ul' || tag === 'ol'){
-      el.querySelectorAll('li').forEach(li => blocks.push({type:'p', content: '• ' + (li.innerText||'')}));
-    } else {
-      // Keep HTML for paragraphs so bold/italic survives in view
-      blocks.push({type:'p', content: text, html: el.outerHTML});
-    }
-  });
-
-  // Append media blocks
-  mediaArr.forEach(m => blocks.push({...m}));
-
-  if(!blocks.length) blocks.push(nbDefaultBlock('p'));
-  return blocks;
-}
-
-// Load content into Quill editor
-function _quillSetContent(which, blocks){
-  _quillEnsure();
-  const q = which==='new' ? _quillNew : _quillEdit;
-  const mediaContainer = document.getElementById('quill-' + which + '-media');
-  const mediaArr = which==='new' ? _quillNewMedia : _quillEditMedia;
-
-  // Reset media
-  mediaArr.length = 0;
-  if(mediaContainer) mediaContainer.innerHTML = '';
-
-  if(!q) return;
-
-  // Build HTML from text-type blocks
-  let html = '';
-  blocks.forEach(b => {
-    if(b.type==='p') html += b.html || `<p>${esc(b.content||'')}</p>`;
-    else if(b.type==='h1') html += `<h1>${esc(b.content||'')}</h1>`;
-    else if(b.type==='h2') html += `<h2>${esc(b.content||'')}</h2>`;
-    else if(b.type==='h3') html += `<h3>${esc(b.content||'')}</h3>`;
-    else if(b.type==='quote') html += `<blockquote>${esc(b.content||'')}</blockquote>`;
-    else if(b.type==='code') html += `<pre class="ql-syntax">${esc(b.content||'')}</pre>`;
-    else if(b.type==='divider') html += `<hr>`;
-    else if(b.type==='image'||b.type==='image-upload'){
-      // Images inline in Quill
-      if(b.url) html += `<p><img src="${safeUrl(b.url)}" style="max-width:100%;border-radius:8px"></p>`;
-    } else if(b.type==='video' || b.type==='file'){
-      mediaArr.push({...b});
-      _quillRenderMediaBlock(which, mediaArr.length - 1);
-    }
-  });
-  q.root.innerHTML = html || '';
-}
-
-function _quillRenderMediaBlock(which, idx){
-  const mediaArr = which==='new' ? _quillNewMedia : _quillEditMedia;
-  const container = document.getElementById('quill-' + which + '-media');
-  if(!container) return;
-
-  // Re-render all media blocks
-  container.innerHTML = '';
-  mediaArr.forEach((m, i) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'ql-media-block';
-
-    if(m.type === 'video'){
-      const embed = getVideoEmbedUrl(m.url||'');
-      const tsRows = (m.timestamps||[]).map((t,ti) => `
-        <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
-          <input value="${(t.time||'').replace(/"/g,'&quot;')}" placeholder="0:00"
-            style="width:60px;padding:4px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;outline:none"
-            oninput="_quillGetMediaArr('${which}')[${i}].timestamps[${ti}].time=this.value">
-          <input value="${(t.label||'').replace(/"/g,'&quot;')}" placeholder="Тема..."
-            style="flex:1;padding:4px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;outline:none"
-            oninput="_quillGetMediaArr('${which}')[${i}].timestamps[${ti}].label=this.value">
-          <button onclick="_quillGetMediaArr('${which}')[${i}].timestamps.splice(${ti},1);_quillRenderMediaBlock('${which}',${i})"
-            style="border:1px solid var(--green-pale);background:var(--bg);border-radius:6px;width:24px;height:24px;cursor:pointer;color:var(--red);padding:0;font-size:0.8rem">✕</button>
-        </div>`).join('');
-
-      wrap.innerHTML = `
-        <button class="ql-media-remove" onclick="_quillRemoveMedia('${which}',${i})">✕</button>
-        <div style="font-size:0.78rem;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em">🎬 Видео</div>
-        ${embed ? `<div style="position:relative;padding-top:45%;border-radius:8px;overflow:hidden;background:#000;margin-bottom:10px">
-          <iframe src="${embed}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen></iframe></div>` : ''}
-        <input value="${(m.url||'').replace(/"/g,'&quot;')}" placeholder="YouTube / Vimeo / VK ссылка..."
-          style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box;margin-bottom:10px"
-          oninput="_quillGetMediaArr('${which}')[${i}].url=this.value"
-          onblur="_quillRenderMediaBlock('${which}',${i})">
-        <div style="font-size:0.74rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">⏱ Временные метки</div>
-        <div id="ql-ts-${which}-${i}">${tsRows}</div>
-        <button onclick="_quillGetMediaArr('${which}')[${i}].timestamps=_quillGetMediaArr('${which}')[${i}].timestamps||[];_quillGetMediaArr('${which}')[${i}].timestamps.push({time:'',label:''});_quillRenderMediaBlock('${which}',${i})"
-          style="padding:4px 12px;border-radius:7px;border:1.5px solid var(--green-pale);background:var(--bg);font-family:Nunito,sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;color:var(--green-deep)">＋ Метка</button>`;
-    } else if(m.type === 'file'){
-      wrap.innerHTML = `
-        <button class="ql-media-remove" onclick="_quillRemoveMedia('${which}',${i})">✕</button>
-        <div style="font-size:0.78rem;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.07em">📎 Файл</div>
-        <input value="${(m.name||'').replace(/"/g,'&quot;')}" placeholder="Название файла..."
-          style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box;margin-bottom:8px"
-          oninput="_quillGetMediaArr('${which}')[${i}].name=this.value">
-        <input value="${(m.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на файл..."
-          style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;outline:none;box-sizing:border-box;margin-bottom:8px"
-          oninput="_quillGetMediaArr('${which}')[${i}].url=this.value">
-        <select style="padding:6px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;background:var(--white)"
-          onchange="_quillGetMediaArr('${which}')[${i}].content=this.value">
-          <option value="pdf" ${m.content==='pdf'?'selected':''}>📄 PDF</option>
-          <option value="word" ${m.content==='word'?'selected':''}>📋 Word</option>
-          <option value="link" ${m.content==='link'?'selected':''}>🔗 Ссылка</option>
-        </select>`;
-    }
-    container.appendChild(wrap);
-  });
-}
-
-function _quillGetMediaArr(which){
-  return which==='new' ? _quillNewMedia : _quillEditMedia;
-}
-function _quillRemoveMedia(which, idx){
-  const arr = _quillGetMediaArr(which);
-  arr.splice(idx, 1);
-  _quillRenderMediaBlock(which, 0);
-}
-
-function quillInsertVideo(which){
-  const arr = _quillGetMediaArr(which);
-  arr.push({type:'video', url:'', timestamps:[]});
-  _quillRenderMediaBlock(which, arr.length-1);
-}
-function quillInsertFile(which){
-  const arr = _quillGetMediaArr(which);
-  arr.push({type:'file', url:'', name:'', content:'pdf'});
-  _quillRenderMediaBlock(which, arr.length-1);
-}
-
-// Convert Quill content back to nbToLegacy-compatible blocks
-function _quillToBlocks(which){
-  return _quillGetBlocks(which);
-}
-
 // Reset new canvas on modal open
 function nbResetNew(){
-  _quillNewMedia = [];
-  const mc = document.getElementById('quill-new-media');
-  if(mc) mc.innerHTML = '';
-  // Init Quill after modal becomes visible
-  setTimeout(()=>{
-    _quillEnsure();
-    if(_quillNew) _quillNew.root.innerHTML = '';
-  }, 50);
+  _nbBlocksNew=[nbDefaultBlock('p')];
+  nbRenderCanvas(_nbBlocksNew,'_nbBlocksNew','nb-canvas-new');
 }
 
 function addTheory(){
@@ -2745,8 +2521,7 @@ function addTheory(){
   const openAt=document.getElementById('nth-open-at')?.value||'';
   const closeAt=document.getElementById('nth-close-at')?.value||'';
   const sids=getCheckedModalStudents('modal-theory-students');
-  const blocks = _quillToBlocks('new');
-  const legacy = nbToLegacy(blocks);
+  const legacy=nbToLegacy(_nbBlocksNew);
   const content=load('content')||[];
   const newItems=[];
   const base={type:'theory',title,...legacy,attachmentUrl:'',date:new Date().toLocaleDateString('ru'),openAt,closeAt};
@@ -2757,11 +2532,7 @@ function addTheory(){
   }
   save('content',content);
   newItems.filter(i=>i.studentId).forEach(item=>{ try{srScheduleItem(item.studentId,item.id);}catch{} });
-  // Reset Quill editor
-  if(_quillNew) _quillNew.root.innerHTML = '';
-  _quillNewMedia = [];
-  const _mc = document.getElementById('quill-new-media');
-  if(_mc) _mc.innerHTML = '';
+  _nbBlocksNew=[];
   document.getElementById('nth-title').value='';
   ['nth-open-at','nth-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   closeModal('modal-add-theory');
@@ -4099,17 +3870,11 @@ function nbRenderView(blocks){
 
 function nbPreview(){
   const body = document.getElementById('nb-preview-body');
-  if(body) body.innerHTML = nbRenderView(_quillToBlocks('edit'));
+  if(body) body.innerHTML = nbRenderView(_nbBlocks);
   openModal('modal-nb-preview');
 }
 
-function nbPreviewNew(){
-  const body = document.getElementById('nb-preview-body');
-  if(body) body.innerHTML = nbRenderView(_quillToBlocks('new'));
-  openModal('modal-nb-preview');
-}
-
-// ══════ openEditContent / saveEditContent — Quill version ══════
+// ══════ openEditContent / saveEditContent (перезаписываем) ══════
 function openEditContent(id){
   const cont=(load('content')||[]).find(c=>c.id===id);
   if(!cont) return;
@@ -4118,17 +3883,11 @@ function openEditContent(id){
   document.getElementById('edit-content-title').textContent='✏️ Редактировать урок';
   document.getElementById('ec-title').value=cont.title||'';
   document.getElementById('ec-theory-fields').style.display='block';
+  // Load blocks: prefer saved blocks, fall back to legacy
+  _nbBlocks = cont.blocks && cont.blocks.length ? JSON.parse(JSON.stringify(cont.blocks)) : nbFromLegacy(cont);
+  nbRender();
   document.getElementById('modal-edit-content').classList.add('open');
-  // Init Quill after modal is visible
-  setTimeout(()=>{
-    _quillEnsure();
-    const blocks = cont.blocks && cont.blocks.length
-      ? JSON.parse(JSON.stringify(cont.blocks))
-      : nbFromLegacy(cont);
-    _quillSetContent('edit', blocks);
-  }, 50);
 }
-
 function saveEditContent(){
   const id=document.getElementById('ec-id').value;
   const title=document.getElementById('ec-title').value.trim();
@@ -4137,9 +3896,7 @@ function saveEditContent(){
   const cont=content.find(c=>c.id===id);
   if(!cont) return;
   cont.title=title;
-  const blocks = _quillToBlocks('edit');
-  cont.blocks = blocks;
-  const legacy = nbToLegacy(blocks);
+  const legacy = nbToLegacy(_nbBlocks);
   Object.assign(cont, legacy);
   save('content',content);
   closeModal('modal-edit-content');
