@@ -1276,7 +1276,7 @@ function resetLoginAttempts(login){
 const ADMIN_PAGES = ['students','tests-admin','hw-admin','content-admin',
   'payments','schedule-admin','courses','analytics','settings',
   'reports-admin','taskbank-admin','flashcards-admin','notif-settings-admin','finance-admin',
-  'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin'];
+  'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin','challenges-admin'];
 const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'deleteStudent','saveTest','saveHW','addTheory','saveTrial',
   'saveSlot','deleteSlot','saveEditTest','saveEditHW','saveEditTrial',
@@ -1338,10 +1338,10 @@ function subscribeRealtime(){
   // Дебаунсированные рендеры — не чаще 1 раза в 300мс, только на активной странице
   const _debouncedRender = {};
   const studentPageMap = {
-    content: { pageId: 'student-content', fn: 'renderStudentContent' },
-    tests:   { pageId: 'student-tests',   fn: 'renderStudentTests'   },
-    hw:      { pageId: 'student-hw',      fn: 'renderStudentHW'      },
-    trials:  { pageId: 'student-trials',  fn: 'renderStudentTrials'  },
+    content: { pageId: 'student-library', fn: 'renderStudentLibrary' },
+    tests:   { pageId: 'student-works',   fn: 'renderStudentWorks'   },
+    hw:      { pageId: 'student-works',   fn: 'renderStudentWorks'   },
+    trials:  { pageId: 'student-works',   fn: 'renderStudentWorks'   },
   };
   const adminPageMap = {
     users:    { pageId: 'students',     fn: 'renderStudents'    },
@@ -1523,7 +1523,14 @@ function _startSession(user){
   buildNav();
   subscribeRealtime();
   const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
-  const lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
+  let lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
+  // Redirect legacy student page IDs to new combined pages
+  const _legacyPageMap = {
+    'student-materials':'student-library','student-repeat':'student-library',
+    'student-tests':'student-works','student-hw':'student-works',
+    'student-trial':'student-works','student-mistakes':'student-library'
+  };
+  if(_legacyPageMap[lastPage]) lastPage = _legacyPageMap[lastPage];
   navigateTo(lastPage);
 }
 function doLogout(){
@@ -1555,6 +1562,7 @@ const adminNav=[
   {id:'taskbank-admin',icon:'🎲',label:'База заданий'},
   {id:'flashcards-admin',icon:'🃏',label:'Флешкарты'},
   {id:'grades-admin', icon:'🏅', label:'Оценки учеников'},
+  {id:'challenges-admin', icon:'🏆', label:'Челленджи и рейтинг'},
   {section:'Управление'},
   {id:'chat-admin',       icon:'💬', label:'Чат с учениками'},
   {id:'zoom-settings',    icon:'⚙️', label:'Настройки платформы'},
@@ -1567,24 +1575,24 @@ const adminNav=[
   {id:'admin-lesson', icon:'🎥', label:'Онлайн-занятие'},
 ];
 const studentNav=[
-  {section:'Кабинет'},
-  {id:'student-dashboard', icon:'🏠',label:'Главная'},
-  {id:'student-materials', icon:'📚',label:'Материалы'},
-  {id:'student-repeat',    icon:'🧠',label:'Умное повторение'},
-  {id:'student-tests',     icon:'📋',label:'Тесты'},
-  {id:'student-trial',     icon:'🎯', label:'Пробник'},
-  {id:'student-hw',        icon:'✏️', label:'Домашние задания'},
-  {id:'student-grades',    icon:'🏅', label:'Мои оценки'},
-  {id:'student-mistakes',  icon:'❌', label:'Мои ошибки'},
-  {id:'student-taskbank',  icon:'🎲', label:'Банк заданий'},
-  {id:'student-flashcards',icon:'🃏', label:'Флешкарты'},
-  {id:'student-chat',      icon:'💬', label:'Чат с преподавателем'},
-  {section:'Прочее'},
-  {id:'student-payment',   icon:'💰',label:'Оплата и занятия'},
-  {id:'student-schedule',  icon:'🗓',label:'Запись на занятия'},
-  {id:'student-notif-settings', icon:'🔔', label:'Уведомления'},
+  {section:'Учёба'},
+  {id:'student-dashboard',    icon:'🏠', label:'Главная'},
+  {id:'student-library',      icon:'📚', label:'Материалы и повторение'},
+  {id:'student-works',        icon:'📋', label:'Проверочные работы'},
+  {id:'student-taskbank',     icon:'🎲', label:'Банк заданий'},
+  {id:'student-flashcards',   icon:'🃏', label:'Флешкарты'},
+  {section:'Прогресс'},
+  {id:'student-grades',       icon:'🏅', label:'Мои оценки'},
+  {id:'student-goals',        icon:'🎯', label:'Цели ЕГЭ'},
+  {id:'student-analytics',    icon:'📈', label:'Аналитика'},
+  {id:'student-challenges',   icon:'🏆', label:'Челленджи'},
+  {section:'Общение'},
+  {id:'student-chat',         icon:'💬', label:'Чат'},
+  {id:'student-schedule',     icon:'🗓', label:'Запись на занятия'},
+  {id:'student-payment',      icon:'💰', label:'Оплата'},
+  {id:'student-notif-settings',icon:'🔔',label:'Уведомления'},
   {section:'Занятие'},
-  {id:'student-lesson', icon:'🎥', label:'Онлайн-занятие'},
+  {id:'student-lesson',       icon:'🎥', label:'Онлайн-занятие'},
 ];
 
 
@@ -1645,9 +1653,9 @@ function buildMobileTaskbar(){
   } else if(currentUser.role==='student'){
     items=[
       {id:'student-dashboard', icon:'🏠', label:'Главная'},
-      {id:'student-materials', icon:'📚', label:'Материалы'},
-      {id:'student-tests',     icon:'📋', label:'Тесты'},
-      {id:'student-hw',        icon:'✏️',  label:'ДЗ'},
+      {id:'student-library',   icon:'📚', label:'Материалы'},
+      {id:'student-works',     icon:'📋', label:'Работы'},
+      {id:'student-grades',    icon:'🏅', label:'Оценки'},
       {id:'student-chat',      icon:'💬', label:'Чат'},
     ];
   } else {
@@ -1677,7 +1685,7 @@ function navigateTo(page){
   const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
     'student-hw','student-trial','student-chat','student-grades','student-mistakes','student-taskbank','student-flashcards',
     'student-payment','student-schedule','student-repeat','student-lesson',
-    'student-notif-settings'];
+    'student-notif-settings','student-goals','student-challenges','student-library','student-works'];
   if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
     console.warn('Admin blocked from student page:', page);
     return;
@@ -1733,9 +1741,15 @@ function renderPage(p){
   else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student') renderStudentHW(); }
   else if(p==='student-grades') renderStudentGrades();
   else if(p==='student-mistakes') renderStudentMistakes();
+  else if(p==='student-goals') renderStudentGoals();
+  else if(p==='student-analytics') renderStudentAnalytics();
   else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
   else if(p==='student-flashcards') renderStudentFlashcards();
+  else if(p==='student-challenges'){ if(typeof renderStudentChallenges === 'function') renderStudentChallenges(); }
+  else if(p==='student-library') renderStudentLibrary();
+  else if(p==='student-works') renderStudentWorks();
+  else if(p==='challenges-admin'){ if(typeof renderChallengesAdmin === 'function') renderChallengesAdmin(); }
   else if(p==='student-payment') renderStudentPayment();
   else if(p==='notif-settings-admin'){ renderNotifSettingsAdmin(); }
   else if(p==='student-notif-settings'){ renderNotifSettingsStudent(); }
@@ -1981,6 +1995,16 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   const hasText  = !!(c.body && c.body.trim());
   const hasPdf   = files.some(f=>f.type==='pdf');
   const hasWord  = files.some(f=>f.type==='word');
+
+  // Watch progress badge for video content (student only)
+  let watchBadge = '';
+  if (!isAdmin && hasVideo) {
+    const vId = 'vid_' + btoa(videoUrl.substring(0,40)).replace(/[^a-z0-9]/gi,'').substring(0,16);
+    const pct = _getVideoProgress(vId);
+    if (pct >= 90) watchBadge = '<span class="accordion-badge" style="background:#e8f8f0;color:#27ae60">🎬 Просмотрено</span>';
+    else if (pct > 0) watchBadge = `<span class="accordion-badge" style="background:#eff6ff;color:#1565c0">🎬 ${pct}%</span>`;
+  }
+
   const badges   = [
     hasVideo ? '<span class="accordion-badge has-video">🎬 Видео</span>' : '',
     hasText  ? '<span class="accordion-badge has-text">📖 Текст</span>' : '',
@@ -2009,11 +2033,37 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   if(videoUrl){
     const embedUrl=getVideoEmbedUrl(videoUrl);
     if(embedUrl){
-      videoBlock=`<div style="margin-bottom:18px">
-        <div style="font-weight:700;color:var(--accent);margin-bottom:10px;font-size:0.9rem">🎬 Видео</div>
-        <div style="border-radius:12px;overflow:hidden;background:#000;position:relative;width:100%;height:300px">
-          <iframe src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe>
+      const timestamps = c.videoTimestamps || [];
+      const vidId = 'vid_' + btoa(videoUrl.substring(0,40)).replace(/[^a-z0-9]/gi,'').substring(0,16);
+      const progressId = 'vp_' + vidId;
+      const watchPct = _getVideoProgress(vidId);
+      const tsHtml = timestamps.filter(t=>t.time&&t.label).map(t=>{
+        const secs = _tsToSeconds(t.time);
+        return `<button onclick="videoJumpTo(this,${secs})" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--white);font-family:Nunito,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;color:var(--green-deep);transition:background 0.15s" onmouseover="this.style.background='var(--green-xpale)'" onmouseout="this.style.background='var(--white)'">
+          <span style="color:var(--chem);font-size:0.75rem;font-family:monospace;font-weight:700">${esc(t.time)}</span>
+          <span>${esc(t.label)}</span>
+        </button>`;
+      }).join('');
+      const tsBlock = timestamps.filter(t=>t.time&&t.label).length ? `
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
+          <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);align-self:center;margin-right:2px">⏱ Темы:</span>
+          ${tsHtml}
+        </div>` : '';
+      videoBlock=`<div style="margin-bottom:18px" data-video-id="${vidId}">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:10px;font-size:0.9rem;display:flex;align-items:center;gap:8px">
+          🎬 Видео
+          ${watchPct>=90?'<span style="font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#e8f8f0;color:#27ae60">✅ Просмотрено</span>':watchPct>0?`<span style="font-size:0.72rem;color:var(--text3)">${watchPct}% просмотрено</span>`:''}
         </div>
+        <div style="border-radius:12px;overflow:hidden;background:#000;position:relative;width:100%;height:300px">
+          <iframe id="iframe_${vidId}" src="${embedUrl}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe>
+        </div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:6px;background:var(--green-xpale);border-radius:100px;overflow:hidden">
+            <div id="${progressId}" style="height:100%;background:linear-gradient(90deg,var(--green-mid),var(--green-light));border-radius:100px;transition:width 0.5s ease;width:${watchPct}%"></div>
+          </div>
+          <span id="${progressId}_txt" style="font-size:0.72rem;color:var(--text3);white-space:nowrap;min-width:36px;text-align:right">${watchPct}%</span>
+        </div>
+        ${tsBlock}
       </div>`;
     }
   }
@@ -2058,7 +2108,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       <div style="font-size:1.4rem">📖</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:0.97rem;color:var(--accent);margin-bottom:4px">${esc(c.title)}</div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}${viewedBadge?'&nbsp;'+viewedBadge:''}${_availBadgeHtml?'&nbsp;'+_availBadgeHtml:''}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}${watchBadge?'&nbsp;'+watchBadge:''}${viewedBadge?'&nbsp;'+viewedBadge:''}${_availBadgeHtml?'&nbsp;'+_availBadgeHtml:''}</div>
       </div>
       <div class="accordion-arrow">▼</div>
     </div>
@@ -2091,6 +2141,26 @@ function toggleAccordion(el){
         if(badgeEl) badgeEl.outerHTML = '<span class="accordion-badge" style="background:#e8f8f0;color:#27ae60">✅ Просмотрено</span>';
       }
     }
+    // Initialize YouTube iframe API for video tracking
+    setTimeout(()=>{
+      item.querySelectorAll('iframe[id^="iframe_"]').forEach(iframe=>{
+        const src = iframe.src || '';
+        if(src.includes('youtube')||src.includes('youtu')){
+          try {
+            iframe.contentWindow.postMessage(JSON.stringify({
+              event:'listening', id:1
+            }),'*');
+          } catch(ex){}
+        }
+        if(src.includes('vimeo')){
+          try {
+            iframe.contentWindow.postMessage(JSON.stringify({
+              method:'addEventListener', value:'timeupdate'
+            }),'*');
+          } catch(ex){}
+        }
+      });
+    }, 1500);
   }
 }
 function contentItemHTML(c, isAdmin){
@@ -2235,10 +2305,15 @@ function getVideoEmbedUrl(url){
 
   // ── YouTube ──
   let m = url.match(/(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if(m) return 'https://www.youtube.com/embed/'+m[1];
+  if(m) return 'https://www.youtube.com/embed/'+m[1]+'?enablejsapi=1';
   m = url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
-  if(m) return 'https://www.youtube.com/embed/'+m[1];
-  if(url.includes('youtube.com/embed/')) return url;
+  if(m) return 'https://www.youtube.com/embed/'+m[1]+'?enablejsapi=1';
+  if(url.includes('youtube.com/embed/')) return url.includes('enablejsapi') ? url : url + (url.includes('?') ? '&' : '?') + 'enablejsapi=1';
+
+  // ── Vimeo ──
+  m = url.match(/vimeo\.com\/(\d+)/);
+  if(m) return 'https://player.vimeo.com/video/'+m[1]+'?api=1';
+  if(url.includes('player.vimeo.com/video/')) return url.includes('api=1') ? url : url + (url.includes('?') ? '&' : '?') + 'api=1';
 
   // ── VK Видео (vk.com/video и vkvideo.ru) ──
   // vk.com/video-123456_789 or vk.com/video123456_789
@@ -2333,11 +2408,25 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
     </div>`;
   } else if(blk.type==='video'){
     const embed=blk.url?getVideoEmbedUrl(blk.url):'';
+    const tsArr2 = blk.timestamps || [];
+    const tsHtml2 = tsArr2.map((ts,ti)=>`
+      <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
+        <input value="${(ts.time||'').replace(/"/g,'&quot;')}" placeholder="0:00" style="width:60px;padding:5px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white);outline:none"
+          oninput="${stateVar}[${idx}].timestamps[${ti}].time=this.value">
+        <input value="${(ts.label||'').replace(/"/g,'&quot;')}" placeholder="Название темы..." style="flex:1;padding:5px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white);outline:none"
+          oninput="${stateVar}[${idx}].timestamps[${ti}].label=this.value">
+        <button onclick="${stateVar}[${idx}].timestamps.splice(${ti},1);nbRenderCanvas(${stateVar},'${stateVar}','${canvasId}')" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--green-pale);background:var(--bg);cursor:pointer;font-size:0.8rem;padding:0;color:var(--red)">✕</button>
+      </div>`).join('');
     content.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:10px;border:1.5px dashed var(--green-pale)">
       ${embed?`<div class="nb-video-block"><iframe src="${embed}" allowfullscreen></iframe></div>`:''}
-      <input value="${(blk.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на видео (YouTube, VK, Google Drive)..."
+      <input value="${(blk.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на видео (YouTube, Vimeo, VK, Google Drive)..."
         style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.83rem;background:var(--white);outline:none;margin-top:${embed?'10':'0'}px;box-sizing:border-box"
         oninput="${stateVar}[${idx}].url=this.value" onblur="nbRenderCanvas(${stateVar},'${stateVar}','${canvasId}')">
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-xpale)">
+        <div style="font-size:0.75rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:7px">⏱ Временные метки</div>
+        <div>${tsHtml2}</div>
+        <button onclick="${stateVar}[${idx}].timestamps=${stateVar}[${idx}].timestamps||[];${stateVar}[${idx}].timestamps.push({time:'',label:''});nbRenderCanvas(${stateVar},'${stateVar}','${canvasId}')" style="margin-top:6px;padding:5px 12px;border-radius:7px;border:1.5px solid var(--green-pale);background:var(--bg);font-family:Nunito,sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;color:var(--green-deep)">＋ Добавить метку</button>
+      </div>
     </div>`;
   } else if(blk.type==='file'){
     content.innerHTML=`<div style="padding:10px;background:var(--bg);border-radius:10px;border:1.5px dashed var(--green-pale);display:flex;flex-direction:column;gap:6px">
@@ -3500,7 +3589,7 @@ let _nbDragIdx = null;
 function nbBlockId(){ return 'nb_' + Math.random().toString(36).substring(2,9); }
 
 function nbDefaultBlock(type){
-  return { id: nbBlockId(), type, content:'', caption:'', url:'', name:'' };
+  return { id: nbBlockId(), type, content:'', caption:'', url:'', name:'', timestamps:[] };
 }
 
 // Конвертация старого формата → блоки
@@ -3521,7 +3610,7 @@ function nbFromLegacy(c){
   (c.images||[]).filter(Boolean).forEach(url=>{
     blocks.push({...nbDefaultBlock('image'), url});
   });
-  if(c.videoUrl) blocks.push({...nbDefaultBlock('video'), url: c.videoUrl});
+  if(c.videoUrl) blocks.push({...nbDefaultBlock('video'), url: c.videoUrl, timestamps: c.videoTimestamps||[]});
   (c.files||[]).filter(f=>f.url||f.name).forEach(f=>{
     blocks.push({...nbDefaultBlock('file'), url:f.url||'', name:f.name||'', content:f.type||'pdf'});
   });
@@ -3549,6 +3638,7 @@ function nbToLegacy(blocks){
     body:    bodyParts.join('\n\n'),
     images:  imgBlocks.map(b=>b.url).filter(Boolean),
     videoUrl: vidBlocks.length ? vidBlocks[0].url : '',
+    videoTimestamps: vidBlocks.length ? (vidBlocks[0].timestamps||[]) : [],
     files:   fileBlocks.map(b=>({type:b.content||'pdf', name:b.name||'', url:b.url||''})).filter(f=>f.url||f.name),
     blocks:  blocks // save full blocks array for round-trip
   };
@@ -3614,13 +3704,27 @@ function nbBlockEl(blk, idx){
       </div>`;
   } else if(blk.type === 'video'){
     const embed = blk.url ? getVideoEmbedUrl(blk.url) : '';
+    const tsArr = blk.timestamps || [];
+    const tsHtml = tsArr.map((ts,ti)=>`
+      <div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">
+        <input value="${(ts.time||'').replace(/"/g,'&quot;')}" placeholder="0:00" style="width:60px;padding:5px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white);outline:none"
+          oninput="_nbBlocks[${idx}].timestamps[${ti}].time=this.value">
+        <input value="${(ts.label||'').replace(/"/g,'&quot;')}" placeholder="Название темы..." style="flex:1;padding:5px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.8rem;background:var(--white);outline:none"
+          oninput="_nbBlocks[${idx}].timestamps[${ti}].label=this.value">
+        <button onclick="_nbBlocks[${idx}].timestamps.splice(${ti},1);nbRender()" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--green-pale);background:var(--bg);cursor:pointer;font-size:0.8rem;padding:0;color:var(--red)">✕</button>
+      </div>`).join('');
     content.innerHTML = `
       <div style="padding:10px;background:var(--bg);border-radius:10px;border:1.5px dashed var(--green-pale)">
         ${embed ? `<div class="nb-video-block"><iframe src="${embed}" allowfullscreen></iframe></div>` : ''}
         <div style="display:flex;gap:6px;margin-top:${embed?'10':'0'}px">
-          <input value="${(blk.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на видео (YouTube, VK, Google Drive)..."
+          <input value="${(blk.url||'').replace(/"/g,'&quot;')}" placeholder="Ссылка на видео (YouTube, Vimeo, VK, Google Drive)..."
             style="flex:1;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.83rem;background:var(--white);outline:none"
             oninput="_nbBlocks[${idx}].url=this.value" onblur="nbRender()">
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--green-xpale)">
+          <div style="font-size:0.75rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:7px">⏱ Временные метки</div>
+          <div id="ts-list-${idx}">${tsHtml}</div>
+          <button onclick="_nbBlocks[${idx}].timestamps=_nbBlocks[${idx}].timestamps||[];_nbBlocks[${idx}].timestamps.push({time:'',label:''});nbRender()" style="margin-top:6px;padding:5px 12px;border-radius:7px;border:1.5px solid var(--green-pale);background:var(--bg);font-family:Nunito,sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;color:var(--green-deep)">＋ Добавить метку</button>
         </div>
       </div>`;
   } else if(blk.type === 'file'){
@@ -3725,7 +3829,38 @@ function nbRenderView(blocks){
     if(b.type==='image'||b.type==='image-upload') return b.url ? `<figure style="margin:16px 0;text-align:center"><img src="${safeUrl(b.url)}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1)" alt="${esc(b.caption||'')}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${esc(b.caption||'')}</figcaption></figure>` : '';
     if(b.type==='video'){
       const embed=getVideoEmbedUrl(b.url||'');
-      return embed ? `<div style="position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000;margin:16px 0"><iframe src="${embed}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen></iframe></div>` : '';
+      if(!embed) return '';
+      const ts = b.timestamps || [];
+      const vid = b.url || '';
+      const isYT = vid.includes('youtube') || vid.includes('youtu.be');
+      const isVimeo = vid.includes('vimeo');
+      // Extract video ID for progress key
+      let vidId = 'vid_' + btoa(vid.substring(0,40)).replace(/[^a-z0-9]/gi,'').substring(0,16);
+      const tsHtml = ts.filter(t=>t.time&&t.label).map(t=>{
+        const secs = _tsToSeconds(t.time);
+        return `<button onclick="videoJumpTo(this,${secs})" style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;border:1.5px solid var(--green-pale);background:var(--white);font-family:Nunito,sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;color:var(--green-deep);transition:background 0.15s" onmouseover="this.style.background='var(--green-xpale)'" onmouseout="this.style.background='var(--white)'">
+          <span style="color:var(--chem);font-size:0.75rem;font-family:monospace;font-weight:700">${esc(t.time)}</span>
+          <span>${esc(t.label)}</span>
+        </button>`;
+      }).join('');
+      const tsBlock = ts.filter(t=>t.time&&t.label).length ? `
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px">
+          <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);align-self:center;margin-right:2px">⏱</span>
+          ${tsHtml}
+        </div>` : '';
+      const progressId = 'vp_' + vidId;
+      return `<div style="margin:16px 0" data-video-id="${esc(vidId)}">
+        <div style="position:relative;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000">
+          <iframe id="iframe_${esc(vidId)}" src="${embed}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe>
+        </div>
+        <div style="margin-top:8px;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;height:6px;background:var(--green-xpale);border-radius:100px;overflow:hidden">
+            <div id="${esc(progressId)}" style="height:100%;background:linear-gradient(90deg,var(--green-mid),var(--green-light));border-radius:100px;transition:width 0.5s ease;width:${_getVideoProgress(vidId)}%"></div>
+          </div>
+          <span id="${esc(progressId)}_txt" style="font-size:0.72rem;color:var(--text3);white-space:nowrap;min-width:36px;text-align:right">${_getVideoProgress(vidId)}%</span>
+        </div>
+        ${tsBlock}
+      </div>`;
     }
     if(b.type==='file') return b.url ? `<a href="${safeUrl(b.url)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;text-decoration:none;color:var(--text);font-size:0.88rem;margin:8px 0">${b.content==='pdf'?'📄':b.content==='word'?'📋':'🔗'} ${esc(b.name||b.url)}</a>` : '';
     return '';
@@ -6962,26 +7097,166 @@ function _buildParentLessons(sid){
     </div>`;
 }
 
+// ══════════════════════════════════════════════════════════
+// STUDENT LIBRARY — объединённая страница «Материалы и повторение»
+// ══════════════════════════════════════════════════════════
+let _libraryTab = 'materials';
+function renderStudentLibrary(){
+  const el = document.getElementById('page-student-library');
+  if(!el) return;
+  const tabs = [
+    {id:'materials', icon:'📚', label:'Материалы'},
+    {id:'repeat',    icon:'🧠', label:'Умное повторение'},
+  ];
+  const tabBar = tabs.map(t => `
+    <div class="tab ${_libraryTab===t.id?'active':''}"
+      onclick="_libraryTab='${t.id}';renderStudentLibrary()">
+      ${t.icon} ${t.label}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="page-title">📚 Материалы и повторение</div>
+    <div class="tabs" style="margin-bottom:16px">${tabBar}</div>
+    <div id="lib-tab-content"></div>`;
+
+  const body = document.getElementById('lib-tab-content');
+  if(!body) return;
+  if(_libraryTab === 'materials'){
+    body.innerHTML = `
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setMaterialFilter('all',this)">📚 Все</div>
+        <div class="filter-pill" onclick="setMaterialFilter('new',this)">🔵 Не просмотрено</div>
+        <div class="filter-pill" onclick="setMaterialFilter('viewed',this)">✅ Просмотрено</div>
+      </div>
+      <div id="s-list-theory-accordion"></div>`;
+    renderStudentMaterials();
+  } else {
+    // Inject repeat page content
+    body.innerHTML = `
+      <div id="repeat-due-banner" style="display:none;margin-bottom:18px"></div>
+      <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="stat-icon">🔥</div><div class="stat-num" id="rep-due-count">0</div><div class="stat-label">Нужно повторить</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="stat-icon">✅</div><div class="stat-num" id="rep-done-count">0</div><div class="stat-label">Повторено сегодня</div></div>
+        <div class="stat-card" style="flex:1;min-width:120px"><div class="stat-icon">📚</div><div class="stat-num" id="rep-total-count">0</div><div class="stat-label">Всего уроков</div></div>
+      </div>
+      <div id="repeat-session" style="display:none">
+        <div class="card" id="repeat-card-wrap" style="margin-bottom:18px">
+          <div style="font-size:0.75rem;color:var(--text3);margin-bottom:10px" id="repeat-progress-label"></div>
+          <div style="font-weight:700;font-size:1.1rem;color:var(--accent);margin-bottom:16px" id="repeat-card-title"></div>
+          <div id="repeat-card-body" style="line-height:1.8;color:var(--text2);font-size:0.92rem;white-space:pre-wrap;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale);max-height:260px;overflow-y:auto"></div>
+          <div id="repeat-card-video" style="display:none;margin-top:14px;border-radius:12px;overflow:hidden;background:#000;position:relative;width:100%;height:260px">
+            <iframe id="repeat-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture;fullscreen"></iframe>
+          </div>
+          <div id="repeat-card-files" style="margin-top:12px"></div>
+        </div>
+        <div class="card" style="margin-bottom:18px">
+          <div style="font-weight:600;margin-bottom:12px;color:var(--accent)">Как хорошо вы помните этот материал?</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn" style="flex:1;background:#fdecea;color:#c0392b;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(1)">😟 Плохо<br><span style="font-size:0.72rem;font-weight:400">повтор завтра</span></button>
+            <button class="btn" style="flex:1;background:#fff8e1;color:#b8860b;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(2)">😐 Средне<br><span style="font-size:0.72rem;font-weight:400">через 3 дня</span></button>
+            <button class="btn" style="flex:1;background:#e8f8f0;color:#27ae60;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(4)">😊 Хорошо<br><span style="font-size:0.72rem;font-weight:400">через 7 дней</span></button>
+            <button class="btn" style="flex:1;background:#e8f4fd;color:#1565c0;border:none;border-radius:12px;padding:12px;font-weight:700;font-size:0.9rem;cursor:pointer" onclick="rateCard(5)">🤩 Отлично<br><span style="font-size:0.72rem;font-weight:400">через 14 дней</span></button>
+          </div>
+        </div>
+      </div>
+      <div id="repeat-all-done" style="display:none">
+        <div class="empty-state" style="padding:48px 20px">
+          <div style="font-size:3rem;margin-bottom:12px">🎉</div>
+          <p style="font-weight:700;font-size:1.1rem;color:var(--accent)">Все повторения на сегодня выполнены</p>
+          <p style="margin-top:8px;color:var(--text3)">Возвращайтесь завтра — система напомнит, что повторить</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>📋 Все уроки для повторения</div>
+        <div id="repeat-all-list" style="margin-top:12px"></div>
+      </div>`;
+    // trigger repeat page logic (reuse existing renderRepeatPage)
+    if(typeof renderRepeatPage === 'function') renderRepeatPage();
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// STUDENT WORKS — объединённая страница «Проверочные работы»
+// Тесты + ДЗ + Пробник на одной странице с вкладками
+// ══════════════════════════════════════════════════════════
+let _worksTab = 'tests';
+function renderStudentWorks(){
+  const el = document.getElementById('page-student-works');
+  if(!el) return;
+  const tabs = [
+    {id:'tests',   icon:'📋', label:'Тесты'},
+    {id:'hw',      icon:'✏️',  label:'Домашние задания'},
+    {id:'trial',   icon:'🎯', label:'Пробник'},
+  ];
+  const tabBar = tabs.map(t => `
+    <div class="tab ${_worksTab===t.id?'active':''}"
+      onclick="_worksTab='${t.id}';renderStudentWorks()">
+      ${t.icon} ${t.label}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="page-title">📋 Проверочные работы</div>
+    <div class="tabs" style="margin-bottom:16px">${tabBar}</div>
+    <div id="works-tab-content"></div>`;
+
+  const body = document.getElementById('works-tab-content');
+  if(!body) return;
+
+  if(_worksTab === 'tests'){
+    body.innerHTML = `
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setTestFilter('all',this)">📋 Все</div>
+        <div class="filter-pill" onclick="setTestFilter('pending',this)">⏳ Не сдано</div>
+        <div class="filter-pill" onclick="setTestFilter('done',this)">📝 На проверке</div>
+        <div class="filter-pill" onclick="setTestFilter('checked',this)">✔️ Проверено</div>
+      </div>
+      <div id="student-tests-list"></div>`;
+    if(currentUser && currentUser.role === 'student') renderStudentTests();
+  } else if(_worksTab === 'hw'){
+    body.innerHTML = `
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setHWFilter('all',this)">📝 Все</div>
+        <div class="filter-pill" onclick="setHWFilter('pending',this)">⏳ Не сдано</div>
+        <div class="filter-pill" onclick="setHWFilter('done',this)">📝 На проверке</div>
+        <div class="filter-pill" onclick="setHWFilter('checked',this)">✔️ Проверено</div>
+      </div>
+      <div id="student-hw-list"></div>`;
+    if(currentUser && currentUser.role === 'student') renderStudentHW();
+  } else if(_worksTab === 'trial'){
+    body.innerHTML = `
+      <div class="filter-bar">
+        <div class="filter-pill active" onclick="setTrialFilter('all',this)">📋 Все</div>
+        <div class="filter-pill" onclick="setTrialFilter('pending',this)">⏳ Не пройден</div>
+        <div class="filter-pill" onclick="setTrialFilter('done',this)">✅ Пройден</div>
+      </div>
+      <div id="student-trial-list"></div>`;
+    if(currentUser && currentUser.role === 'student') renderStudentTrial();
+  }
+}
+
 let _materialFilter = 'all';
 let _testFilter = 'all';
 let _hwFilter = 'all';
 
 function setMaterialFilter(f, el){
   _materialFilter = f;
-  document.querySelectorAll('#page-student-materials .filter-pill').forEach(p=>p.className='filter-pill');
+  const scope = document.getElementById('lib-tab-content') || document.getElementById('page-student-materials');
+  if(scope) scope.querySelectorAll('.filter-pill').forEach(p=>p.className='filter-pill');
   el.className = 'filter-pill ' + (f==='all'?'active': f==='viewed'?'active-done':'active-todo');
   renderStudentMaterials();
 }
 function setTestFilter(f, el){
   _testFilter = f;
-  document.querySelectorAll('#page-student-tests .filter-pill').forEach(p=>p.className='filter-pill');
+  const scope = document.getElementById('works-tab-content') || document.getElementById('page-student-tests');
+  if(scope) scope.querySelectorAll('.filter-pill').forEach(p=>p.className='filter-pill');
   const cls = {all:'active', done:'active-done', pending:'active-todo', waiting:'active-todo', checked:'active-done'}[f]||'active';
   el.className = 'filter-pill ' + cls;
   renderStudentTests();
 }
 function setHWFilter(f, el){
   _hwFilter = f;
-  document.querySelectorAll('#page-student-hw .filter-pill').forEach(p=>p.className='filter-pill');
+  const scope = document.getElementById('works-tab-content') || document.getElementById('page-student-hw');
+  if(scope) scope.querySelectorAll('.filter-pill').forEach(p=>p.className='filter-pill');
   const cls = {all:'active', done:'active-done', pending:'active-todo', waiting:'active-todo', checked:'active-done'}[f]||'active';
   el.className = 'filter-pill ' + cls;
   renderStudentHW();
@@ -12699,4 +12974,890 @@ function fcShowResults() {
       <button class="btn btn-outline" onclick="fcEndSession()">← К колодам</button>
     </div>
   </div>`;
+}
+// ═══════════════════════════════════════════════
+// АНАЛИТИЧЕСКАЯ ПАНЕЛЬ УЧЕНИКА
+// ═══════════════════════════════════════════════
+
+function renderStudentAnalytics() {
+  const sid = currentUser.id;
+  const el = document.getElementById('student-analytics-content');
+  if (!el) return;
+
+  const tests    = (load('tests')   || []).filter(t => t.studentId === sid && t.submitted);
+  const hw       = (load('hw')      || []).filter(h => h.studentId === sid);
+  const content  = (load('content') || []).filter(c => c.studentId === sid);
+  const trials   = (load('trials')  || []).filter(t => t.studentId === sid && t.submitted);
+
+  // ── collect subject data ──
+  const subjects = ['Биология', 'Химия'];
+  const subjectStats = {};
+  subjects.forEach(subj => {
+    const sTests  = tests.filter(t => t.subject === subj && t.score != null);
+    const sMats   = content.filter(c => c.subject === subj);
+    const sTrials = trials.filter(t => t.subject === subj && t.score != null);
+    const avgScore = sTests.length
+      ? Math.round(sTests.reduce((s, t) => s + Number(t.score || 0), 0) / sTests.length)
+      : 0;
+    subjectStats[subj] = { tests: sTests, mats: sMats, trials: sTrials, avgScore };
+  });
+
+  // ── topic breakdown ──
+  function topicData(subj) {
+    const items = tests.filter(t => t.subject === subj && t.score != null && t.tags && t.tags.length);
+    const map = {};
+    items.forEach(t => {
+      (t.tags || []).forEach(tag => {
+        if (!map[tag]) map[tag] = { total: 0, sum: 0, count: 0 };
+        map[tag].sum += Number(t.score || 0);
+        map[tag].count++;
+        map[tag].total++;
+      });
+    });
+    return Object.entries(map)
+      .map(([tag, d]) => ({ tag, avg: Math.round(d.sum / d.count), count: d.count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 7);
+  }
+
+  // ── activity heatmap data (last 12 months) ──
+  const ACTIVITY_KEY = 'biohim_viewed_' + sid;
+  let viewedMap = {};
+  try { viewedMap = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '{}'); } catch(e) {}
+  // Combine test submission dates + viewed material dates
+  const activityDates = new Set();
+  tests.forEach(t => { if (t.submittedAt) activityDates.add(t.submittedAt.substring(0, 10)); });
+  hw.forEach(h => { if (h.submittedAt) activityDates.add(h.submittedAt.substring(0, 10)); });
+
+  // ── trial score prediction ──
+  const bioTrials  = trials.filter(t => t.subject === 'Биология' && t.score != null).sort((a, b) => (a.createdAt || '') > (b.createdAt || '') ? 1 : -1);
+  const chemTrials = trials.filter(t => t.subject === 'Химия'    && t.score != null).sort((a, b) => (a.createdAt || '') > (b.createdAt || '') ? 1 : -1);
+
+  function predictEge(trialList) {
+    if (!trialList.length) return null;
+    const last = trialList[trialList.length - 1];
+    const s = Number(last.score || 0);
+    if (trialList.length < 2) return { val: s, lo: Math.max(0, s - 5), hi: Math.min(100, s + 8) };
+    const prev = trialList[trialList.length - 2];
+    const trend = s - Number(prev.score || 0);
+    const predicted = Math.min(100, Math.max(0, Math.round(s + trend * 0.5)));
+    return { val: predicted, lo: Math.max(0, predicted - 4), hi: Math.min(100, predicted + 5) };
+  }
+
+  const bioPred  = predictEge(bioTrials);
+  const chemPred = predictEge(chemTrials);
+
+  // ── avg class data (from all students, anonymised) ──
+  const allTests  = load('tests')  || [];
+  const allTrials = load('trials') || [];
+  const allStudents = (load('users') || []).filter(u => u.role === 'student');
+  const classCount  = allStudents.length || 1;
+
+  function classAvg(subj, key) {
+    const items = allTests.filter(t => t.subject === subj && t.score != null && t[key] != null);
+    if (!items.length) return 0;
+    return Math.round(items.reduce((s, t) => s + Number(t.score), 0) / items.length);
+  }
+  const bioClassAvg  = classAvg('Биология');
+  const chemClassAvg = classAvg('Химия');
+
+  const bioTopics  = topicData('Биология');
+  const chemTopics = topicData('Химия');
+
+  // ─────────────────────────────────────────────
+  // HTML
+  // ─────────────────────────────────────────────
+  el.innerHTML = `
+
+  <!-- TOP METRICS -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px">
+    <div class="stat-card">
+      <div class="stat-icon">🧪</div>
+      <div class="stat-num" style="font-size:1.8rem">${bioTrials.length}</div>
+      <div class="stat-label">Пробников Биол.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">⚗️</div>
+      <div class="stat-num" style="font-size:1.8rem">${chemTrials.length}</div>
+      <div class="stat-label">Пробников Хим.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📋</div>
+      <div class="stat-num" style="font-size:1.8rem">${tests.length}</div>
+      <div class="stat-label">Тестов сдано</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon">📚</div>
+      <div class="stat-num" style="font-size:1.8rem">${content.length}</div>
+      <div class="stat-label">Материалов</div>
+    </div>
+  </div>
+
+  <!-- ROW 1: TOPIC PROGRESS + EGE PREDICTION -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+
+    <!-- TOPIC PROGRESS -->
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📊 Прогресс по темам</div>
+      <div style="display:flex;gap:0;border:1px solid var(--green-pale);border-radius:10px;overflow:hidden;width:fit-content;margin-bottom:14px">
+        <button id="an-tab-bio" onclick="analyticsTabSwitch('bio')"
+          style="padding:5px 14px;font-size:0.8rem;font-weight:600;cursor:pointer;border:none;background:var(--green-deep);color:#fff;font-family:Nunito,sans-serif">🌿 Биология</button>
+        <button id="an-tab-chem" onclick="analyticsTabSwitch('chem')"
+          style="padding:5px 14px;font-size:0.8rem;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text3);font-family:Nunito,sans-serif">⚗️ Химия</button>
+      </div>
+      <div id="an-topic-chart-wrap" style="position:relative;width:100%;height:200px">
+        <canvas id="an-topics-chart" role="img" aria-label="Прогресс по темам"></canvas>
+      </div>
+      <div id="an-topic-empty" style="display:none;text-align:center;padding:30px;color:var(--text3);font-size:0.88rem">
+        Пока нет данных — сдайте несколько тестов с тегами
+      </div>
+    </div>
+
+    <!-- EGE PREDICTION -->
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>🎯 Прогноз ЕГЭ</div>
+
+      ${bioPred ? `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-size:0.83rem;margin-bottom:5px">
+          <span style="color:var(--text2);font-weight:600">🌿 Биология</span>
+          <span style="font-weight:700;color:var(--green-deep)">${bioPred.val} б.</span>
+        </div>
+        <div style="height:10px;background:var(--green-xpale);border-radius:100px;overflow:hidden">
+          <div style="height:100%;width:${bioPred.val}%;background:linear-gradient(90deg,var(--green-deep),var(--green-mid));border-radius:100px;transition:width .8s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text3);margin-top:3px"><span>0</span><span>Порог: 36</span><span>100</span></div>
+      </div>` : `<div style="font-size:0.82rem;color:var(--text3);margin-bottom:14px;padding:10px;background:var(--bg2);border-radius:8px">🌿 Биология: нет пробников</div>`}
+
+      ${chemPred ? `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;font-size:0.83rem;margin-bottom:5px">
+          <span style="color:var(--text2);font-weight:600">⚗️ Химия</span>
+          <span style="font-weight:700;color:var(--chem)">${chemPred.val} б.</span>
+        </div>
+        <div style="height:10px;background:var(--green-xpale);border-radius:100px;overflow:hidden">
+          <div style="height:100%;width:${chemPred.val}%;background:linear-gradient(90deg,var(--chem),var(--green-light));border-radius:100px;transition:width .8s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text3);margin-top:3px"><span>0</span><span>Порог: 36</span><span>100</span></div>
+      </div>` : `<div style="font-size:0.82rem;color:var(--text3);margin-bottom:14px;padding:10px;background:var(--bg2);border-radius:8px">⚗️ Химия: нет пробников</div>`}
+
+      ${(bioTrials.length + chemTrials.length) > 1 ? `
+      <div style="border-top:1px solid var(--green-xpale);padding-top:12px;margin-top:4px">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:8px">Динамика пробников</div>
+        <div id="an-trial-chart-wrap" style="position:relative;width:100%;height:120px">
+          <canvas id="an-trial-chart" role="img" aria-label="Динамика пробников"></canvas>
+        </div>
+      </div>` : `
+      <div style="border-top:1px solid var(--green-xpale);padding-top:10px;margin-top:4px;font-size:0.78rem;color:var(--text3);text-align:center">
+        Сдайте хотя бы 2 пробника, чтобы увидеть динамику
+      </div>`}
+
+      ${(bioPred || chemPred) ? `
+      <div style="margin-top:12px;border-top:1px solid var(--green-xpale);padding-top:10px">
+        <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text3);margin-bottom:6px">Прогноз к экзамену</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${bioPred ? `<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:700;background:var(--green-xpale);color:var(--green-deep)">🌿 ${bioPred.lo}–${bioPred.hi} б.</span>` : ''}
+          ${chemPred ? `<span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:700;background:#e8f8f0;color:var(--chem)">⚗️ ${chemPred.lo}–${chemPred.hi} б.</span>` : ''}
+        </div>
+      </div>` : ''}
+    </div>
+  </div>
+
+  <!-- ACTIVITY HEATMAP -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="card-title"><span class="dot"></span>🗓 Активность — последние 12 месяцев</div>
+    <div id="an-heatmap"></div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:0.75rem;color:var(--text3)">
+      <span>меньше</span>
+      <div style="display:flex;gap:2px">
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--green-xpale)"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--green-pale)"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--green-light)"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--green-mid)"></div>
+        <div style="width:11px;height:11px;border-radius:2px;background:var(--green-deep)"></div>
+      </div>
+      <span>больше</span>
+    </div>
+  </div>
+
+  <!-- COMPARISON -->
+  <div class="card">
+    <div class="card-title"><span class="dot"></span>🏆 Сравнение с классом</div>
+    <div style="position:relative;width:100%;height:240px">
+      <canvas id="an-compare-chart" role="img" aria-label="Сравнение с классом"></canvas>
+    </div>
+    <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;font-size:0.78rem;color:var(--text3)">
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#40916c;display:inline-block"></span>Вы</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:#aaa;display:inline-block"></span>Средний по классу</span>
+    </div>
+  </div>
+  `;
+
+  // ── Store topic data for tab switching ──
+  window._anBioTopics  = bioTopics;
+  window._anChemTopics = chemTopics;
+  window._anCurrentSubj = 'bio';
+
+  // ── Render topic chart ──
+  _renderAnalyticsTopicChart('bio');
+
+  // ── Trial dynamics chart ──
+  const trialChartEl = document.getElementById('an-trial-chart');
+  if (trialChartEl && (bioTrials.length + chemTrials.length) > 1) {
+    const trialLabels = [];
+    const bioScores   = [];
+    const chemScores  = [];
+    const maxLen = Math.max(bioTrials.length, chemTrials.length);
+    for (let i = 0; i < maxLen; i++) {
+      trialLabels.push('Проб. ' + (i + 1));
+      bioScores.push(bioTrials[i]  ? Number(bioTrials[i].score  || 0) : null);
+      chemScores.push(chemTrials[i] ? Number(chemTrials[i].score || 0) : null);
+    }
+    new Chart(trialChartEl, {
+      type: 'line',
+      data: {
+        labels: trialLabels,
+        datasets: [
+          { label: 'Биология', data: bioScores,  borderColor: '#40916c', backgroundColor: 'rgba(64,145,108,0.1)',  tension: 0.3, pointRadius: 4, spanGaps: true },
+          { label: 'Химия',    data: chemScores, borderColor: '#52b788', backgroundColor: 'rgba(82,183,136,0.08)', tension: 0.3, pointRadius: 4, borderDash: [4, 3], spanGaps: true }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { min: 0, max: 100, grid: { color: 'rgba(128,128,128,.1)' }, ticks: { font: { size: 10 }, callback: v => v + 'б' } }
+        }
+      }
+    });
+  }
+
+  // ── Activity heatmap ──
+  _renderAnalyticsHeatmap(activityDates);
+
+  // ── Comparison radar chart ──
+  const compareEl = document.getElementById('an-compare-chart');
+  if (compareEl) {
+    const myBioAvg  = subjectStats['Биология'].avgScore;
+    const myChemAvg = subjectStats['Химия'].avgScore;
+    const myHWdone  = Math.round(hw.filter(h => h.submitted).length / (hw.length || 1) * 100);
+    const myTrialAvg= trials.length ? Math.round(trials.reduce((s, t) => s + Number(t.score || 0), 0) / trials.length) : 0;
+    const myMatsViewed = content.length ? Math.round(Object.keys(viewedMap).filter(k => content.find(c => c.id === k)).length / content.length * 100) : 0;
+
+    const classHWdone = 60; // baseline placeholder
+    new Chart(compareEl, {
+      type: 'radar',
+      data: {
+        labels: ['Биология', 'Химия', 'Выполнение ДЗ', 'Пробники', 'Материалы'],
+        datasets: [
+          {
+            label: 'Вы',
+            data: [myBioAvg, myChemAvg, myHWdone, myTrialAvg, myMatsViewed],
+            borderColor: '#40916c', backgroundColor: 'rgba(64,145,108,0.12)',
+            pointBackgroundColor: '#40916c', borderWidth: 2, pointRadius: 4
+          },
+          {
+            label: 'Средний',
+            data: [bioClassAvg || 55, chemClassAvg || 52, classHWdone, 55, 60],
+            borderColor: '#aaa', backgroundColor: 'rgba(170,170,170,0.08)',
+            pointBackgroundColor: '#aaa', borderDash: [4, 3], borderWidth: 1.5, pointRadius: 3
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          r: {
+            min: 0, max: 100,
+            ticks: { font: { size: 9 }, stepSize: 25, callback: v => v + '%' },
+            pointLabels: { font: { size: 11 } },
+            grid: { color: 'rgba(128,128,128,.15)' }
+          }
+        }
+      }
+    });
+  }
+}
+
+function analyticsTabSwitch(subj) {
+  window._anCurrentSubj = subj;
+  const btnBio  = document.getElementById('an-tab-bio');
+  const btnChem = document.getElementById('an-tab-chem');
+  if (!btnBio || !btnChem) return;
+  const green = 'var(--green-deep)', white = '#fff', trans = 'transparent', gray = 'var(--text3)';
+  if (subj === 'bio') {
+    btnBio.style.background = green; btnBio.style.color = white;
+    btnChem.style.background = trans; btnChem.style.color = gray;
+  } else {
+    btnChem.style.background = green; btnChem.style.color = white;
+    btnBio.style.background = trans; btnBio.style.color = gray;
+  }
+  _renderAnalyticsTopicChart(subj);
+}
+
+function _renderAnalyticsTopicChart(subj) {
+  const topics = subj === 'bio' ? (window._anBioTopics || []) : (window._anChemTopics || []);
+  const wrap = document.getElementById('an-topic-chart-wrap');
+  const empty = document.getElementById('an-topic-empty');
+  if (!wrap || !empty) return;
+
+  // Destroy old chart if exists
+  const oldCanvas = document.getElementById('an-topics-chart');
+  if (oldCanvas && oldCanvas._chartInst) { oldCanvas._chartInst.destroy(); }
+  if (!topics.length) {
+    wrap.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  wrap.style.display = 'block';
+  empty.style.display = 'none';
+
+  const canvas = document.getElementById('an-topics-chart');
+  if (!canvas) return;
+  const inst = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: topics.map(t => t.tag.length > 14 ? t.tag.substring(0, 13) + '…' : t.tag),
+      datasets: [{
+        label: 'Средний балл',
+        data: topics.map(t => t.avg),
+        backgroundColor: topics.map(t => t.avg >= 75 ? 'rgba(64,145,108,0.8)' : t.avg >= 50 ? 'rgba(212,160,23,0.8)' : 'rgba(192,57,43,0.75)'),
+        borderWidth: 0, borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` Балл: ${ctx.parsed.y}` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { min: 0, max: 100, grid: { color: 'rgba(128,128,128,.1)' }, ticks: { font: { size: 10 }, callback: v => v + 'б' } }
+      }
+    }
+  });
+  canvas._chartInst = inst;
+}
+
+function _renderAnalyticsHeatmap(activityDates) {
+  const wrap = document.getElementById('an-heatmap');
+  if (!wrap) return;
+
+  const today = new Date();
+  const yearAgo = new Date(today);
+  yearAgo.setFullYear(today.getFullYear() - 1);
+
+  // Align to Monday
+  const startDay = new Date(yearAgo);
+  const dow = (startDay.getDay() + 6) % 7;
+  startDay.setDate(startDay.getDate() - dow);
+
+  const COLS = 53;
+  const COLORS = ['var(--green-xpale)', 'var(--green-pale)', 'var(--green-light)', 'var(--green-mid)', 'var(--green-deep)'];
+  const months = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  const DAY_LABELS = ['', 'Пн', '', 'Ср', '', 'Пт', ''];
+
+  // Month header
+  let monthHtml = '<div style="display:grid;grid-template-columns:22px repeat(53,1fr);gap:2px;margin-bottom:2px">';
+  monthHtml += '<div></div>';
+  let lastM = -1;
+  for (let w = 0; w < COLS; w++) {
+    const d = new Date(startDay); d.setDate(d.getDate() + w * 7);
+    const m = d.getMonth();
+    monthHtml += `<div style="font-size:9px;color:var(--text3)">${m !== lastM ? months[m] : ''}</div>`;
+    lastM = m;
+  }
+  monthHtml += '</div>';
+
+  // Grid
+  let gridHtml = '<div style="display:grid;grid-template-columns:22px repeat(53,1fr);gap:2px">';
+  for (let row = 0; row < 7; row++) {
+    gridHtml += `<div style="font-size:9px;color:var(--text3);display:flex;align-items:center;justify-content:flex-end;padding-right:3px">${DAY_LABELS[row]}</div>`;
+    for (let col = 0; col < COLS; col++) {
+      const d = new Date(startDay); d.setDate(d.getDate() + col * 7 + row);
+      const ds = d.toISOString().substring(0, 10);
+      const inRange = d >= yearAgo && d <= today;
+      const active = activityDates.has(ds);
+      const level = !inRange ? -1 : active ? 3 : 0;
+      const color = level < 0 ? 'transparent' : COLORS[level];
+      const title = inRange ? (active ? ds + ': активно' : ds) : '';
+      gridHtml += `<div style="height:11px;border-radius:2px;background:${color};cursor:default" title="${title}"></div>`;
+    }
+  }
+  gridHtml += '</div>';
+
+  wrap.innerHTML = monthHtml + gridHtml;
+}
+
+// ═══════════════════════════════════════════════
+// ВИДЕОТРЕКИНГ — временные метки и прогресс просмотра
+// ═══════════════════════════════════════════════
+
+const _VIDEO_PROGRESS_KEY = 'biohim_video_progress';
+
+function _getVideoProgressMap() {
+  try { return JSON.parse(localStorage.getItem(_VIDEO_PROGRESS_KEY) || '{}'); } catch(e) { return {}; }
+}
+
+function _getVideoProgress(vidId) {
+  if (!currentUser) return 0;
+  const map = _getVideoProgressMap();
+  return map[currentUser.id + '_' + vidId] || 0;
+}
+
+function _saveVideoProgress(vidId, pct) {
+  if (!currentUser) return;
+  const map = _getVideoProgressMap();
+  const key = currentUser.id + '_' + vidId;
+  const prev = map[key] || 0;
+  // Only save if progress increased (never go backwards)
+  if (pct > prev) {
+    map[key] = Math.min(100, Math.round(pct));
+    localStorage.setItem(_VIDEO_PROGRESS_KEY, JSON.stringify(map));
+    // Update progress bar in DOM
+    const bar = document.getElementById('vp_' + vidId);
+    const txt = document.getElementById('vp_' + vidId + '_txt');
+    if (bar) bar.style.width = map[key] + '%';
+    if (txt) txt.textContent = map[key] + '%';
+    // If >= 90% — mark lesson as viewed too
+    if (map[key] >= 90 && currentUser.role === 'student') {
+      const container = bar ? bar.closest('[data-video-id]') : null;
+      const accItem = container ? container.closest('.accordion-item') : null;
+      if (accItem) {
+        const cid = accItem.getAttribute('data-content-id');
+        if (cid) {
+          const viewKey = 'biohim_viewed_' + currentUser.id;
+          const viewed = JSON.parse(localStorage.getItem(viewKey) || '{}');
+          if (!viewed[cid]) {
+            viewed[cid] = true;
+            localStorage.setItem(viewKey, JSON.stringify(viewed));
+          }
+        }
+      }
+    }
+  }
+}
+
+function _tsToSeconds(ts) {
+  if (!ts) return 0;
+  ts = String(ts).trim();
+  const parts = ts.split(':').map(Number);
+  if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+  if (parts.length === 2) return parts[0]*60 + parts[1];
+  return parts[0] || 0;
+}
+
+// Called by timestamp buttons — jumps iframe to given second
+function videoJumpTo(btn, seconds) {
+  const wrap = btn.closest('[data-video-id]');
+  if (!wrap) return;
+  const vidId = wrap.getAttribute('data-video-id');
+  const iframe = document.getElementById('iframe_' + vidId);
+  if (!iframe) return;
+  const src = iframe.src;
+  // YouTube postMessage seek
+  if (src.includes('youtube') || src.includes('youtu')) {
+    try {
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'seekTo',
+        args: [seconds, true]
+      }), '*');
+      // Also ensure playing
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: 'playVideo',
+        args: []
+      }), '*');
+    } catch(e) {}
+    return;
+  }
+  // Vimeo postMessage seek
+  if (src.includes('vimeo')) {
+    try {
+      iframe.contentWindow.postMessage(JSON.stringify({
+        method: 'setCurrentTime',
+        value: seconds
+      }), '*');
+      iframe.contentWindow.postMessage(JSON.stringify({
+        method: 'play'
+      }), '*');
+    } catch(e) {}
+    return;
+  }
+  // Generic: reload with t= param for VK / Google Drive etc.
+  const base = src.split('?')[0];
+  const params = new URLSearchParams(src.includes('?') ? src.split('?')[1] : '');
+  params.set('t', seconds);
+  params.set('start', seconds);
+  iframe.src = base + '?' + params.toString();
+}
+
+// Poll YouTube iframes for progress via postMessage
+(function _initVideoTracking() {
+  // Listen for YouTube / Vimeo API messages
+  window.addEventListener('message', function(e) {
+    try {
+      const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!data) return;
+
+      // YouTube: { event: 'infoDelivery', info: { currentTime, duration } }
+      if (data.event === 'infoDelivery' && data.info) {
+        const { currentTime, duration } = data.info;
+        if (duration && currentTime) {
+          const pct = (currentTime / duration) * 100;
+          // Find which iframe sent this
+          const iframes = document.querySelectorAll('iframe[id^="iframe_"]');
+          iframes.forEach(iframe => {
+            try {
+              if (iframe.contentWindow === e.source) {
+                const vidId = iframe.id.replace('iframe_', '');
+                _saveVideoProgress(vidId, pct);
+              }
+            } catch(ex) {}
+          });
+        }
+      }
+      // Vimeo: { event: 'timeupdate', data: { percent } }
+      if (data.event === 'timeupdate' && data.data && data.data.percent != null) {
+        const pct = data.data.percent * 100;
+        const iframes = document.querySelectorAll('iframe[id^="iframe_"]');
+        iframes.forEach(iframe => {
+          try {
+            if (iframe.contentWindow === e.source) {
+              const vidId = iframe.id.replace('iframe_', '');
+              _saveVideoProgress(vidId, pct);
+            }
+          } catch(ex) {}
+        });
+      }
+    } catch(ex) {}
+  });
+
+  // Poll YouTube iframes every 5s — request current time
+  setInterval(function() {
+    document.querySelectorAll('iframe[id^="iframe_"]').forEach(iframe => {
+      const src = iframe.src || '';
+      if (src.includes('youtube') || src.includes('youtu')) {
+        try {
+          iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'listening',
+            id: 1
+          }), '*');
+          iframe.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'getPlayerState',
+            args: []
+          }), '*');
+        } catch(ex) {}
+      }
+      if (src.includes('vimeo')) {
+        try {
+          iframe.contentWindow.postMessage(JSON.stringify({
+            method: 'getCurrentTime'
+          }), '*');
+          iframe.contentWindow.postMessage(JSON.stringify({
+            method: 'getDuration'
+          }), '*');
+        } catch(ex) {}
+      }
+    });
+  }, 5000);
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// СИСТЕМА ЦЕЛЕЙ ЕГЭ
+// ═══════════════════════════════════════════════════════════════
+
+const GOALS_KEY = 'biohim_goals_';
+
+function _loadGoals(sid) {
+  try { return JSON.parse(localStorage.getItem(GOALS_KEY + sid) || '{}'); } catch(e) { return {}; }
+}
+function _saveGoals(sid, data) {
+  localStorage.setItem(GOALS_KEY + sid, JSON.stringify(data));
+}
+
+/**
+ * Расчёт текущего «балла» ученика по результатам тестов и пробников.
+ * Возвращает { bio: number|null, chem: number|null, overall: number|null }
+ */
+function _calcCurrentScore(sid) {
+  const tests  = (load('tests')  || []).filter(t => t.studentId === sid && t.submitted && t.autoTotal);
+  const trials = (load('trials') || []).filter(t => t.studentId === sid && t.submitted && t.autoTotal);
+
+  const bio  = [...tests, ...trials].filter(t => (t.subject||'').includes('Биол'));
+  const chem = [...tests, ...trials].filter(t => (t.subject||'').includes('Хим'));
+  const all  = [...tests, ...trials];
+
+  const avg = arr => arr.length
+    ? Math.round(arr.reduce((s, t) => s + Math.round((t.autoScore||0) / t.autoTotal * 100), 0) / arr.length)
+    : null;
+
+  return { bio: avg(bio), chem: avg(chem), overall: avg(all) };
+}
+
+/**
+ * Подсказки «что подтянуть для +5 баллов».
+ * Смотрим пробники с низкими баллами по темам / разделам.
+ */
+function _buildGoalHints(sid, targetPct) {
+  const tests  = (load('tests')  || []).filter(t => t.studentId === sid && t.submitted);
+  const trials = (load('trials') || []).filter(t => t.studentId === sid && t.submitted);
+  const hw     = (load('hw')     || []).filter(h => h.studentId === sid && !h.submitted);
+
+  const hints = [];
+
+  // 1. Непроверенные/несданные ДЗ
+  if (hw.length > 0) {
+    hints.push({ icon: '✏️', text: `Сдать ${hw.length} несданных домашних задания — каждое повторение закрепляет навык` });
+  }
+
+  // 2. Пробники ниже цели
+  const weakTrials = trials.filter(t => {
+    const pct = t.autoTotal ? Math.round((t.autoScore||0) / t.autoTotal * 100) : 0;
+    return pct < (targetPct - 5);
+  });
+  if (weakTrials.length > 0) {
+    const titles = weakTrials.slice(0, 2).map(t => t.title).join(', ');
+    hints.push({ icon: '🎯', text: `Разобрать ошибки в пробниках: ${titles}` });
+  }
+
+  // 3. Темы из тестов с низким процентом
+  const tagScore = {};
+  tests.forEach(t => {
+    const tag = t.subject || t.title || 'Общее';
+    if (!tagScore[tag]) tagScore[tag] = { sum: 0, n: 0 };
+    const pct = t.autoTotal ? Math.round((t.autoScore||0) / t.autoTotal * 100) : 0;
+    tagScore[tag].sum += pct;
+    tagScore[tag].n++;
+  });
+  const weakTags = Object.entries(tagScore)
+    .map(([tag, v]) => ({ tag, avg: Math.round(v.sum / v.n) }))
+    .filter(x => x.avg < 70)
+    .sort((a, b) => a.avg - b.avg)
+    .slice(0, 2);
+
+  weakTags.forEach(x => {
+    hints.push({ icon: '📖', text: `Повторить тему «${x.tag}» — средний балл ${x.avg}%` });
+  });
+
+  // 4. Умное повторение
+  const srData = getSRData ? getSRData(sid) : {};
+  const content = (load('content') || []).filter(c => c.studentId === sid && c.type === 'theory');
+  const today = new Date().toISOString().slice(0, 10);
+  const dueCount = content.filter(c => {
+    const sr = srData[c.id];
+    return !sr || !sr.nextDue || sr.nextDue <= today;
+  }).length;
+  if (dueCount > 0) {
+    hints.push({ icon: '🧠', text: `Выполнить умное повторение — ${dueCount} материалов ждут` });
+  }
+
+  if (hints.length === 0) {
+    hints.push({ icon: '🌟', text: 'Отличная работа! Продолжай в том же темпе и регулярно проходи пробники' });
+    hints.push({ icon: '📊', text: 'Разбирай каждый пробник после сдачи — анализ ошибок даёт +3–7 баллов' });
+  }
+
+  return hints.slice(0, 4);
+}
+
+function renderStudentGoals() {
+  const sid = currentUser.id;
+  const el  = document.getElementById('page-student-goals');
+  if (!el) return;
+
+  const goals   = _loadGoals(sid);
+  const current = _calcCurrentScore(sid);
+
+  // Предметы ученика
+  const user = (load('users') || []).find(u => u.id === sid) || {};
+  const subj = user.subject || '';
+  const isBio  = subj.includes('Биол');
+  const isChem = subj.includes('Хим');
+  const isBoth = isBio && isChem;
+  const subjects = isBoth ? ['Биология', 'Химия'] : isBio ? ['Биология'] : isChem ? ['Химия'] : ['Биология'];
+
+  // Целевые баллы
+  const targetBio  = goals.targetBio  || null;
+  const targetChem = goals.targetChem || null;
+
+  // Прогресс-бар
+  const bar = (cur, target, color) => {
+    if (cur === null) return '<div style="font-size:0.82rem;color:var(--text3)">Нет данных (сдайте хотя бы один тест)</div>';
+    const pct = target ? Math.min(100, Math.round(cur / target * 100)) : cur;
+    const bg = color || 'var(--green-mid)';
+    return `<div style="margin-top:6px">
+      <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text2);margin-bottom:4px">
+        <span>Сейчас: <b style="color:var(--accent)">${cur}%</b></span>
+        ${target ? `<span>Цель: <b style="color:${bg}">${target}%</b></span>` : ''}
+      </div>
+      <div style="height:14px;background:var(--green-xpale);border-radius:99px;overflow:hidden;position:relative">
+        <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,${bg},${bg}cc);border-radius:99px;transition:width 0.6s ease"></div>
+        ${target && cur >= target ? '<div style="position:absolute;right:8px;top:0;height:100%;display:flex;align-items:center;font-size:0.65rem;font-weight:700;color:#fff">🎉</div>' : ''}
+      </div>
+      <div style="font-size:0.74rem;color:var(--text3);margin-top:4px">
+        ${target ? (cur >= target ? '🎉 Цель достигнута!' : `Осталось ${target - cur} п.п. до цели`) : 'Установите целевой балл'}
+      </div>
+    </div>`;
+  };
+
+  // Подсказки
+  const targetForHints = (targetBio || targetChem || 80);
+  const hints = _buildGoalHints(sid, targetForHints);
+  const hintsHTML = hints.map(h => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--bg);border-radius:10px;border:1px solid var(--green-xpale)">
+      <span style="font-size:1.2rem;flex-shrink:0">${h.icon}</span>
+      <span style="font-size:0.88rem;color:var(--text2);line-height:1.5">${esc(h.text)}</span>
+    </div>`).join('');
+
+  // Мотивационный статус
+  const overallPct = current.overall;
+  let motivMsg = '', motivColor = 'var(--green-deep)';
+  if (overallPct === null) {
+    motivMsg = '📝 Сдайте первый тест, чтобы увидеть свой прогресс';
+    motivColor = 'var(--text3)';
+  } else if (overallPct >= 90) {
+    motivMsg = '🏆 Превосходный результат! Ты на пути к высшему баллу';
+  } else if (overallPct >= 75) {
+    motivMsg = '💪 Хороший прогресс! Ещё немного усилий — и цель будет достигнута';
+  } else if (overallPct >= 55) {
+    motivMsg = '📈 Движение есть! Сосредоточься на слабых темах';
+  } else {
+    motivMsg = '🌱 Хорошее начало! Регулярные занятия дадут результат';
+    motivColor = '#e07b00';
+  }
+
+  const content = el.querySelector('.page-content') || el;
+  const wrap = el.querySelector('.page-content') || el;
+  wrap.innerHTML = `
+  <div style="max-width:760px">
+
+    <!-- Заголовок -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap">
+      <div>
+        <h2 style="font-family:'Playfair Display',serif;font-size:1.7rem;color:var(--accent);margin-bottom:2px">🎯 Цели ЕГЭ</h2>
+        <div style="font-size:0.85rem;color:var(--text3)">Установи целевой балл и отслеживай прогресс</div>
+      </div>
+    </div>
+
+    <!-- Мотивационный баннер -->
+    <div style="background:linear-gradient(135deg,var(--green-xpale),var(--bg));border:1.5px solid var(--green-pale);border-radius:var(--radius);padding:16px 20px;margin-bottom:18px;display:flex;align-items:center;gap:12px">
+      <div style="font-size:2rem;flex-shrink:0">${overallPct !== null ? (overallPct >= 75 ? '🚀' : overallPct >= 55 ? '💪' : '🌱') : '📝'}</div>
+      <div>
+        <div style="font-weight:700;font-size:1rem;color:${motivColor}">${motivMsg}</div>
+        ${overallPct !== null ? `<div style="font-size:0.78rem;color:var(--text3);margin-top:2px">Средний балл по всем работам: <b>${overallPct}%</b></div>` : ''}
+      </div>
+    </div>
+
+    <!-- Установка целей -->
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title"><span class="dot"></span>🎯 Целевой балл ЕГЭ</div>
+      <div style="font-size:0.83rem;color:var(--text3);margin-bottom:16px">Укажите желаемый процент выполнения по каждому предмету (например, 85 = 85%)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+
+        ${(isBio || (!isChem)) ? `
+        <div style="background:var(--bg);border-radius:12px;padding:16px;border:1.5px solid var(--green-pale)">
+          <div style="font-weight:700;color:var(--green-deep);margin-bottom:10px;display:flex;align-items:center;gap:6px">🌿 Биология</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <input type="number" id="goals-target-bio" min="1" max="100" value="${targetBio || ''}"
+              placeholder="Цель %"
+              style="width:90px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:1rem;font-weight:700;text-align:center;color:var(--accent)">
+            <span style="font-size:0.85rem;color:var(--text3)">% от максимума</span>
+          </div>
+          ${bar(current.bio ?? current.overall, targetBio, '#40916c')}
+        </div>` : ''}
+
+        ${(isChem || isBoth) ? `
+        <div style="background:var(--bg);border-radius:12px;padding:16px;border:1.5px solid var(--green-pale)">
+          <div style="font-weight:700;color:var(--chem);margin-bottom:10px;display:flex;align-items:center;gap:6px">⚗️ Химия</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <input type="number" id="goals-target-chem" min="1" max="100" value="${targetChem || ''}"
+              placeholder="Цель %"
+              style="width:90px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:1rem;font-weight:700;text-align:center;color:var(--accent)">
+            <span style="font-size:0.85rem;color:var(--text3)">% от максимума</span>
+          </div>
+          ${bar(current.chem ?? current.overall, targetChem, '#52b788')}
+        </div>` : ''}
+
+      </div>
+      <button class="btn btn-green" style="margin-top:16px" onclick="saveStudentGoals()">💾 Сохранить цель</button>
+    </div>
+
+    <!-- Трекер прогресса -->
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title"><span class="dot"></span>📊 Трекер прогресса</div>
+      ${_renderGoalsProgressTracker(sid, goals, current)}
+    </div>
+
+    <!-- Подсказки +5 баллов -->
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title"><span class="dot"></span>💡 Что подтянуть для +5 баллов?</div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:12px">Персональные рекомендации на основе твоих результатов</div>
+      <div style="display:flex;flex-direction:column;gap:8px">${hintsHTML}</div>
+    </div>
+
+  </div>`;
+}
+
+function _renderGoalsProgressTracker(sid, goals, current) {
+  const tests  = (load('tests')  || []).filter(t => t.studentId === sid && t.submitted && t.autoTotal).slice(-10);
+  const trials = (load('trials') || []).filter(t => t.studentId === sid && t.submitted && t.autoTotal).slice(-5);
+
+  if (!tests.length && !trials.length) {
+    return '<div class="empty-state" style="padding:20px 0"><div class="big">📊</div><p>Нет данных — сдайте первый тест</p></div>';
+  }
+
+  const targetBio  = goals.targetBio  || null;
+  const targetChem = goals.targetChem || null;
+
+  const rows = [...tests, ...trials].slice(-8).reverse().map(item => {
+    const pct     = Math.round((item.autoScore || 0) / item.autoTotal * 100);
+    const target  = item.subject && item.subject.includes('Хим') ? targetChem : targetBio;
+    const met     = target ? pct >= target : null;
+    const barW    = pct;
+    const barColor = pct >= 80 ? '#27ae60' : pct >= 60 ? '#e07b00' : '#c0392b';
+    const icon    = item.sections ? '🎯' : '📋';
+    return `<div style="display:grid;grid-template-columns:24px 1fr 80px 64px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--green-xpale)">
+      <span style="font-size:1rem">${icon}</span>
+      <div>
+        <div style="font-size:0.85rem;font-weight:600;color:var(--accent)">${esc((item.title||'').substring(0, 36))}${(item.title||'').length > 36 ? '…' : ''}</div>
+        <div style="height:6px;background:var(--green-xpale);border-radius:99px;overflow:hidden;margin-top:4px">
+          <div style="width:${barW}%;height:100%;background:${barColor};border-radius:99px;transition:width 0.5s ease"></div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:1rem;font-weight:800;color:${barColor}">${pct}%</div>
+      <div style="text-align:right">
+        ${met === true  ? '<span class="badge badge-green" style="font-size:0.7rem">✅ Цель</span>' : ''}
+        ${met === false ? `<span class="badge badge-red" style="font-size:0.7rem">-${target - pct}п.п.</span>` : ''}
+        ${met === null  ? '<span class="badge" style="font-size:0.7rem;background:var(--bg)">—</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const targetLine = (targetBio || targetChem)
+    ? `<div style="font-size:0.78rem;color:var(--text3);margin-bottom:10px">Целевой балл: ${targetBio ? `🌿 Биология ${targetBio}%` : ''} ${targetChem ? `⚗️ Химия ${targetChem}%` : ''}</div>`
+    : '';
+
+  return `${targetLine}<div>${rows}</div>`;
+}
+
+function saveStudentGoals() {
+  const sid  = currentUser.id;
+  const goals = _loadGoals(sid);
+  const bioEl  = document.getElementById('goals-target-bio');
+  const chemEl = document.getElementById('goals-target-chem');
+  if (bioEl) {
+    const v = parseInt(bioEl.value);
+    if (v > 0 && v <= 100) goals.targetBio = v;
+    else delete goals.targetBio;
+  }
+  if (chemEl) {
+    const v = parseInt(chemEl.value);
+    if (v > 0 && v <= 100) goals.targetChem = v;
+    else delete goals.targetChem;
+  }
+  _saveGoals(sid, goals);
+  showNotif('✅ Цель сохранена!');
+  renderStudentGoals();
 }
