@@ -10209,34 +10209,44 @@ function showNotif(msg){
 
 // STARTUP — load from Firebase then show login
 // ═══════════════════════════════════════════
+// Helpers to drive the HTML skeleton overlay (inserted in index.html)
+function _loadingStep(text, pct){
+  const s = document.getElementById('app-loading-step');
+  const b = document.getElementById('app-loading-bar');
+  if(s) s.textContent = text;
+  if(b) b.style.width = pct + '%';
+}
+function _loadingDone(){
+  const overlay = document.getElementById('app-loading-overlay');
+  if(overlay){
+    overlay.style.transition = 'opacity 0.3s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => overlay.remove(), 320);
+  }
+  // Reveal login screen
+  const ls = document.getElementById('login-screen');
+  if(ls) ls.style.visibility = 'visible';
+}
+
 (async () => {
-  // Show a loading overlay while Firebase loads
-  const overlay = document.createElement('div');
-  overlay.id = 'loading-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
-  overlay.innerHTML = `
-    <div style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--green-deep)">Био<span style="color:var(--chem)">Хим</span></div>
-    <div style="color:var(--text3);font-size:0.9rem">Загрузка данных…</div>
-    <div id="spin-loader" style="width:40px;height:40px;border:4px solid var(--green-pale);border-top-color:var(--green-mid);border-radius:50%"></div>`;
-  document.body.appendChild(overlay);
-  const spinStyle = document.createElement('style');
-  spinStyle.textContent = '@keyframes spin{to{transform:rotate(360deg)}} #spin-loader{animation:spin 0.8s linear infinite}';
-  document.head.appendChild(spinStyle);
+  _loadingStep('Подключение к базе данных…', 10);
 
   try {
+    _loadingStep('Загрузка данных…', 35);
     await preloadCache();
+    _loadingStep('Инициализация…', 75);
     await initData();
+    _loadingStep('Готово', 100);
   } catch(e) {
     console.error('Init error:', e);
-    // Even on error — remove overlay so login form is accessible
-    overlay.remove();
+    _loadingDone();
     // Show error inline on login form instead
     const errEl = document.getElementById('login-err');
     if(errEl) errEl.textContent = '⚠️ Ошибка загрузки: ' + (e.message||e) + ' — попробуйте обновить страницу';
     return;
   }
 
-  overlay.remove();
+  _loadingDone();
 
   // Автовход если сессия сохранена
   const savedSession = localStorage.getItem('biohim_session');
