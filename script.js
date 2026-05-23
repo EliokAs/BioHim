@@ -1990,7 +1990,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   const files    = c.files || (c.attachmentUrl ? [{type:'pdf', name:'Прикреплённый файл', url:c.attachmentUrl}] : []);
 
   const hasVideo = !!(videoUrl && getVideoEmbedUrl(videoUrl));
-  const hasText  = !!(c.body && c.body.trim());
+  const hasText  = !!(c.body && c.body.trim()) || !!(c.blocks && c.blocks.length && c.blocks.some(b=>b.content||b.url));
   const hasPdf   = files.some(f=>f.type==='pdf');
   const hasWord  = files.some(f=>f.type==='word');
 
@@ -2067,7 +2067,13 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   }
   // text block
   let textBlock='';
-  if(c.body && c.body.trim()){
+  const viewBlocks = (c.blocks && c.blocks.length) ? c.blocks : null;
+  if(viewBlocks){
+    textBlock=`<div style="margin-bottom:18px">
+      <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
+      <div style="line-height:1.8;font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${nbRenderView(viewBlocks)}</div>
+    </div>`;
+  } else if(c.body && c.body.trim()){
     textBlock=`<div style="margin-bottom:18px">
       <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
       <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body)}</div>
