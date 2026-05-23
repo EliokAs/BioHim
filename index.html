@@ -1023,6 +1023,29 @@ body.dark-theme .drawer-footer { background: var(--card); }
 }
 </style>
 
+<!-- Safety net: if JS crashes and overlay never removes itself, force-remove after 30s -->
+<script>
+(function(){
+  var MAX_WAIT = 30000;
+  var t = setTimeout(function(){
+    var o = document.getElementById('app-loading-overlay');
+    if(!o) return;
+    o.remove();
+    var ls = document.getElementById('login-screen');
+    if(ls) ls.style.visibility = 'visible';
+    var err = document.getElementById('login-err');
+    if(err) err.textContent = '⚠️ Ошибка загрузки скриптов — попробуйте обновить страницу (Ctrl+F5)';
+  }, MAX_WAIT);
+  // If app loaded fine, _loadingDone removes the overlay — then we cancel the timer
+  var orig = document.getElementById.bind(document);
+  var _done = false;
+  Object.defineProperty(window, '_appLoadingDoneSignal', {
+    set: function(v){ if(v){ clearTimeout(t); } },
+    configurable: true
+  });
+})();
+</script>
+
 <!-- NOTIFICATION -->
 <div class="notif" id="notif"></div>
 
