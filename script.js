@@ -1905,9 +1905,13 @@ function renderStudents(){
       </td>
       <td>
         <span class="badge ${s.active?'badge-green':'badge-red'}">${s.active?'Активен':'Неактивен'}</span>
-        ${s.ofertaSigned
-          ?`<div style="font-size:0.7rem;color:var(--green-mid);margin-top:3px">📄 Договор ✅</div>`
-          :`<div style="font-size:0.7rem;color:var(--red);margin-top:3px">📄 Договор ❌</div>`}
+        <div style="font-size:0.7rem;margin-top:3px">
+          ${s.signedPrivacy&&s.signedRules
+            ?`<span style="color:var(--green-mid)">📄 Все документы ✅</span>`
+            :s.signedPrivacy||s.signedRules
+              ?`<span style="color:#b8860b">📄 Частично ⚠️</span>`
+              :`<span style="color:var(--red)">📄 Не подписано ❌</span>`}
+        </div>
       </td>
       <td>${_payBadge(s.id)}</td>
       <td>
@@ -6508,10 +6512,21 @@ function buildProfileHTML(u, isAdmin){
       <div style="font-size:0.88rem;color:var(--text2);line-height:1.5">${u.notes}</div>
     </div>`:''}
 
-    ${u.ofertaSigned&&u.ofertaDate?`
-    <div style="background:#fffbeb;border:1px solid #fce98a;border-radius:10px;padding:10px 14px;font-size:0.8rem;color:#856404">
-      📄 Договор оферты подписан ${u.ofertaDate}
-    </div>`:''}
+    <div style="background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;padding:12px 16px;font-size:0.85rem;margin-bottom:8px">
+      <div style="font-size:0.75rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">📄 Документы</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${u.signedPrivacy
+            ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">✅ Договор о персональных данных · ${esc(u.signedPrivacyDate||'')}</span>`
+            : `<span style="background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">❌ Договор о персональных данных не подписан</span>`}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${u.signedRules
+            ? `<span style="background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">✅ Правила занятий · ${esc(u.signedRulesDate||'')}</span>`
+            : `<span style="background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">❌ Правила занятий не подписаны</span>`}
+        </div>
+      </div>
+    </div>
 
     ${isAdmin?`
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--green-xpale)">
@@ -6570,7 +6585,44 @@ function clearZoomLink(){
   if(st){ st.textContent='Ссылка убрана'; st.style.color='var(--text3)'; }
   showNotif('Ссылка убрана');
 }
+
+
+function renderContractEditor(){
+  const el = document.getElementById('contract-editor-container');
+  if(!el) return;
+  const contracts = load('contracts') || {};
+  const privacyText = contracts.privacy || '';
+  const rulesText   = contracts.rules   || '';
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title"><span class="dot"></span>🔒 Договор о персональных данных</div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:10px">Текст, который видит ученик перед подписанием</div>
+      <textarea id="contract-privacy-text" rows="10" style="width:100%;box-sizing:border-box;font-size:0.87rem;line-height:1.6;padding:12px;border:1px solid var(--green-xpale);border-radius:10px;background:var(--bg);color:var(--text1);resize:vertical;font-family:inherit">${esc(privacyText)}</textarea>
+      <button class="btn btn-green" style="margin-top:10px" onclick="saveContractText('privacy')">💾 Сохранить договор</button>
+      <span id="contract-privacy-status" style="font-size:0.82rem;color:var(--green-mid);margin-left:12px"></span>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📋 Правила занятий</div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:10px">Текст, который видит ученик перед принятием</div>
+      <textarea id="contract-rules-text" rows="10" style="width:100%;box-sizing:border-box;font-size:0.87rem;line-height:1.6;padding:12px;border:1px solid var(--green-xpale);border-radius:10px;background:var(--bg);color:var(--text1);resize:vertical;font-family:inherit">${esc(rulesText)}</textarea>
+      <button class="btn btn-green" style="margin-top:10px" onclick="saveContractText('rules')">💾 Сохранить правила</button>
+      <span id="contract-rules-status" style="font-size:0.82rem;color:var(--green-mid);margin-left:12px"></span>
+    </div>`;
+}
+
+function saveContractText(type){
+  const elId = type === 'privacy' ? 'contract-privacy-text' : 'contract-rules-text';
+  const statusId = type === 'privacy' ? 'contract-privacy-status' : 'contract-rules-status';
+  const text = (document.getElementById(elId)||{}).value || '';
+  const contracts = load('contracts') || {};
+  contracts[type] = text;
+  save('contracts', contracts);
+  const st = document.getElementById(statusId);
+  if(st){ st.textContent = '✅ Сохранено'; setTimeout(()=>{ if(st) st.textContent=''; }, 2500); }
+}
+
 function renderZoomSettings(){
+  renderContractEditor();
   const url  = localStorage.getItem('biohim_zoom_url')||'';
   const desc = localStorage.getItem('biohim_zoom_desc')||'';
   const urlEl = document.getElementById('admin-zoom-url');
@@ -7184,6 +7236,7 @@ function renderStudentSettings(){
   const tabs = [
     {id:'profile',  icon:'👤', label:'Профиль'},
     {id:'notifs',   icon:'🔔', label:'Уведомления'},
+    {id:'docs',     icon:'📄', label:'Документы'},
   ];
   const tabBar = tabs.map(t => `
     <div class="tab ${_settingsTab===t.id?'active':''}"
@@ -7204,6 +7257,8 @@ function renderStudentSettings(){
   } else if(_settingsTab === 'notifs'){
     _renderStudentNotifInline(body);
     if(typeof renderNotifSettingsStudent === 'function') renderNotifSettingsStudent();
+  } else if(_settingsTab === 'docs'){
+    _renderStudentDocs(body);
   }
 }
 
@@ -7309,6 +7364,93 @@ function saveStudentPassword(){
     if(el) el.value = '';
   });
 }
+
+function _renderStudentDocs(container){
+  const u = currentUser;
+  const contracts = load('contracts') || {};
+  const privacyText = contracts.privacy || 'Текст договора о персональных данных не заполнен преподавателем.';
+  const rulesText   = contracts.rules   || 'Текст правил занятий не заполнен преподавателем.';
+
+  const signedPrivacy = u.signedPrivacy || false;
+  const signedRules   = u.signedRules   || false;
+
+  container.innerHTML = `
+    <div class="card" style="max-width:620px;margin-bottom:16px">
+      <div class="card-title"><span class="dot"></span>🔒 Договор о персональных данных</div>
+      ${signedPrivacy
+        ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:#e8f8f0;border-radius:10px;font-size:0.88rem;font-weight:700;color:#27ae60">
+             ✅ Подписан ${esc(u.signedPrivacyDate||'')}
+           </div>`
+        : ''}
+      <div style="max-height:260px;overflow-y:auto;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;padding:14px 16px;font-size:0.87rem;line-height:1.7;color:var(--text2);white-space:pre-wrap;margin-bottom:16px">${esc(privacyText)}</div>
+      ${!signedPrivacy ? `
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:0.9rem;color:var(--text1)">
+          <input type="checkbox" id="chk-privacy" style="margin-top:3px;width:18px;height:18px;accent-color:var(--green-mid);flex-shrink:0">
+          <span>Я ознакомился(-ась) и согласен(-на) с договором о персональных данных</span>
+        </label>
+        <button class="btn btn-green" style="margin-top:14px" onclick="signContract('privacy')">✍️ Подписать договор</button>
+      ` : ''}
+    </div>
+
+    <div class="card" style="max-width:620px">
+      <div class="card-title"><span class="dot"></span>📋 Правила занятий</div>
+      ${signedRules
+        ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:#e8f8f0;border-radius:10px;font-size:0.88rem;font-weight:700;color:#27ae60">
+             ✅ Подписаны ${esc(u.signedRulesDate||'')}
+           </div>`
+        : ''}
+      <div style="max-height:260px;overflow-y:auto;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;padding:14px 16px;font-size:0.87rem;line-height:1.7;color:var(--text2);white-space:pre-wrap;margin-bottom:16px">${esc(rulesText)}</div>
+      ${!signedRules ? `
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:0.9rem;color:var(--text1)">
+          <input type="checkbox" id="chk-rules" style="margin-top:3px;width:18px;height:18px;accent-color:var(--green-mid);flex-shrink:0">
+          <span>Я ознакомился(-ась) и согласен(-на) с правилами занятий</span>
+        </label>
+        <button class="btn btn-green" style="margin-top:14px" onclick="signContract('rules')">✍️ Подписать правила</button>
+      ` : ''}
+    </div>`;
+}
+
+function signContract(type){
+  const chkId = type === 'privacy' ? 'chk-privacy' : 'chk-rules';
+  const chk = document.getElementById(chkId);
+  if(!chk || !chk.checked){
+    showNotif('⚠️ Сначала поставьте галочку согласия');
+    return;
+  }
+  const users = load('users') || [];
+  const idx = users.findIndex(u => u.id === currentUser.id);
+  if(idx === -1){ showNotif('⚠️ Ошибка пользователя'); return; }
+  const dateStr = new Date().toLocaleDateString('ru');
+  if(type === 'privacy'){
+    users[idx].signedPrivacy = true;
+    users[idx].signedPrivacyDate = dateStr;
+    currentUser.signedPrivacy = true;
+    currentUser.signedPrivacyDate = dateStr;
+  } else {
+    users[idx].signedRules = true;
+    users[idx].signedRulesDate = dateStr;
+    currentUser.signedRules = true;
+    currentUser.signedRulesDate = dateStr;
+  }
+  save('users', users);
+  saveSession(currentUser);
+  // Notify admin
+  const label = type === 'privacy' ? 'Договор о персональных данных' : 'Правила занятий';
+  _addAdminNotif({
+    id: 'an' + Date.now(),
+    studentId: currentUser.id,
+    studentName: currentUser.name,
+    type: 'contract',
+    text: `📄 ${currentUser.name} подписал(-а): ${label}`,
+    date: dateStr,
+    read: false,
+  });
+  showNotif('✅ Документ подписан!');
+  _settingsTab = 'docs';
+  renderStudentSettings();
+}
+
+
 
 function _renderStudentNotifInline(container){
   const botName = localStorage.getItem(adminTgBotKey()) || '';
