@@ -1600,6 +1600,7 @@ const studentNav=[
 const parentNav=[
   {section:'Кабинет'},
   {id:'parent-dashboard', icon:'👨‍👩‍👧', label:'Дашборд'},
+  {id:'parent-settings',  icon:'⚙️',  label:'Настройки'},
 ];
 function buildNav(){
   const nav = currentUser.role==='admin'?adminNav:currentUser.role==='parent'?parentNav:studentNav;
@@ -1641,27 +1642,16 @@ let curPage='';
 function buildMobileTaskbar(){
   const el = document.getElementById('mobile-taskbar');
   if(!el) return;
-  // Выбрать нужные пункты для таскбара (максимум 5)
-  let items;
-  if(currentUser.role==='admin'){
-    items=[
-      {id:'dashboard',      icon:'🏠', label:'Главная'},
-      {id:'students',       icon:'👥', label:'Ученики'},
-      {id:'tests-admin',    icon:'📋', label:'Тесты'},
-      {id:'grades-admin',   icon:'🏅', label:'Оценки'},
-      {id:'chat-admin',     icon:'💬', label:'Чат'},
-    ];
-  } else if(currentUser.role==='student'){
-    items=[
-      {id:'student-dashboard', icon:'🏠', label:'Главная'},
-      {id:'student-library',   icon:'📚', label:'Материалы'},
-      {id:'student-works',     icon:'📋', label:'Работы'},
-      {id:'student-progress',  icon:'📊', label:'Прогресс'},
-      {id:'student-chat',      icon:'💬', label:'Чат'},
-    ];
-  } else {
-    items=[{id:'parent-dashboard', icon:'👨‍👩‍👧', label:'Дашборд'}];
-  }
+  const lessonOn = getFeatureToggle('online_lesson');
+  let nav;
+  if(currentUser.role==='admin')        nav = adminNav;
+  else if(currentUser.role==='student') nav = studentNav;
+  else                                   nav = parentNav;
+  // Filter: skip section headers, skip lesson if disabled
+  const items = nav.filter(n =>
+    n.id &&
+    !((!lessonOn) && (n.id==='admin-lesson' || n.id==='student-lesson'))
+  );
   el.innerHTML = items.map(n=>`
     <button class="tb-item" id="tb-${n.id}" onclick="navigateTo('${n.id}')">
       <span class="tb-icon">${n.icon}</span>
@@ -1691,8 +1681,8 @@ function navigateTo(page){
     console.warn('Admin blocked from student page:', page);
     return;
   }
-  // Parent role: block all pages except parent-dashboard
-  if(currentUser && currentUser.role === 'parent' && page !== 'parent-dashboard'){
+  // Parent role: block all pages except parent-dashboard and parent-settings
+  if(currentUser && currentUser.role === 'parent' && page !== 'parent-dashboard' && page !== 'parent-settings'){
     showNotif('⛔ Нет доступа');
     return;
   }
@@ -1759,6 +1749,7 @@ function renderPage(p){
   else if(p==='student-schedule') renderStudentSchedule();
   else if(p==='zoom-settings'){ renderZoomSettings(); }
   else if(p==='parent-dashboard') renderParentDashboard();
+  else if(p==='parent-settings') renderParentSettings();
   else if(p==='student-lesson') renderLesson('student');
   else if(p==='admin-lesson'){ const _ld=getLessonData(); if(_ld&&!_lessonActive){ _lessonActive=true; _lessonStart=_ld.startedAt||Date.now(); _lessonCode=_ld.code; } renderLesson('admin'); }
 }
@@ -6788,6 +6779,253 @@ function _renderStudentCourseProgress(sid) {
 
 let _parentTab = 'feed';          // 'feed' | 'chat' | 'grades' | 'payments' | 'lessons'
 
+
+// ══════════════════════════════════════════════════════════
+// PARENT SETTINGS
+// ══════════════════════════════════════════════════════════
+let _parentSettingsTab = 'tg';
+
+function renderParentSettings(){
+  const el = document.getElementById('page-parent-settings');
+  if(!el) return;
+  const tabs = [
+    {id:'tg',   icon:'✈️',  label:'Уведомления'},
+    {id:'docs', icon:'📄', label:'Документы'},
+  ];
+  const tabBar = tabs.map(t=>`
+    <div class="tab ${_parentSettingsTab===t.id?'active':''}"
+      onclick="_parentSettingsTab='${t.id}';renderParentSettings()">
+      ${t.icon} ${t.label}
+    </div>`).join('');
+  el.innerHTML = `
+    <div class="page-title">⚙️ Настройки</div>
+    <div class="tabs" style="margin-bottom:20px">${tabBar}</div>
+    <div id="parent-settings-body"></div>`;
+  const body = document.getElementById('parent-settings-body');
+  if(!body) return;
+  if(_parentSettingsTab === 'tg'){
+    _renderParentTgSettings(body);
+  } else if(_parentSettingsTab === 'docs'){
+    _renderParentDocs(body);
+  }
+}
+
+function parentNotifKey(pid){ return 'biohim_parent_notif_'+pid; }
+function loadParentNotifSettings(pid){
+  const raw = localStorage.getItem(parentNotifKey(pid));
+  const def = { tgChatId: '', types: { hw:true, test:true, chat:true, payment:true } };
+  if(!raw) return def;
+  try{ return Object.assign({}, def, JSON.parse(raw)); } catch(e){ return def; }
+}
+function saveParentNotifData(pid, s){ localStorage.setItem(parentNotifKey(pid), JSON.stringify(s)); }
+
+async function sendParentTelegramNotif(pid, type, text){
+  const settings = loadParentNotifSettings(pid);
+  if(!settings.tgChatId) return;
+  if(settings.types[type] === false) return;
+  // Resolve student name
+  const users = load('users')||[];
+  const parent = users.find(u=>u.id===pid);
+  const student = parent ? users.find(u=>u.id===parent.linkedStudentId) : null;
+  const name = student ? student.name : 'Ученик';
+  const msg = `👨‍👩‍👧 *BioХим* — ${name}\n\n${text}`;
+  try{
+    await tgApiCall('sendMessage', { chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' });
+  } catch(e){ console.warn('Parent TG send error:', e); }
+}
+
+function _renderParentTgSettings(container){
+  const pid = currentUser.id;
+  const settings = loadParentNotifSettings(pid);
+  const botName = localStorage.getItem(adminTgBotKey()) || '';
+  const botLink = botName ? `<a href="https://t.me/${botName.replace('@','')}" target="_blank" style="color:#2AABEE;font-weight:700;text-decoration:none">${botName}</a>` : '(бот не настроен — обратитесь к преподавателю)';
+
+  const types = [
+    {key:'hw',      icon:'✏️', name:'Домашние задания',  desc:'Новые ДЗ и результаты проверки'},
+    {key:'test',    icon:'📋', name:'Тесты и пробники',  desc:'Новые тесты и результаты'},
+    {key:'payment', icon:'💰', name:'Оплата',            desc:'Пополнение, списания, задолженности'},
+    {key:'chat',    icon:'💬', name:'Сообщения',         desc:'Новые сообщения от преподавателя'},
+  ];
+  const typesHtml = types.map(t=>`
+    <div class="toggle-row">
+      <div class="toggle-info">
+        <div class="toggle-name">${t.icon} ${t.name}</div>
+        <div class="toggle-desc">${esc(t.desc)}</div>
+      </div>
+      <label class="toggle-switch">
+        <input type="checkbox" id="parent-notif-type-${t.key}" ${settings.types[t.key]!==false?'checked':''}>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>`).join('');
+
+  container.innerHTML = `
+    <div class="card" style="max-width:560px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="width:48px;height:48px;border-radius:14px;background:#2AABEE;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0">✈️</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:1.05rem;color:var(--accent)">Telegram</div>
+          <div style="font-size:0.78rem;color:var(--text3)">Уведомления о сданных работах ребёнка</div>
+        </div>
+        <div id="parent-tg-status-badge">
+          ${settings.tgChatId
+            ? '<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">✅ Подключён</span>'
+            : '<span style="background:var(--bg);color:var(--text3);font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:10px">Не подключён</span>'}
+        </div>
+      </div>
+      ${settings.tgChatId ? `
+        <div style="background:#e8f8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-weight:700;color:#27ae60;margin-bottom:4px">✅ Telegram подключён</div>
+          <div style="font-size:0.82rem;color:var(--text2)">Chat ID: <b>${esc(settings.tgChatId)}</b></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-green btn-sm" onclick="testParentTgNotif()">🔔 Отправить тест</button>
+          <button class="btn btn-red btn-sm" onclick="disconnectParentTelegram()">Отключить</button>
+        </div>
+      ` : `
+        <div style="background:#e8f4fd;border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.88rem;color:#1565c0;line-height:1.9">
+          <b>Как подключить:</b><br>
+          1. Перейдите к боту: ${botLink}<br>
+          2. Нажмите <b>Запустить</b> или отправьте <code style="background:#fff;padding:1px 7px;border-radius:5px">/start</code><br>
+          3. Бот пришлёт вам <b>Chat ID</b> — вставьте его ниже
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Ваш Chat ID</label>
+          <input id="parent-tg-chatid" placeholder="Например: 123456789" type="text" inputmode="numeric"
+            style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;width:100%;box-sizing:border-box">
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">Бот пришлёт числовой ID сразу после команды /start</div>
+        </div>
+        <button class="btn btn-green" style="width:100%" onclick="saveParentTgConnect()">✈️ Подключить Telegram</button>
+      `}
+    </div>
+    <div class="card" style="max-width:560px">
+      <div class="card-title"><span class="dot"></span>Какие уведомления получать</div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:12px">Уведомления о событиях ребёнка, которые будут приходить вам</div>
+      ${typesHtml}
+      <button class="btn btn-green" style="margin-top:16px;width:100%" onclick="saveParentNotifTypes()">💾 Сохранить</button>
+    </div>`;
+}
+
+function saveParentTgConnect(){
+  const pid = currentUser.id;
+  const chatId = (document.getElementById('parent-tg-chatid')||{}).value?.trim();
+  if(!chatId){ showNotif('Введите Chat ID из Telegram бота'); return; }
+  if(!/^\d+$/.test(chatId)){ showNotif('Chat ID — только цифры, например: 123456789'); return; }
+  const settings = loadParentNotifSettings(pid);
+  settings.tgChatId = chatId;
+  saveParentNotifData(pid, settings);
+  sendParentTelegramNotif(pid, 'chat', '🎉 Telegram успешно подключён! Теперь вы будете получать уведомления об успехах вашего ребёнка.');
+  showNotif('✅ Telegram подключён!');
+  renderParentSettings();
+}
+
+function disconnectParentTelegram(){
+  const pid = currentUser.id;
+  const settings = loadParentNotifSettings(pid);
+  settings.tgChatId = '';
+  saveParentNotifData(pid, settings);
+  showNotif('Telegram отключён');
+  renderParentSettings();
+}
+
+function testParentTgNotif(){
+  const pid = currentUser.id;
+  const users = load('users')||[];
+  const parent = users.find(u=>u.id===pid);
+  const student = parent ? users.find(u=>u.id===parent.linkedStudentId) : null;
+  const name = student ? student.name : 'Ученик';
+  sendParentTelegramNotif(pid, 'chat', `👋 Это тестовое уведомление. Ваш ребёнок (${name}) на связи!`);
+  showNotif('📨 Тестовое сообщение отправлено');
+}
+
+function saveParentNotifTypes(){
+  const pid = currentUser.id;
+  const settings = loadParentNotifSettings(pid);
+  ['hw','test','payment','chat'].forEach(key=>{
+    const el = document.getElementById('parent-notif-type-'+key);
+    if(el) settings.types[key] = el.checked;
+  });
+  saveParentNotifData(pid, settings);
+  showNotif('✅ Настройки уведомлений сохранены');
+}
+
+function _renderParentDocs(container){
+  const u = currentUser;
+  const contracts = load('contracts') || {};
+  const privacyText = contracts.privacy || 'Текст договора о персональных данных не заполнен преподавателем.';
+  const rulesText   = contracts.rules   || 'Текст правил занятий не заполнен преподавателем.';
+  const signedPrivacy = u.signedPrivacy || false;
+  const signedRules   = u.signedRules   || false;
+
+  container.innerHTML = `
+    <div class="card" style="max-width:620px;margin-bottom:16px">
+      <div class="card-title"><span class="dot"></span>🔒 Договор о персональных данных</div>
+      ${signedPrivacy ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:#e8f8f0;border-radius:10px;font-size:0.88rem;font-weight:700;color:#27ae60">
+          ✅ Подписан ${esc(u.signedPrivacyDate||'')}
+        </div>` : ''}
+      <div style="max-height:260px;overflow-y:auto;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;padding:14px 16px;font-size:0.87rem;line-height:1.7;color:var(--text2);white-space:pre-wrap;margin-bottom:16px">${esc(privacyText)}</div>
+      ${!signedPrivacy ? `
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:0.9rem;color:var(--text1)">
+          <input type="checkbox" id="parent-chk-privacy" style="margin-top:3px;width:18px;height:18px;accent-color:var(--green-mid);flex-shrink:0">
+          <span>Я ознакомился(-ась) и согласен(-на) с договором о персональных данных</span>
+        </label>
+        <button class="btn btn-green" style="margin-top:14px" onclick="signParentContract('privacy')">✍️ Подписать договор</button>
+      ` : ''}
+    </div>
+
+    <div class="card" style="max-width:620px">
+      <div class="card-title"><span class="dot"></span>📋 Правила занятий</div>
+      ${signedRules ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:#e8f8f0;border-radius:10px;font-size:0.88rem;font-weight:700;color:#27ae60">
+          ✅ Подписаны ${esc(u.signedRulesDate||'')}
+        </div>` : ''}
+      <div style="max-height:260px;overflow-y:auto;background:var(--bg);border:1px solid var(--green-xpale);border-radius:10px;padding:14px 16px;font-size:0.87rem;line-height:1.7;color:var(--text2);white-space:pre-wrap;margin-bottom:16px">${esc(rulesText)}</div>
+      ${!signedRules ? `
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:0.9rem;color:var(--text1)">
+          <input type="checkbox" id="parent-chk-rules" style="margin-top:3px;width:18px;height:18px;accent-color:var(--green-mid);flex-shrink:0">
+          <span>Я ознакомился(-ась) и согласен(-на) с правилами занятий</span>
+        </label>
+        <button class="btn btn-green" style="margin-top:14px" onclick="signParentContract('rules')">✍️ Подписать правила</button>
+      ` : ''}
+    </div>`;
+}
+
+function signParentContract(type){
+  const chkId = type === 'privacy' ? 'parent-chk-privacy' : 'parent-chk-rules';
+  const chk = document.getElementById(chkId);
+  if(!chk || !chk.checked){ showNotif('⚠️ Сначала поставьте галочку согласия'); return; }
+  const users = load('users')||[];
+  const idx = users.findIndex(u=>u.id===currentUser.id);
+  if(idx===-1){ showNotif('⚠️ Ошибка пользователя'); return; }
+  const dateStr = new Date().toLocaleDateString('ru');
+  if(type==='privacy'){
+    users[idx].signedPrivacy = true;
+    users[idx].signedPrivacyDate = dateStr;
+    currentUser.signedPrivacy = true;
+    currentUser.signedPrivacyDate = dateStr;
+  } else {
+    users[idx].signedRules = true;
+    users[idx].signedRulesDate = dateStr;
+    currentUser.signedRules = true;
+    currentUser.signedRulesDate = dateStr;
+  }
+  save('users', users);
+  saveSession(currentUser);
+  const label = type==='privacy' ? 'Договор о персональных данных' : 'Правила занятий';
+  _addAdminNotif({
+    id: 'an'+Date.now(),
+    studentId: currentUser.id,
+    studentName: currentUser.name + ' (родитель)',
+    type: 'contract',
+    text: `📄 ${currentUser.name} (родитель) подписал(-а): ${label}`,
+    date: dateStr,
+    read: false,
+  });
+  showNotif('✅ Документ подписан!');
+  _parentSettingsTab = 'docs';
+  renderParentSettings();
+}
+
 function renderParentDashboard(){
   const el = document.getElementById('page-parent-dashboard');
   if(!el) return;
@@ -11184,13 +11422,17 @@ const NOTIF_TYPE_MAP = {
   material:'lesson', comment:'chat', attendance:'lesson'
 };
 
-// ── Добавить уведомление + отправить в Telegram ──
+// ── Добавить уведомление + отправить в Telegram (ученику и родителю) ──
 function addNotif(studentId, {type, text, nav}){
   const notifs = load('notifs')||[];
   notifs.push({id:'n'+Date.now(), studentId, type, text, nav,
     date:new Date().toLocaleDateString('ru'), read:false});
   save('notifs', notifs);
   sendTelegramNotif(studentId, type, text);
+  // Also notify parent if connected
+  const users = load('users')||[];
+  const parent = users.find(u=>u.role==='parent' && u.linkedStudentId===studentId);
+  if(parent) sendParentTelegramNotif(parent.id, type, text);
 }
 
 // ── Отправка через Telegram Bot API (через серверный прокси /api/telegram) ──
