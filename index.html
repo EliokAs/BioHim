@@ -19,6 +19,59 @@
 
 <title>BioХим — Платформа репетитора</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
+<style>
+/* Quill overrides to match app theme */
+.ql-toolbar.ql-snow {
+  border: none !important;
+  border-bottom: 1px solid var(--green-pale) !important;
+  background: var(--bg2);
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+.ql-container.ql-snow {
+  border: none !important;
+  font-family: 'Nunito', sans-serif;
+}
+.ql-editor {
+  min-height: 220px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--text);
+  background: var(--white);
+  padding: 16px 18px;
+}
+.ql-editor.ql-blank::before {
+  font-style: normal;
+  color: var(--text3);
+}
+.ql-editor h1 { font-family: 'Playfair Display', serif; color: var(--accent); font-size: 1.6rem; margin: 16px 0 8px; }
+.ql-editor h2 { font-family: 'Playfair Display', serif; color: var(--green-deep); font-size: 1.2rem; margin: 14px 0 6px; }
+.ql-editor h3 { color: var(--text); font-size: 1rem; font-weight: 700; margin: 10px 0 4px; }
+.ql-editor blockquote { border-left: 3px solid var(--green-mid); background: var(--bg2); padding: 8px 16px; border-radius: 0 8px 8px 0; font-style: italic; color: var(--text2); margin: 12px 0; }
+.ql-editor pre.ql-syntax { background: #1e1e1e; color: #d4d4d4; border-radius: 8px; padding: 14px 18px; font-size: 0.85rem; }
+.ql-snow .ql-stroke { stroke: var(--green-deep) !important; }
+.ql-snow .ql-fill { fill: var(--green-deep) !important; }
+.ql-snow .ql-picker { color: var(--green-deep) !important; }
+.ql-snow.ql-toolbar button:hover, .ql-snow.ql-toolbar button.ql-active { color: var(--green-mid) !important; }
+.ql-snow.ql-toolbar button:hover .ql-stroke, .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: var(--green-mid) !important; }
+/* Media block inside editor area */
+.ql-media-block {
+  background: var(--bg);
+  border: 1.5px solid var(--green-pale);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  position: relative;
+}
+.ql-media-block .ql-media-remove {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: none; cursor: pointer;
+  font-size: 1rem; color: var(--text3); line-height: 1;
+}
+.ql-media-block .ql-media-remove:hover { color: var(--red); }
+</style>
 <style>
 :root {
   --bg: #f4f9f0;
@@ -1979,23 +2032,46 @@ textarea.q-input{resize:vertical;min-height:70px}
     <div class="modal-title">📖 Новый урок</div>
     <span class="modal-close" onclick="closeModal('modal-add-theory')">✕</span>
     <div class="form-group" style="margin-bottom:14px"><label>Название урока</label><input id="nth-title" placeholder="Тема: Строение клетки" style="font-size:1rem"></div>
-    <!-- Block editor toolbar -->
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:var(--bg2);border-radius:10px">
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('p')">¶ Текст</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('h1')">H1</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('h2')">H2</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('h3')">H3</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('quote')">❝ Цитата</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('callout')">💡 Выноска</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('code')">{'}'} Код</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('divider')">— Разделитель</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('image')">🖼 Фото</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('image-upload')">📤 Загрузить</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('video')">🎬 Видео</button>
-      <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('file')">📎 Файл</button>
+    <!-- Quill WYSIWYG editor -->
+    <div id="quill-new-wrap" style="border:1.5px solid var(--green-pale);border-radius:12px;overflow:hidden;margin-bottom:8px">
+      <div id="quill-new-toolbar">
+        <span class="ql-formats">
+          <select class="ql-header"><option value="1">Заголовок 1</option><option value="2">Заголовок 2</option><option value="3">Заголовок 3</option><option selected>Обычный</option></select>
+        </span>
+        <span class="ql-formats">
+          <button class="ql-bold" title="Жирный"></button>
+          <button class="ql-italic" title="Курсив"></button>
+          <button class="ql-underline" title="Подчёркивание"></button>
+          <button class="ql-strike" title="Зачёркивание"></button>
+        </span>
+        <span class="ql-formats">
+          <button class="ql-list" value="ordered" title="Нумерованный список"></button>
+          <button class="ql-list" value="bullet" title="Маркированный список"></button>
+        </span>
+        <span class="ql-formats">
+          <button class="ql-blockquote" title="Цитата"></button>
+          <button class="ql-code-block" title="Блок кода"></button>
+        </span>
+        <span class="ql-formats">
+          <button class="ql-link" title="Ссылка"></button>
+          <button class="ql-image" title="Изображение"></button>
+        </span>
+        <span class="ql-formats">
+          <select class="ql-color" title="Цвет текста"></select>
+          <select class="ql-background" title="Цвет фона"></select>
+        </span>
+        <span class="ql-formats">
+          <button class="ql-clean" title="Очистить форматирование"></button>
+        </span>
+        <span class="ql-formats" style="border-left:1px solid #ddd;padding-left:8px">
+          <button class="btn-ql-media" onclick="quillInsertVideo('new')" title="Вставить видео" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600">🎬 Видео</button>
+          <button class="btn-ql-media" onclick="quillInsertFile('new')" title="Прикрепить файл" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600;margin-left:4px">📎 Файл</button>
+        </span>
+      </div>
+      <div id="quill-new" style="min-height:220px;font-family:'Nunito',sans-serif;font-size:0.95rem"></div>
     </div>
-    <div class="nb-editor" id="nb-canvas-new"></div>
-    <div style="font-size:0.75rem;color:var(--text3);margin-top:6px;margin-bottom:14px">💡 Наведите на блок — ⠿ для перетаскивания, ✕ для удаления</div>
+    <!-- Media blocks appended below editor -->
+    <div id="quill-new-media" style="margin-bottom:8px"></div>
     <hr class="divider">
     <div class="form-group">
       <label>Отправить ученикам <span style="font-weight:400;color:var(--text3)">(без выбора — в библиотеку)</span></label>
@@ -2647,24 +2723,46 @@ textarea.q-input{resize:vertical;min-height:70px}
     <input type="hidden" id="ec-type">
     <div class="form-group" style="margin-bottom:14px"><label>Название урока</label><input id="ec-title" style="font-size:1rem"></div>
     <div id="ec-theory-fields" style="display:none">
-      <!-- Block editor toolbar -->
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:var(--bg2);border-radius:10px">
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('p')" title="Текст">¶ Текст</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('h1')" title="Заголовок 1">H1</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('h2')" title="Заголовок 2">H2</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('h3')" title="Заголовок 3">H3</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('quote')" title="Цитата">❝ Цитата</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('callout')" title="Выноска">💡 Выноска</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('code')" title="Код">{'}'} Код</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('divider')" title="Разделитель">— Разделитель</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('image')" title="Изображение">🖼 Фото</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('image-upload')" title="Загрузить фото">📤 Загрузить</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('video')" title="Видео">🎬 Видео</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlock('file')" title="Файл">📎 Файл</button>
+      <!-- Quill WYSIWYG editor -->
+      <div id="quill-edit-wrap" style="border:1.5px solid var(--green-pale);border-radius:12px;overflow:hidden;margin-bottom:8px">
+        <div id="quill-edit-toolbar">
+          <span class="ql-formats">
+            <select class="ql-header"><option value="1">Заголовок 1</option><option value="2">Заголовок 2</option><option value="3">Заголовок 3</option><option selected>Обычный</option></select>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-bold"></button>
+            <button class="ql-italic"></button>
+            <button class="ql-underline"></button>
+            <button class="ql-strike"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-list" value="ordered"></button>
+            <button class="ql-list" value="bullet"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-blockquote"></button>
+            <button class="ql-code-block"></button>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-link"></button>
+            <button class="ql-image"></button>
+          </span>
+          <span class="ql-formats">
+            <select class="ql-color"></select>
+            <select class="ql-background"></select>
+          </span>
+          <span class="ql-formats">
+            <button class="ql-clean"></button>
+          </span>
+          <span class="ql-formats" style="border-left:1px solid #ddd;padding-left:8px">
+            <button onclick="quillInsertVideo('edit')" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600">🎬 Видео</button>
+            <button onclick="quillInsertFile('edit')" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600;margin-left:4px">📎 Файл</button>
+          </span>
+        </div>
+        <div id="quill-edit" style="min-height:220px;font-family:'Nunito',sans-serif;font-size:0.95rem"></div>
       </div>
-      <!-- Block editor canvas -->
-      <div class="nb-editor" id="nb-canvas"></div>
-      <div style="font-size:0.75rem;color:var(--text3);margin-top:6px">💡 Наведите на блок — появятся ⠿ для перетаскивания и + для вставки блока ниже</div>
+      <!-- Media blocks appended below editor -->
+      <div id="quill-edit-media" style="margin-bottom:8px"></div>
     </div>
     <div style="margin-top:16px;display:flex;gap:10px">
       <button class="btn btn-green" onclick="saveEditContent()">💾 Сохранить</button>
@@ -3115,6 +3213,7 @@ textarea.q-input{resize:vertical;min-height:70px}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
 <script src="script.js"></script>
 <script src="weekly-report.js"></script>
 <script src="flashcards.js"></script>
