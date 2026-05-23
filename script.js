@@ -1190,13 +1190,45 @@ function save(k, v){
 }
 
 async function preloadCache(){
-  const timeout = new Promise((_, rej) =>
-    setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), 10000)
-  );
-  const db = _fbInit();
-  const snap = await Promise.race([db.ref('db').get(), timeout]);
-  const data = snap.val() || {};
-  COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+  // Attempt Firebase with 3 retries and increasing timeouts (8s / 14s / 20s)
+  const TIMEOUTS = [8000, 14000, 20000];
+  let lastError;
+  for(let attempt = 0; attempt < TIMEOUTS.length; attempt++){
+    try {
+      if(attempt > 0) _loadingStep(`Повторная попытка ${attempt}/${TIMEOUTS.length - 1}…`, 10 + attempt * 8);
+      const db = _fbInit();
+      const timeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('timeout')), TIMEOUTS[attempt])
+      );
+      const snap = await Promise.race([db.ref('db').get(), timeout]);
+      const data = snap.val() || {};
+      COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+      // Persist a fresh copy to localStorage for offline fallback
+      try { localStorage.setItem('biohim_fb_cache', JSON.stringify({ts: Date.now(), data})); } catch(_){}
+      return; // success
+    } catch(e){
+      lastError = e;
+      console.warn(`[Firebase] preloadCache attempt ${attempt + 1} failed:`, e.message);
+    }
+  }
+  // All attempts failed — try localStorage cache (offline / slow connection fallback)
+  try {
+    const raw = localStorage.getItem('biohim_fb_cache');
+    if(raw){
+      const {ts, data} = JSON.parse(raw);
+      const ageMin = (Date.now() - ts) / 60000;
+      console.warn(`[Firebase] Using localStorage cache (${Math.round(ageMin)}m old)`);
+      COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+      // Show a non-blocking warning after login screen appears
+      setTimeout(() => {
+        const errEl = document.getElementById('login-err');
+        if(errEl) errEl.textContent = '⚠️ Нет соединения с сервером — показаны кэшированные данные. Обновите страницу для синхронизации.';
+      }, 500);
+      return;
+    }
+  } catch(_){}
+  // No cache at all — propagate error
+  throw new Error('Firebase недоступен и локальный кэш не найден — проверьте соединение и правила базы данных');
 }
 
 // ══════════════════════════════════════════════════════
@@ -13522,7 +13554,7 @@ function renderStudentFlashcards(el) {
 // ── Session ────────────────────────────────────────────────────
 
 let _fcSession = { queue:[], index:0, known:0, unknown:0, sid:null, srData:{} };
-let _fcFlipped = false;
+let _scriptFcFlipped = false;
 
 function fcStartSession(sid) {
   _fcSession = { queue: fcDueCards(sid).sort(()=>Math.random()-0.5), index:0, known:0, unknown:0, sid, srData: fcGetSR(sid) };
@@ -13552,7 +13584,7 @@ function fcShowCard() {
   const card  = queue[index];
   const total = queue.length;
   const pct   = Math.round(index / total * 100);
-  _fcFlipped  = false;
+  _scriptFcFlipped  = false;
   el.style.display = 'block';
   el.scrollIntoView({ behavior:'smooth', block:'start' });
   el.innerHTML = `
@@ -13600,9 +13632,9 @@ function fcFlipCard() {
   const card = document.getElementById('fc-flip-card');
   const btns = document.getElementById('fc-rate-btns');
   if (!card) return;
-  _fcFlipped = !_fcFlipped;
-  if (_fcFlipped) card.classList.add('flipped'); else card.classList.remove('flipped');
-  if (_fcFlipped && btns) setTimeout(() => { btns.style.display = 'flex'; }, 300);
+  _scriptFcFlipped = !_scriptFcFlipped;
+  if (_scriptFcFlipped) card.classList.add('flipped'); else card.classList.remove('flipped');
+  if (_scriptFcFlipped && btns) setTimeout(() => { btns.style.display = 'flex'; }, 300);
   else if (btns) btns.style.display = 'none';
 }
 
