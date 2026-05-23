@@ -2517,18 +2517,50 @@ let _quillEdit = null;  // instance for modal-edit-content
 let _quillNewMedia  = [];  // [{type,url,name,fileType,timestamps}]
 let _quillEditMedia = [];
 
+const _QUILL_TOOLBAR = [
+  [{ header: [1, 2, 3, false] }],
+  ['bold', 'italic', 'underline', 'strike'],
+  [{ list: 'ordered' }, { list: 'bullet' }],
+  ['blockquote', 'code-block'],
+  ['link', 'image'],
+  [{ color: [] }, { background: [] }],
+  ['clean']
+];
+
 function _quillInit(editorId, toolbarId){
-  return new Quill('#' + editorId, {
+  const q = new Quill('#' + editorId, {
     theme: 'snow',
     placeholder: 'Начните писать урок...',
     modules: {
-      toolbar: { container: '#' + toolbarId },
-      syntax: false
+      toolbar: {
+        container: _QUILL_TOOLBAR,
+      }
     },
     formats: ['header','bold','italic','underline','strike',
               'list','bullet','blockquote','code-block',
               'link','image','color','background','indent','align']
   });
+
+  // Move Quill's auto-generated toolbar into our container div, then add media buttons
+  const toolbarEl = document.getElementById(toolbarId);
+  const qlToolbar = q.container.previousElementSibling; // Quill places toolbar before editor
+  if(toolbarEl && qlToolbar){
+    toolbarEl.appendChild(qlToolbar);
+  }
+
+  // Add Video/File buttons to toolbar
+  const which = editorId === 'quill-new' ? 'new' : 'edit';
+  const extraSpan = document.createElement('span');
+  extraSpan.className = 'ql-formats';
+  extraSpan.style.cssText = 'border-left:1px solid #ccc;padding-left:8px;margin-left:4px';
+  extraSpan.innerHTML = `
+    <button onclick="quillInsertVideo('${which}')" title="Вставить видео"
+      style="font-size:0.73rem;padding:2px 8px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:700;height:auto;width:auto">🎬 Видео</button>
+    <button onclick="quillInsertFile('${which}')" title="Прикрепить файл"
+      style="font-size:0.73rem;padding:2px 8px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:700;height:auto;width:auto;margin-left:4px">📎 Файл</button>`;
+  if(qlToolbar) qlToolbar.appendChild(extraSpan);
+
+  return q;
 }
 
 function _quillEnsure(){
