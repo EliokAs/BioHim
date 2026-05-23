@@ -1998,6 +1998,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   const hasText  = !!(c.body && c.body.trim());
   const hasPdf   = files.some(f=>f.type==='pdf');
   const hasWord  = files.some(f=>f.type==='word');
+
   // Watch progress badge for video content (student only)
   let watchBadge = '';
   if (!isAdmin && hasVideo) {
