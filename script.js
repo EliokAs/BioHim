@@ -1998,7 +1998,6 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   const hasText  = !!(c.body && c.body.trim());
   const hasPdf   = files.some(f=>f.type==='pdf');
   const hasWord  = files.some(f=>f.type==='word');
-
   // Watch progress badge for video content (student only)
   let watchBadge = '';
   if (!isAdmin && hasVideo) {
@@ -7417,7 +7416,7 @@ function renderStudentLibrary(){
       </div>
       <div id="s-list-theory-accordion"></div>`;
     renderStudentMaterials();
-  } else {
+  } else if(_libraryTab === 'repeat'){
     // Inject repeat page content
     body.innerHTML = `
       <div id="repeat-due-banner" style="display:none;margin-bottom:18px"></div>
