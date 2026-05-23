@@ -1528,7 +1528,11 @@ function _startSession(user){
   const _legacyPageMap = {
     'student-materials':'student-library','student-repeat':'student-library',
     'student-tests':'student-works','student-hw':'student-works',
-    'student-trial':'student-works','student-mistakes':'student-library'
+    'student-trial':'student-works','student-mistakes':'student-library',
+    'student-grades':'student-progress','student-goals':'student-progress',
+    'student-analytics':'student-progress','student-challenges':'student-progress',
+    'student-flashcards':'student-library',
+    'student-notif-settings':'student-settings',
   };
   if(_legacyPageMap[lastPage]) lastPage = _legacyPageMap[lastPage];
   navigateTo(lastPage);
@@ -1576,23 +1580,20 @@ const adminNav=[
 ];
 const studentNav=[
   {section:'Учёба'},
-  {id:'student-dashboard',    icon:'🏠', label:'Главная'},
-  {id:'student-library',      icon:'📚', label:'Материалы и повторение'},
-  {id:'student-works',        icon:'📋', label:'Проверочные работы'},
-  {id:'student-taskbank',     icon:'🎲', label:'Банк заданий'},
-  {id:'student-flashcards',   icon:'🃏', label:'Флешкарты'},
+  {id:'student-dashboard',  icon:'🏠', label:'Главная'},
+  {id:'student-library',    icon:'📚', label:'Материалы и повторение'},
+  {id:'student-works',      icon:'📋', label:'Проверочные работы'},
+  {id:'student-taskbank',   icon:'🎲', label:'Банк заданий'},
   {section:'Прогресс'},
-  {id:'student-grades',       icon:'🏅', label:'Мои оценки'},
-  {id:'student-goals',        icon:'🎯', label:'Цели ЕГЭ'},
-  {id:'student-analytics',    icon:'📈', label:'Аналитика'},
-  {id:'student-challenges',   icon:'🏆', label:'Челленджи'},
+  {id:'student-progress',   icon:'📊', label:'Мой прогресс'},
   {section:'Общение'},
-  {id:'student-chat',         icon:'💬', label:'Чат'},
-  {id:'student-schedule',     icon:'🗓', label:'Запись на занятия'},
-  {id:'student-payment',      icon:'💰', label:'Оплата'},
-  {id:'student-notif-settings',icon:'🔔',label:'Уведомления'},
+  {id:'student-chat',       icon:'💬', label:'Чат'},
+  {id:'student-schedule',   icon:'🗓', label:'Запись на занятия'},
+  {id:'student-payment',    icon:'💰', label:'Оплата'},
   {section:'Занятие'},
-  {id:'student-lesson',       icon:'🎥', label:'Онлайн-занятие'},
+  {id:'student-lesson',     icon:'🎥', label:'Онлайн-занятие'},
+  {section:'Аккаунт'},
+  {id:'student-settings',   icon:'⚙️', label:'Настройки'},
 ];
 
 
@@ -1655,7 +1656,7 @@ function buildMobileTaskbar(){
       {id:'student-dashboard', icon:'🏠', label:'Главная'},
       {id:'student-library',   icon:'📚', label:'Материалы'},
       {id:'student-works',     icon:'📋', label:'Работы'},
-      {id:'student-grades',    icon:'🏅', label:'Оценки'},
+      {id:'student-progress',  icon:'📊', label:'Прогресс'},
       {id:'student-chat',      icon:'💬', label:'Чат'},
     ];
   } else {
@@ -1685,7 +1686,7 @@ function navigateTo(page){
   const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
     'student-hw','student-trial','student-chat','student-grades','student-mistakes','student-taskbank','student-flashcards',
     'student-payment','student-schedule','student-repeat','student-lesson',
-    'student-notif-settings','student-goals','student-challenges','student-library','student-works'];
+    'student-notif-settings','student-goals','student-challenges','student-library','student-works','student-progress','student-settings'];
   if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
     console.warn('Admin blocked from student page:', page);
     return;
@@ -1749,6 +1750,8 @@ function renderPage(p){
   else if(p==='student-challenges'){ if(typeof renderStudentChallenges === 'function') renderStudentChallenges(); }
   else if(p==='student-library') renderStudentLibrary();
   else if(p==='student-works') renderStudentWorks();
+  else if(p==='student-progress') renderStudentProgress();
+  else if(p==='student-settings') renderStudentSettings();
   else if(p==='challenges-admin'){ if(typeof renderChallengesAdmin === 'function') renderChallengesAdmin(); }
   else if(p==='student-payment') renderStudentPayment();
   else if(p==='notif-settings-admin'){ renderNotifSettingsAdmin(); }
@@ -7131,13 +7134,266 @@ function _buildParentLessons(sid){
 // ══════════════════════════════════════════════════════════
 // STUDENT LIBRARY — объединённая страница «Материалы и повторение»
 // ══════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════
+// STUDENT PROGRESS — объединённая страница «Мой прогресс»
+// Оценки + Цели ЕГЭ + Челленджи на одной странице
+// ══════════════════════════════════════════════════════════
+let _progressTab = 'grades';
+function renderStudentProgress(){
+  const el = document.getElementById('page-student-progress');
+  if(!el) return;
+  const tabs = [
+    {id:'grades',     icon:'🏅', label:'Оценки'},
+    {id:'goals',      icon:'🎯', label:'Цели ЕГЭ'},
+    {id:'challenges', icon:'🏆', label:'Челленджи'},
+  ];
+  const tabBar = tabs.map(t => `
+    <div class="tab ${_progressTab===t.id?'active':''}"
+      onclick="_progressTab='${t.id}';renderStudentProgress()">
+      ${t.icon} ${t.label}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="page-title">📊 Мой прогресс</div>
+    <div class="tabs" style="margin-bottom:20px">${tabBar}</div>
+    <div id="progress-tab-content"></div>`;
+
+  const body = document.getElementById('progress-tab-content');
+  if(!body) return;
+
+  if(_progressTab === 'grades'){
+    body.innerHTML = `<div id="student-grades-content"></div>`;
+    if(typeof renderStudentGrades === 'function') renderStudentGrades();
+  } else if(_progressTab === 'goals'){
+    body.innerHTML = `<div id="goals-progress-container"></div>`;
+    if(typeof renderStudentGoals === 'function') renderStudentGoals('goals-progress-container');
+  } else if(_progressTab === 'challenges'){
+    body.innerHTML = `<div id="page-student-challenges"></div>`;
+    if(typeof renderStudentChallenges === 'function') renderStudentChallenges();
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// STUDENT SETTINGS — Настройки: профиль + пароль + уведомления
+// ══════════════════════════════════════════════════════════
+let _settingsTab = 'profile';
+function renderStudentSettings(){
+  const el = document.getElementById('page-student-settings');
+  if(!el) return;
+  const tabs = [
+    {id:'profile',  icon:'👤', label:'Профиль'},
+    {id:'notifs',   icon:'🔔', label:'Уведомления'},
+  ];
+  const tabBar = tabs.map(t => `
+    <div class="tab ${_settingsTab===t.id?'active':''}"
+      onclick="_settingsTab='${t.id}';renderStudentSettings()">
+      ${t.icon} ${t.label}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="page-title">⚙️ Настройки</div>
+    <div class="tabs" style="margin-bottom:20px">${tabBar}</div>
+    <div id="settings-tab-content"></div>`;
+
+  const body = document.getElementById('settings-tab-content');
+  if(!body) return;
+
+  if(_settingsTab === 'profile'){
+    _renderStudentProfileEdit(body);
+  } else if(_settingsTab === 'notifs'){
+    _renderStudentNotifInline(body);
+    if(typeof renderNotifSettingsStudent === 'function') renderNotifSettingsStudent();
+  }
+}
+
+function _renderStudentProfileEdit(container){
+  const u = currentUser;
+  if(!u){ container.innerHTML = '<div class="empty-state">Нет данных</div>'; return; }
+  container.innerHTML = `
+    <div class="card" style="max-width:520px">
+      <div class="card-title"><span class="dot"></span>👤 Личные данные</div>
+      <div style="display:flex;align-items:center;gap:18px;margin-bottom:22px">
+        <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--green-deep),var(--green-mid));
+          display:flex;align-items:center;justify-content:center;font-size:1.8rem;color:#fff;font-weight:800;flex-shrink:0">
+          ${esc((u.name||'?')[0].toUpperCase())}
+        </div>
+        <div>
+          <div style="font-weight:800;font-size:1.05rem;color:var(--accent)">${esc(u.name||'')}</div>
+          <div style="font-size:0.82rem;color:var(--text3)">${esc(u.login||'')} · ученик</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="margin:0"><label>Имя</label>
+          <input id="sp-name" value="${esc(u.name||'')}" placeholder="Ваше имя"></div>
+        <div class="form-group" style="margin:0"><label>Дата рождения</label>
+          <input id="sp-birth" type="date" value="${esc(u.birth||'')}"></div>
+        <div class="form-group" style="margin:0"><label>Телефон</label>
+          <input id="sp-phone" value="${esc(u.phone||'')}" placeholder="+7 900 000-00-00"></div>
+        <div class="form-group" style="margin:0"><label>Email</label>
+          <input id="sp-email" type="email" value="${esc(u.email||'')}" placeholder="email@mail.ru"></div>
+      </div>
+      <button class="btn btn-green" style="margin-top:16px" onclick="saveStudentProfile()">💾 Сохранить данные</button>
+    </div>
+
+    <div class="card" style="max-width:520px;margin-top:16px">
+      <div class="card-title"><span class="dot"></span>🔐 Изменить пароль</div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:14px">Для безопасности введите текущий пароль перед сменой</div>
+      <div class="form-group"><label>Текущий пароль</label>
+        <input id="sp-old-pass" type="password" placeholder="Текущий пароль"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="margin:0"><label>Новый пароль</label>
+          <input id="sp-new-pass" type="password" placeholder="Новый пароль"></div>
+        <div class="form-group" style="margin:0"><label>Повторите пароль</label>
+          <input id="sp-new-pass2" type="password" placeholder="Повторите пароль"></div>
+      </div>
+      <div id="sp-pass-msg" style="font-size:0.82rem;margin-top:8px;display:none"></div>
+      <button class="btn btn-outline" style="margin-top:14px" onclick="saveStudentPassword()">🔐 Сменить пароль</button>
+    </div>`;
+}
+
+function saveStudentProfile(){
+  const name  = (document.getElementById('sp-name')  || {}).value?.trim();
+  const birth = (document.getElementById('sp-birth') || {}).value;
+  const phone = (document.getElementById('sp-phone') || {}).value?.trim();
+  const email = (document.getElementById('sp-email') || {}).value?.trim();
+  if(!name){ showNotif('⚠️ Введите имя'); return; }
+
+  const users = load('users') || [];
+  const idx = users.findIndex(u => u.id === currentUser.id);
+  if(idx === -1){ showNotif('⚠️ Ошибка — пользователь не найден'); return; }
+
+  users[idx].name  = name;
+  users[idx].birth = birth;
+  users[idx].phone = phone;
+  users[idx].email = email;
+  save('users', users);
+
+  // Update currentUser in session
+  currentUser.name  = name;
+  currentUser.birth = birth;
+  currentUser.phone = phone;
+  currentUser.email = email;
+  saveSession(currentUser);
+
+  showNotif('✅ Данные профиля сохранены!');
+  renderStudentSettings();
+}
+
+function saveStudentPassword(){
+  const oldPass  = (document.getElementById('sp-old-pass')  || {}).value;
+  const newPass  = (document.getElementById('sp-new-pass')  || {}).value;
+  const newPass2 = (document.getElementById('sp-new-pass2') || {}).value;
+  const msgEl    = document.getElementById('sp-pass-msg');
+
+  const showMsg = (text, color) => {
+    if(msgEl){ msgEl.textContent = text; msgEl.style.color = color; msgEl.style.display = 'block'; }
+  };
+
+  if(!oldPass){ showMsg('⚠️ Введите текущий пароль', 'var(--red)'); return; }
+  if(newPass.length < 4){ showMsg('⚠️ Новый пароль должен быть не менее 4 символов', 'var(--red)'); return; }
+  if(newPass !== newPass2){ showMsg('⚠️ Пароли не совпадают', 'var(--red)'); return; }
+
+  const users = load('users') || [];
+  const idx = users.findIndex(u => u.id === currentUser.id);
+  if(idx === -1){ showMsg('⚠️ Ошибка', 'var(--red)'); return; }
+
+  if(users[idx].password !== oldPass){ showMsg('❌ Неверный текущий пароль', 'var(--red)'); return; }
+
+  users[idx].password = newPass;
+  save('users', users);
+  showMsg('✅ Пароль успешно изменён!', 'var(--green-deep)');
+  // Clear fields
+  ['sp-old-pass','sp-new-pass','sp-new-pass2'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+}
+
+function _renderStudentNotifInline(container){
+  const botName = localStorage.getItem(adminTgBotKey()) || '';
+  const botLink = botName ? `<a href="https://t.me/${botName.replace('@','')}" target="_blank" style="color:#2AABEE;font-weight:700;text-decoration:none">${botName}</a>` : '(бот не настроен — обратитесь к преподавателю)';
+  container.innerHTML = `
+    <!-- Telegram connect -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="width:48px;height:48px;border-radius:14px;background:#2AABEE;display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0">✈️</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:1.05rem;color:var(--accent)">Telegram</div>
+          <div style="font-size:0.78rem;color:var(--text3)">Мгновенные уведомления прямо в мессенджере</div>
+        </div>
+        <div id="tg-status-badge"></div>
+      </div>
+      <div id="tg-connect-block">
+        <div style="background:#e8f4fd;border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.88rem;color:#1565c0;line-height:1.9">
+          <b>Как подключить:</b><br>
+          1. Перейдите к боту: ${botLink}<br>
+          2. Нажмите <b>Запустить</b> или отправьте <code style="background:#fff;padding:1px 7px;border-radius:5px">/start</code><br>
+          3. Бот пришлёт вам <b>Chat ID</b> — вставьте ниже
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>Ваш Chat ID</label>
+          <input id="student-tg-chatid" placeholder="Например: 123456789" type="text" inputmode="numeric"
+            style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.95rem;width:100%;box-sizing:border-box">
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">Бот пришлёт числовой ID сразу после /start</div>
+        </div>
+        <button class="btn btn-green" style="width:100%" onclick="saveTgConnect()">✈️ Подключить Telegram</button>
+      </div>
+      <div id="tg-connected-block" style="display:none">
+        <div style="background:#e8f8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-weight:700;color:#27ae60;margin-bottom:4px">✅ Telegram подключён</div>
+          <div style="font-size:0.82rem;color:var(--text2)">Chat ID: <b id="tg-connected-name"></b></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-green btn-sm" onclick="testNotifChannel()">🔔 Отправить тест</button>
+          <button class="btn btn-red btn-sm" onclick="disconnectTelegram()">Отключить</button>
+        </div>
+      </div>
+    </div>
+    <!-- Web Push -->
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#2d6a4f,#52b788);display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0">🔔</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:1.05rem;color:var(--accent)">Web Push</div>
+          <div style="font-size:0.78rem;color:var(--text3)">Уведомления на телефон — даже когда сайт закрыт</div>
+        </div>
+        <div id="wp-status-badge"></div>
+      </div>
+      <div id="wp-off-block">
+        <div style="background:var(--green-xpale);border-radius:12px;padding:14px 16px;margin-bottom:14px;font-size:0.86rem;color:var(--text2);line-height:1.85">
+          ✅ Не нужен Telegram · ✅ Работает в фоне · ✅ Android, iPhone, ПК
+        </div>
+        <button class="btn btn-green" style="width:100%" onclick="wpSubscribe()">🔔 Включить Web Push</button>
+      </div>
+      <div id="wp-on-block" style="display:none">
+        <div style="background:#e8f8f0;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+          <div style="font-weight:700;color:#27ae60;margin-bottom:4px">✅ Web Push включён</div>
+          <div style="font-size:0.82rem;color:var(--text2)">Уведомления придут даже когда сайт закрыт</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-green btn-sm" onclick="testWebPush()">🔔 Отправить тест</button>
+          <button class="btn btn-red btn-sm" onclick="wpUnsubscribe()">Отключить</button>
+        </div>
+      </div>
+    </div>
+    <!-- Notif types -->
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>Какие уведомления получать</div>
+      <div style="font-size:0.82rem;color:var(--text3);margin-bottom:12px">Применяется к Telegram и Web Push</div>
+      <div id="notif-types-toggles"></div>
+      <button class="btn btn-green" style="margin-top:16px;width:100%" onclick="saveNotifTypes()">💾 Сохранить</button>
+    </div>`;
+}
+
 let _libraryTab = 'materials';
 function renderStudentLibrary(){
   const el = document.getElementById('page-student-library');
   if(!el) return;
   const tabs = [
-    {id:'materials', icon:'📚', label:'Материалы'},
-    {id:'repeat',    icon:'🧠', label:'Умное повторение'},
+    {id:'materials',   icon:'📚', label:'Материалы'},
+    {id:'repeat',      icon:'🧠', label:'Умное повторение'},
+    {id:'flashcards',  icon:'🃏', label:'Флешкарты'},
   ];
   const tabBar = tabs.map(t => `
     <div class="tab ${_libraryTab===t.id?'active':''}"
@@ -7203,6 +7459,9 @@ function renderStudentLibrary(){
       </div>`;
     // trigger repeat page logic (reuse existing renderRepeatPage)
     if(typeof renderRepeatPage === 'function') renderRepeatPage();
+  } else if(_libraryTab === 'flashcards'){
+    body.innerHTML = `<div id="student-flashcards-ui"></div>`;
+    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards();
   }
 }
 
@@ -13693,9 +13952,9 @@ function _buildGoalHints(sid, targetPct) {
   return hints.slice(0, 4);
 }
 
-function renderStudentGoals() {
+function renderStudentGoals(containerId) {
   const sid = currentUser.id;
-  const el  = document.getElementById('page-student-goals');
+  const el  = document.getElementById(containerId || 'page-student-goals');
   if (!el) return;
 
   const goals   = _loadGoals(sid);
