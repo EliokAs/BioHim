@@ -1708,6 +1708,7 @@ function navigateTo(page){
   if(nav) nav.classList.add('active');
   curPage=page;
   updateMobileTaskbar(page);
+  window.scrollTo({ top: 0, behavior: 'instant' });
   if(currentUser) localStorage.setItem('biohim_last_page_'+currentUser.id, page);
   renderPage(page);
 }
@@ -6997,7 +6998,6 @@ function _buildParentGrades(sid){
 
   const graded = items.filter(i=>i.grade);
   const avgPct = graded.length ? Math.round(graded.reduce((s,i)=>s+(i.pct||0),0)/graded.length) : null;
-
   items.sort((a,b)=>{
     const da=a.date?a.date.split('.').reverse().join('-'):'0000-00-00';
     const db=b.date?b.date.split('.').reverse().join('-'):'0000-00-00';
