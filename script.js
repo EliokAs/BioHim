@@ -4611,7 +4611,7 @@ function rejectBooking(id){
 // ══════════════════════════════════════════
 
 // intervals in days by rating: 1=tomorrow, 2=3d, 4=7d, 5=14d
-const SR_INTERVALS = {1:1, 2:3, 3:5, 4:7, 5:14};
+if(typeof SR_INTERVALS === 'undefined') var SR_INTERVALS = {1:1, 2:3, 3:5, 4:7, 5:14};
 
 function srKey(sid){ return 'sr_'+sid; }
 
@@ -10249,6 +10249,8 @@ function _loadingStep(text, pct){
   if(b) b.style.width = pct + '%';
 }
 function _loadingDone(){
+  // Cancel the HTML safety-net timer
+  try { window._appLoadingDoneSignal = true; } catch(_){}
   const overlay = document.getElementById('app-loading-overlay');
   if(overlay){
     overlay.style.transition = 'opacity 0.3s ease';
@@ -12895,10 +12897,10 @@ function importTrial(data) {
 // WEB PUSH — VAPID + Vercel Function
 // ═══════════════════════════════════════════════
 
-const WP_VAPID_PUB   = 'BBTKTldG8YMiwcYTPPv9Y4n5lQiVC-xBSEbIyMVYYLdjvAUho9mNsQf_uO9wwA0GhNk8ij32YWy0iAPspPEIbOY';
-const WP_SUB_KEY     = 'biohim_wp_sub_';     // + studentId → JSON подписки
-const WP_ENABLED_KEY = 'biohim_wp_on_';      // + studentId → '1'
-const WP_SEND_URL    = '/api/send-push';
+if(typeof WP_VAPID_PUB === 'undefined') var WP_VAPID_PUB = 'BBTKTldG8YMiwcYTPPv9Y4n5lQiVC-xBSEbIyMVYYLdjvAUho9mNsQf_uO9wwA0GhNk8ij32YWy0iAPspPEIbOY';
+if(typeof WP_SUB_KEY === 'undefined') var WP_SUB_KEY = 'biohim_wp_sub_';     // + studentId → JSON подписки
+if(typeof WP_ENABLED_KEY === 'undefined') var WP_ENABLED_KEY = 'biohim_wp_on_';      // + studentId → '1'
+if(typeof WP_SEND_URL === 'undefined') var WP_SEND_URL = '/api/send-push';
 
 function wpSubKey(sid)     { return WP_SUB_KEY + sid; }
 function wpEnabledKey(sid) { return WP_ENABLED_KEY + sid; }
@@ -14287,7 +14289,7 @@ function videoJumpTo(btn, seconds) {
 // СИСТЕМА ЦЕЛЕЙ ЕГЭ
 // ═══════════════════════════════════════════════════════════════
 
-const GOALS_KEY = 'biohim_goals_';
+if(typeof GOALS_KEY === 'undefined') var GOALS_KEY = 'biohim_goals_';
 
 function _loadGoals(sid) {
   try { return JSON.parse(localStorage.getItem(GOALS_KEY + sid) || '{}'); } catch(e) { return {}; }
