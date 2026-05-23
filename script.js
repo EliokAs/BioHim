@@ -13084,13 +13084,10 @@ document.addEventListener('input', function(e) {
 // FLASHCARDS MODULE — BioХим Platform
 // ═══════════════════════════════════════════════════════════════
 
-const FC_DECKS_KEY   = 'flashcard_decks';
-const FC_SR_PREFIX   = 'fc_sr_';
+function fcLoad()         { return load('flashcard_decks') || []; }
+function fcSave(decks)    { save('flashcard_decks', decks); }
 
-function fcLoad()         { return load(FC_DECKS_KEY) || []; }
-function fcSave(decks)    { save(FC_DECKS_KEY, decks); }
-
-function fcSRKey(sid)     { return FC_SR_PREFIX + sid; }
+function fcSRKey(sid)     { return 'fc_sr_' + sid; }
 function fcGetSR(sid)     {
   try { return JSON.parse(localStorage.getItem('biohim_' + fcSRKey(sid)) || '{}'); }
   catch(e) { return {}; }
