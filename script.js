@@ -1582,7 +1582,6 @@ const studentNav=[
   {section:'Учёба'},
   {id:'student-dashboard',  icon:'🏠', label:'Главная'},
   {id:'student-library',    icon:'📚', label:'Материалы и повторение'},
-  {id:'student-flashcards', icon:'🃏', label:'Флешкарты'},
   {id:'student-works',      icon:'📋', label:'Проверочные работы'},
   {id:'student-taskbank',   icon:'🎲', label:'Банк заданий'},
   {section:'Прогресс'},
