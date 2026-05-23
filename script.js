@@ -566,7 +566,7 @@ function _renderActiveLessonAdmin(el, live){
     <div class="lesson-topbar">
       <span class="lesson-status-dot live"></span>
       <span style="font-weight:700;font-size:0.95rem">${live.topic||'Занятие'}</span>
-      ${student?`<span style="font-size:0.82rem;color:var(--text3)">· ${student.name}</span>`:''}
+      ${student?`<span style="font-size:0.82rem;color:var(--text3)">· ${esc(student.name)}</span>`:''}
       ${(()=>{
         if(!live.slotId) return '';
         const slot = (load('slots')||[]).find(s=>s.id===live.slotId);
@@ -1404,13 +1404,9 @@ async function initData(){
     const users = load('users') || [];
     const admin = users.find(u => u.login === 'admin');
     if (admin) {
-      const expectedHash = await hashPassword('admin123');
-      if (admin.passwordHash !== expectedHash) {
-        console.warn('⚠️ Хеш пароля admin не совпадает, исправляем...');
-        admin.passwordHash = expectedHash;
-        admin.mustChangePassword = false;
-        save('users', users);
-      }
+      // ИСПРАВЛЕНО: убрана автоматическая перезапись хеша пароля администратора
+      // (это было уязвимостью типа "backdoor" — сбрасывало пароль при каждом запуске)
+      // Если нужно сбросить пароль — делайте это явно через интерфейс администратора.
     }
   } catch(e){ console.warn('password migration error', e); }
 
@@ -1990,7 +1986,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   const files    = c.files || (c.attachmentUrl ? [{type:'pdf', name:'Прикреплённый файл', url:c.attachmentUrl}] : []);
 
   const hasVideo = !!(videoUrl && getVideoEmbedUrl(videoUrl));
-  const hasText  = !!(c.body && c.body.trim()) || !!(c.blocks && c.blocks.length && c.blocks.some(b=>b.content||b.url));
+  const hasText  = !!(c.body && c.body.trim());
   const hasPdf   = files.some(f=>f.type==='pdf');
   const hasWord  = files.some(f=>f.type==='word');
 
@@ -2067,13 +2063,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   }
   // text block
   let textBlock='';
-  const viewBlocks = (c.blocks && c.blocks.length) ? c.blocks : null;
-  if(viewBlocks){
-    textBlock=`<div style="margin-bottom:18px">
-      <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
-      <div style="line-height:1.8;font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${nbRenderView(viewBlocks)}</div>
-    </div>`;
-  } else if(c.body && c.body.trim()){
+  if(c.body && c.body.trim()){
     textBlock=`<div style="margin-bottom:18px">
       <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
       <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body)}</div>
@@ -2634,7 +2624,7 @@ function renderTestsAdmin(){
     const tests = allTests.filter(t=>t.studentId===_testsSelectedSid);
     const s = students.find(s=>s.id===_testsSelectedSid);
     el.innerHTML = `<div class="card">
-      <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?s.name:'Ученик'}</div>
+      <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?esc(s.name):'Ученик'}</div>
       ${tests.length ? tests.map(t=>testItemHTML(t)).join('') : emptyHTML()}
     </div>`;
   }
@@ -3285,7 +3275,7 @@ function renderHWAdmin(){
     const hws = allHWs.filter(h=>h.studentId===_hwSelectedSid);
     const s = students.find(s=>s.id===_hwSelectedSid);
     el.innerHTML = `<div class="card">
-      <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?s.name:'Ученик'}</div>
+      <div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?esc(s.name):'Ученик'}</div>
       ${hws.length ? hws.map(h=>hwItemHTML(h)).join('') : emptyHTML()}
     </div>`;
   }
@@ -5011,7 +5001,7 @@ function renderTrialAdmin(){
   } else {
     const st=allTrials.filter(t=>t.studentId===_trialSelectedSid);
     const s=students.find(s=>s.id===_trialSelectedSid);
-    el.innerHTML=`<div class="card"><div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?s.name:'Ученик'}</div>
+    el.innerHTML=`<div class="card"><div class="card-title" style="margin-bottom:10px"><span class="dot"></span>👤 ${s?esc(s.name):'Ученик'}</div>
       ${st.length?st.map(t=>trialAdminItemHTML(t)).join(''):emptyHTML()}</div>`;
   }
   renderTrialOpenAnswers();
@@ -6432,7 +6422,7 @@ function renderStudentAttendance(){
           <div style="flex:1">
             <div style="font-weight:600;font-size:0.88rem">📅 ${dateLabel}${a.time?' · '+a.time:''}</div>
             <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">
-              ${a.topic?`📖 ${a.topic}`:''}${a.group?' · 👥 '+a.group:''}
+              ${a.topic?`📖 ${esc(a.topic)}`:''}${a.group?' · 👥 '+esc(a.group):''}
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
@@ -7416,7 +7406,7 @@ function _buildParentLessons(sid){
         <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale)">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div>
-              <div style="font-weight:600;font-size:0.88rem">📅 ${a.date}${a.time?' · '+a.time:''}</div>
+              <div style="font-weight:600;font-size:0.88rem">📅 ${esc(a.date)}${a.time?' · '+esc(a.time):''}</div>
               ${a.topic?`<div style="font-size:0.8rem;color:var(--text2);margin-top:2px">📖 ${esc(a.topic)}</div>`:''}
               ${a.duration?`<div style="font-size:0.75rem;color:var(--text3)">${a.duration} мин</div>`:''}
             </div>
@@ -7579,7 +7569,7 @@ function saveStudentProfile(){
   renderStudentSettings();
 }
 
-function saveStudentPassword(){
+async function saveStudentPassword(){
   const oldPass  = (document.getElementById('sp-old-pass')  || {}).value;
   const newPass  = (document.getElementById('sp-new-pass')  || {}).value;
   const newPass2 = (document.getElementById('sp-new-pass2') || {}).value;
@@ -7590,16 +7580,25 @@ function saveStudentPassword(){
   };
 
   if(!oldPass){ showMsg('⚠️ Введите текущий пароль', 'var(--red)'); return; }
-  if(newPass.length < 4){ showMsg('⚠️ Новый пароль должен быть не менее 4 символов', 'var(--red)'); return; }
+  // ИСПРАВЛЕНО: минимальная длина пароля увеличена с 4 до 8 символов
+  if(newPass.length < 8){ showMsg('⚠️ Новый пароль должен быть не менее 8 символов', 'var(--red)'); return; }
   if(newPass !== newPass2){ showMsg('⚠️ Пароли не совпадают', 'var(--red)'); return; }
 
   const users = load('users') || [];
   const idx = users.findIndex(u => u.id === currentUser.id);
   if(idx === -1){ showMsg('⚠️ Ошибка', 'var(--red)'); return; }
 
-  if(users[idx].password !== oldPass){ showMsg('❌ Неверный текущий пароль', 'var(--red)'); return; }
+  // ИСПРАВЛЕНО: сравниваем через хеш (убрана проверка plain-text .password)
+  const oldHash = await hashPassword(oldPass);
+  if(users[idx].passwordHash !== oldHash){
+    showMsg('❌ Неверный текущий пароль', 'var(--red)');
+    return;
+  }
 
-  users[idx].password = newPass;
+  // ИСПРАВЛЕНО: сохраняем хеш нового пароля, не plain-text
+  users[idx].passwordHash = await hashPassword(newPass);
+  delete users[idx].password; // удаляем plain-text если остался
+  users[idx].mustChangePassword = false;
   save('users', users);
   showMsg('✅ Пароль успешно изменён!', 'var(--green-deep)');
   // Clear fields
@@ -9707,7 +9706,7 @@ function generateReport(){
     <!-- HEADER -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
       <div>
-        <div style="font-size:1.4rem;font-weight:900;color:var(--accent)">${student.name}</div>
+        <div style="font-size:1.4rem;font-weight:900;color:var(--accent)">${esc(student.name)}</div>
         <div style="font-size:0.82rem;color:var(--text3);margin-top:3px">
           ${student.subject||''}${student.subject&&student.format?' · ':''}${student.format||''}
           &nbsp;·&nbsp; Период: <b>${periodLabel}</b>
@@ -12112,7 +12111,7 @@ function renderAttemptsHistory(item){
       ${a.total ? `<span class="badge badge-blue" style="font-size:0.7rem">⭐ ${a.score}/${a.total} б. (${a.pct}%)</span>` : ''}
       ${a.total && (a.grade || a.pct!=null) ? `<span class="grade-result-badge grade-${a.grade||calcGrade(a.pct,null)}" style="font-size:0.68rem;padding:2px 8px">Оценка: ${a.grade||calcGrade(a.pct,null)}</span>` : ''}
       ${isFinal ? `<span style="font-size:0.7rem;color:var(--green-mid);margin-left:auto;font-weight:700">← зачтено</span>` : ''}
-      <span style="font-size:0.7rem;color:var(--text3);margin-left:auto">${a.date} ${a.time||''}</span>
+      <span style="font-size:0.7rem;color:var(--text3);margin-left:auto">${esc(a.date)} ${esc(a.time||'')}</span>
     </div>`;
   }).join('');
   return `<div style="margin-bottom:12px;padding:10px 12px;background:var(--bg2,#f8f9fa);border-radius:10px;border:1px solid var(--green-xpale)">
