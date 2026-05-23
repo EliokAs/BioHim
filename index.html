@@ -2034,40 +2034,7 @@ textarea.q-input{resize:vertical;min-height:70px}
     <div class="form-group" style="margin-bottom:14px"><label>Название урока</label><input id="nth-title" placeholder="Тема: Строение клетки" style="font-size:1rem"></div>
     <!-- Quill WYSIWYG editor -->
     <div id="quill-new-wrap" style="border:1.5px solid var(--green-pale);border-radius:12px;overflow:hidden;margin-bottom:8px">
-      <div id="quill-new-toolbar">
-        <span class="ql-formats">
-          <select class="ql-header"><option value="1">Заголовок 1</option><option value="2">Заголовок 2</option><option value="3">Заголовок 3</option><option selected>Обычный</option></select>
-        </span>
-        <span class="ql-formats">
-          <button class="ql-bold" title="Жирный"></button>
-          <button class="ql-italic" title="Курсив"></button>
-          <button class="ql-underline" title="Подчёркивание"></button>
-          <button class="ql-strike" title="Зачёркивание"></button>
-        </span>
-        <span class="ql-formats">
-          <button class="ql-list" value="ordered" title="Нумерованный список"></button>
-          <button class="ql-list" value="bullet" title="Маркированный список"></button>
-        </span>
-        <span class="ql-formats">
-          <button class="ql-blockquote" title="Цитата"></button>
-          <button class="ql-code-block" title="Блок кода"></button>
-        </span>
-        <span class="ql-formats">
-          <button class="ql-link" title="Ссылка"></button>
-          <button class="ql-image" title="Изображение"></button>
-        </span>
-        <span class="ql-formats">
-          <select class="ql-color" title="Цвет текста"></select>
-          <select class="ql-background" title="Цвет фона"></select>
-        </span>
-        <span class="ql-formats">
-          <button class="ql-clean" title="Очистить форматирование"></button>
-        </span>
-        <span class="ql-formats" style="border-left:1px solid #ddd;padding-left:8px">
-          <button class="btn-ql-media" onclick="quillInsertVideo('new')" title="Вставить видео" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600">🎬 Видео</button>
-          <button class="btn-ql-media" onclick="quillInsertFile('new')" title="Прикрепить файл" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600;margin-left:4px">📎 Файл</button>
-        </span>
-      </div>
+      <div id="quill-new-toolbar"></div>
       <div id="quill-new" style="min-height:220px;font-family:'Nunito',sans-serif;font-size:0.95rem"></div>
     </div>
     <!-- Media blocks appended below editor -->
@@ -2725,40 +2692,7 @@ textarea.q-input{resize:vertical;min-height:70px}
     <div id="ec-theory-fields" style="display:none">
       <!-- Quill WYSIWYG editor -->
       <div id="quill-edit-wrap" style="border:1.5px solid var(--green-pale);border-radius:12px;overflow:hidden;margin-bottom:8px">
-        <div id="quill-edit-toolbar">
-          <span class="ql-formats">
-            <select class="ql-header"><option value="1">Заголовок 1</option><option value="2">Заголовок 2</option><option value="3">Заголовок 3</option><option selected>Обычный</option></select>
-          </span>
-          <span class="ql-formats">
-            <button class="ql-bold"></button>
-            <button class="ql-italic"></button>
-            <button class="ql-underline"></button>
-            <button class="ql-strike"></button>
-          </span>
-          <span class="ql-formats">
-            <button class="ql-list" value="ordered"></button>
-            <button class="ql-list" value="bullet"></button>
-          </span>
-          <span class="ql-formats">
-            <button class="ql-blockquote"></button>
-            <button class="ql-code-block"></button>
-          </span>
-          <span class="ql-formats">
-            <button class="ql-link"></button>
-            <button class="ql-image"></button>
-          </span>
-          <span class="ql-formats">
-            <select class="ql-color"></select>
-            <select class="ql-background"></select>
-          </span>
-          <span class="ql-formats">
-            <button class="ql-clean"></button>
-          </span>
-          <span class="ql-formats" style="border-left:1px solid #ddd;padding-left:8px">
-            <button onclick="quillInsertVideo('edit')" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600">🎬 Видео</button>
-            <button onclick="quillInsertFile('edit')" style="font-size:0.75rem;padding:2px 7px;border:1.5px solid var(--green-pale);border-radius:6px;background:var(--bg);cursor:pointer;font-family:Nunito,sans-serif;color:var(--green-deep);font-weight:600;margin-left:4px">📎 Файл</button>
-          </span>
-        </div>
+        <div id="quill-edit-toolbar"></div>
         <div id="quill-edit" style="min-height:220px;font-family:'Nunito',sans-serif;font-size:0.95rem"></div>
       </div>
       <!-- Media blocks appended below editor -->
