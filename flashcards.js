@@ -385,12 +385,12 @@ function fcDeleteCard(deckId, cardId) {
 // STUDENT — режим обучения
 // ═══════════════════════════════════════════════════════════════
 
-function renderStudentFlashcards() {
+function renderStudentFlashcards(customEl) {
   const sid    = currentUser.id;
   const decks  = fcLoad().filter(d => fcDeckVisibleFor(d, sid));
   const srData = fcGetSR(sid);
   const today  = todayStr();
-  const el     = document.getElementById('student-flashcards-ui');
+  const el     = customEl || document.getElementById('student-flashcards-ui');
   if (!el) return;
 
   // Считаем статистику
