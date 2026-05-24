@@ -6686,9 +6686,23 @@ function renderStudentAttendance(){
 // ── ПРОФИЛЬ УЧЕНИКА ──
 function openStudentProfileModal(id){
   const u=(load('users')||[]).find(u=>u.id===id);
-  if(!u) return;
-  document.getElementById('student-profile-body').innerHTML = buildProfileHTML(u, true);
-  document.getElementById('modal-student-profile').classList.add('open');
+  if(!u) {
+    console.error('Ученик не найден:', id);
+    showNotif('⚠️ Ученик не найден');
+    return;
+  }
+  const bodyEl = document.getElementById('student-profile-body');
+  const modalEl = document.getElementById('modal-student-profile');
+  
+  if(!bodyEl || !modalEl) {
+    console.error('Элементы модального окна не найдены');
+    showNotif('⚠️ Ошибка открытия профиля');
+    return;
+  }
+  
+  bodyEl.innerHTML = buildProfileHTML(u, true);
+  modalEl.classList.add('open');
+  console.log('Профиль открыт для ученика:', u.name);
 }
 
 function buildProfileHTML(u, isAdmin){
