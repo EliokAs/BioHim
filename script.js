@@ -1183,6 +1183,8 @@ function _fbRef(k){ return _fbInit().ref('db/' + k); }
 
 // Синхронный кэш — заполняется при preloadCache
 const _cache = {};
+// Сообщение об ошибке preloadCache (null = всё ок); показывается после входа
+let _preloadWarning = null;
 
 // ── Сворачиваемые карточки ──
 function toggleCollapse(id, btn){
@@ -1215,13 +1217,23 @@ function save(k, v){
 }
 
 async function preloadCache(){
+  const TIMEOUT_MS = 10000;
   const timeout = new Promise((_, rej) =>
-    setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), 10000)
+    setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
   );
   const db = _fbInit();
-  const snap = await Promise.race([db.ref('db').get(), timeout]);
-  const data = snap.val() || {};
-  COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+  try {
+    const snap = await Promise.race([db.ref('db').get(), timeout]);
+    const data = snap.val() || {};
+    COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+  } catch(e) {
+    // При таймауте или сетевой ошибке — инициализируем пустым кешем и продолжаем.
+    // Реальтайм-подписки (subscribeRealtime) заполнят кеш после восстановления соединения.
+    console.warn('[Firebase] preloadCache failed, continuing with empty cache:', e.message);
+    COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
+    // Показываем ненавязчивое предупреждение — не блокируем вход
+    _preloadWarning = e.message;
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -10296,7 +10308,7 @@ function _loadingDone(){
 
   try {
     _loadingStep('Загрузка данных…', 35);
-    await preloadCache();
+    await preloadCache(); // при таймауте не бросает, ставит _preloadWarning
     _loadingStep('Инициализация…', 75);
     await initData();
     _loadingStep('Готово', 100);
@@ -10310,6 +10322,12 @@ function _loadingDone(){
   }
 
   _loadingDone();
+
+  // Если preload прошёл с предупреждением — показываем на экране логина (не блокируем)
+  if (_preloadWarning) {
+    const errEl = document.getElementById('login-err');
+    if (errEl) errEl.textContent = '⚠️ Нет связи с сервером — данные могут быть устаревшими. Попробуйте обновить страницу.';
+  }
 
   // Автовход если сессия сохранена
   const savedSession = localStorage.getItem('biohim_session');
