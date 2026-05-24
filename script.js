@@ -1210,10 +1210,41 @@ function load(k){
   return (k in _cache) ? _cache[k] : null;
 }
 
+// Дебаунсированные рендеры: ключ = "pageId|fn", ждём 0мс (следующий тик)
+const _renderNowQueue = {};
+function renderNow(k) {
+  if (!currentUser || !window._REALTIME_PAGE_MAP) return;
+  const entry = window._REALTIME_PAGE_MAP[k];
+  if (!entry) return;
+  const m = entry[currentUser.role] || entry['admin'];
+  if (!m) return;
+  if (curPage !== m.pageId) return;
+  const key = m.pageId + '|' + m.fn;
+  if (_renderNowQueue[key]) return; // уже запланирован
+  _renderNowQueue[key] = true;
+  setTimeout(() => {
+    delete _renderNowQueue[key];
+    if (currentUser && curPage === m.pageId && typeof window[m.fn] === 'function') {
+      window[m.fn]();
+    }
+  }, 0);
+}
+
 function save(k, v){
   _cache[k] = v;
+  // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
+  renderNow(k);
   // Асинхронно пишем в Firebase (не блокируем UI)
   _fbRef(k).set(v === null ? null : v).catch(e => console.error('[Firebase] save error', k, e));
+}
+
+/**
+ * Вызывается напрямую из save-функций для принудительного рендера
+ * конкретного компонента (например renderPaymentAdmin внутри renderStudents).
+ * Используйте когда коллекция и страница не совпадают с PAGE_MAP.
+ */
+function renderComponent(fn) {
+  if (typeof window[fn] === 'function') window[fn]();
 }
 
 async function preloadCache(){
@@ -1481,14 +1512,21 @@ function subscribeRealtime(){
     trials:         { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
                       admin:   { pageId: 'trial-admin',      fn: 'renderTrialAdmin'     } },
     users:          { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
-    payments:       { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
-    slots:          { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  } },
-    bookings:       { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  } },
-    attendance:     { admin:   { pageId: 'atp-admin',        fn: 'renderAtpAdmin'       } },
-    groups:         { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
+    payments:       { admin:   { pageId: 'students',         fn: 'renderStudents'       },
+                      student: { pageId: 'student-payment',  fn: 'renderStudentPayment' } },
+    slots:          { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  },
+                      student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
+    bookings:       { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  },
+                      student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
+    attendance:     { admin:   { pageId: 'atp-admin',        fn: 'renderAtpAttendance'  },
+                      student: { pageId: 'student-payment',  fn: 'renderStudentPayment' } },
+    groups:         { admin:   { pageId: 'students',         fn: 'renderStudents'       },
+                      student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
     taskbank:       { admin:   { pageId: 'taskbank-admin',   fn: 'renderTaskBankAdmin'  } },
-    flashcard_decks:{ student: { pageId: 'student-library',  fn: 'renderStudentLibrary' } },
-    courses:        { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  } },
+    flashcard_decks:{ student: { pageId: 'student-library',  fn: 'renderStudentLibrary' },
+                      admin:   { pageId: 'content-admin',    fn: 'renderContentAdmin'   } },
+    courses:        { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  },
+                      student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
   };
 
   // Дедупликация рендеров: одна отложенная задача на (роль, pageId, fn).
@@ -1510,6 +1548,9 @@ function subscribeRealtime(){
     _pendingRenders[key] = { pageId, fn };
     _flushRender();
   }
+
+  // Сохраняем PAGE_MAP глобально — используется в renderNow()
+  window._REALTIME_PAGE_MAP = PAGE_MAP;
 
   // Подписки на все коллекции: кеш обновляется немедленно,
   // рендер — дебаунсированно через _scheduleRender.
