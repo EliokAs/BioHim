@@ -409,6 +409,7 @@ function renderStudentFlashcards(customEl) {
   });
 
   el.innerHTML = `
+  <div id="fc-decks-view">
   <!-- Статистика -->
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">
     <div class="stat-card">
@@ -479,6 +480,8 @@ function renderStudentFlashcards(customEl) {
     }).join('')}
   </div>
 
+  </div><!-- /fc-decks-view -->
+
   <!-- Контейнер сессии (скрыт) -->
   <div id="fc-session-container" style="display:none"></div>
   `;
@@ -535,8 +538,9 @@ function fcShowCard() {
   const pct   = Math.round(index / total * 100);
 
   el.style.display = 'block';
-  // Скроллим к сессии
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Скрываем список колод во время сессии
+  const decksView = document.getElementById('fc-decks-view');
+  if (decksView) decksView.style.display = 'none';
 
   el.innerHTML = `
   <div style="background:var(--card);border-radius:20px;border:1px solid var(--green-xpale);box-shadow:var(--shadow2);padding:28px;margin-top:20px">
@@ -653,6 +657,9 @@ function fcEndSession() {
   if (_fcSession.sid) fcSaveSR(_fcSession.sid, _fcSession.srData);
   const el = document.getElementById('fc-session-container');
   if (el) el.style.display = 'none';
+  // Показываем список колод обратно
+  const decksView = document.getElementById('fc-decks-view');
+  if (decksView) decksView.style.display = '';
   showNotif('📊 Сессия завершена');
   renderStudentFlashcards();
 }
