@@ -1670,7 +1670,7 @@ function navigateTo(page){
   }
   // Admin cannot navigate to student-only pages
   const STUDENT_ONLY_PAGES = ['student-dashboard','student-materials','student-tests',
-    'student-hw','student-trial','student-chat','student-grades','student-mistakes','student-taskbank','student-flashcards',
+    'student-hw','student-trial','student-chat','student-grades','student-mistakes','student-taskbank',
     'student-payment','student-schedule','student-repeat','student-lesson',
     'student-notif-settings','student-goals','student-challenges','student-library','student-works','student-progress','student-settings'];
   if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
@@ -1732,7 +1732,6 @@ function renderPage(p){
   else if(p==='student-analytics') renderStudentAnalytics();
   else if(p==='grades-admin') renderGradesAdmin();
   else if(p==='student-taskbank') renderStudentTaskBank();
-  else if(p==='student-flashcards') renderStudentFlashcards();
   else if(p==='student-challenges'){ if(typeof renderStudentChallenges === 'function') renderStudentChallenges(); }
   else if(p==='student-library') renderStudentLibrary();
   else if(p==='student-works') renderStudentWorks();
@@ -7845,8 +7844,8 @@ function renderStudentLibrary(){
     // trigger repeat page logic (reuse existing renderRepeatPage)
     if(typeof renderRepeatPage === 'function') renderRepeatPage();
   } else if(_libraryTab === 'flashcards'){
-    body.innerHTML = `<div id="library-flashcards-ui"></div>`;
-    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards(document.getElementById('library-flashcards-ui'));
+    body.innerHTML = `<div id="student-flashcards-ui"></div>`;
+    if(typeof renderStudentFlashcards === 'function') renderStudentFlashcards();
   }
 }
 
