@@ -135,18 +135,31 @@ function performGlobalSearch(query) {
   
   const q = query.toLowerCase();
   const results = {
-    content: [],
+    students: [],  // ученики — по имени, логину, предмету
+    materials: [], // материалы (бывший ключ 'content', переименован во избежание путаницы с коллекцией)
     tests: [],
     hw: [],
     trials: []
   };
-  
+
+  // Поиск по ученикам (только для администратора)
+  if (currentUser && currentUser.role === 'admin') {
+    (load('users') || []).filter(u => u.role === 'student').forEach(u => {
+      const name    = (u.name    || '').toLowerCase();
+      const login   = (u.login   || '').toLowerCase();
+      const subject = (u.subject || '').toLowerCase();
+      if (name.includes(q) || login.includes(q) || subject.includes(q)) {
+        results.students.push(u);
+      }
+    });
+  }
+
   // Поиск в материалах
   (load('content') || []).forEach(item => {
     const title = (item.title || '').toLowerCase();
-    const body = (item.body || '').toLowerCase();
+    const body  = (item.body  || '').toLowerCase();
     if (title.includes(q) || body.includes(q)) {
-      results.content.push(item);
+      results.materials.push(item);
     }
   });
   
@@ -183,7 +196,7 @@ function performGlobalSearch(query) {
 }
 
 function showSearchResults(query, results) {
-  const total = results.content.length + results.tests.length + results.hw.length + results.trials.length;
+  const total = results.students.length + results.materials.length + results.tests.length + results.hw.length + results.trials.length;
   
   if (total === 0) {
     showNotif(`🔍 По запросу "${query}" ничего не найдено`);
@@ -212,13 +225,28 @@ function showSearchResults(query, results) {
       </div>
     </div>
   `;
-  
-  if (results.content.length) {
+
+  if (results.students.length) {
     html += `<div class="card">
-      <div class="card-title">📚 Материалы (${results.content.length})</div>
-      ${results.content.map(c => `
+      <div class="card-title">👥 Ученики (${results.students.length})</div>
+      ${results.students.map(u => `
+        <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer"
+             onclick="navigateTo('students')">
+          <div style="font-weight:700;color:var(--green-deep)">${esc(u.name || u.login)}</div>
+          <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
+            ${esc(u.login)}${u.subject ? ' · ' + esc(u.subject) : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  if (results.materials.length) {
+    html += `<div class="card">
+      <div class="card-title">📚 Материалы (${results.materials.length})</div>
+      ${results.materials.map(c => `
         <div style="padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer" 
-             onclick="navigateTo('content');setTimeout(()=>openContentModal('${escAttr(c.id)}'),100)">
+             onclick="navigateTo('content-admin');setTimeout(()=>openContentModal('${escAttr(c.id)}'),100)">
           <div style="font-weight:700;color:var(--green-deep)">${esc(c.title)}</div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
             ${c.studentId ? 'Для: ' + getUserName(c.studentId) : 'Общий'}
@@ -309,9 +337,6 @@ let _lessonRoom    = '';
 let _lsChatPoll    = null;
 
 // ── Урок: данные хранятся в Firebase для синхронизации между устройствами ──
-const LS_LESSON_CHAT = 'biohim_lesson_chat_';  // legacy key (не используется)
-const LS_LESSON_NOTE = 'biohim_lesson_note_';  // legacy key (не используется)
-
 // Firebase пути:
 //   live_lesson/<code>  — { code, room, topic, studentId, slotId, price, startedAt }
 //   live_lesson_note/<code>  — строка конспекта
@@ -1236,12 +1261,25 @@ function safeUrl(url){
   return s;
 }
 
-// 3. Защита от брутфорса (sessionStorage — переживает перезагрузку страницы)
-// ИСПРАВЛЕНО: данные брутфорса хранятся в sessionStorage (живут только пока открыта вкладка)
-// Persistent блокировка дополнительно остаётся в localStorage
+// 3. Защита от брутфорса — счётчик дублируется в localStorage (переживает закрытие вкладки)
+// и в sessionStorage (быстрый доступ в текущей сессии).
 const _BF_SS_KEY = 'biohim_bf';
-function _bfLoad(){ try{ return JSON.parse(sessionStorage.getItem(_BF_SS_KEY)||'{}'); }catch(e){ return {}; } }
-function _bfSave(d){ try{ sessionStorage.setItem(_BF_SS_KEY, JSON.stringify(d)); }catch(e){} }
+const _BF_LS_KEY = 'biohim_bf_persist';
+
+function _bfLoad(){
+  try {
+    // localStorage — источник истины (переживает перезагрузку и закрытие вкладки)
+    const ls = JSON.parse(localStorage.getItem(_BF_LS_KEY) || '{}');
+    return ls;
+  } catch(e) { return {}; }
+}
+function _bfSave(d){
+  try {
+    const s = JSON.stringify(d);
+    localStorage.setItem(_BF_LS_KEY, s);
+    sessionStorage.setItem(_BF_SS_KEY, s); // зеркало для быстрого доступа
+  } catch(e) {}
+}
 
 function checkBruteForce(login){
   const now = Date.now();
@@ -1252,6 +1290,11 @@ function checkBruteForce(login){
     const secs = Math.ceil((rec.blockedUntil-now)/1000);
     document.getElementById('login-err').textContent=`Слишком много попыток. Подождите ${secs} сек.`;
     return false;
+  }
+  // Блокировка истекла — сбрасываем запись, чтобы localStorage не копил мусор
+  if(rec.blockedUntil && rec.blockedUntil <= now){
+    delete data[login];
+    _bfSave(data);
   }
   return true;
 }
@@ -1311,62 +1354,85 @@ function setAnswer(storeName, qId, val){
 
 function subscribeRealtime(){
   const db = _fbInit();
+
+  // Страницы, которые нужно перерисовать при изменении конкретной коллекции.
+  // Ключ — имя коллекции; значение — { pageId, fn } для студента и для админа.
+  const PAGE_MAP = {
+    content:        { student: { pageId: 'student-library',  fn: 'renderStudentLibrary' },
+                      admin:   { pageId: 'content-admin',    fn: 'renderContentAdmin'   } },
+    tests:          { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
+                      admin:   { pageId: 'tests-admin',      fn: 'renderTestsAdmin'     } },
+    hw:             { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
+                      admin:   { pageId: 'hw-admin',         fn: 'renderHWAdmin'        } },
+    trials:         { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
+                      admin:   { pageId: 'trial-admin',      fn: 'renderTrialAdmin'     } },
+    users:          { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
+    payments:       { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
+    slots:          { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  } },
+    bookings:       { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  } },
+    attendance:     { admin:   { pageId: 'atp-admin',        fn: 'renderAtpAdmin'       } },
+    groups:         { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
+    taskbank:       { admin:   { pageId: 'taskbank-admin',   fn: 'renderTaskBankAdmin'  } },
+    flashcard_decks:{ student: { pageId: 'student-library',  fn: 'renderStudentLibrary' } },
+    courses:        { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  } },
+  };
+
+  // Дедупликация рендеров: одна отложенная задача на (роль, pageId, fn).
+  // Ключ вида "admin|students|renderStudents" гарантирует, что payments и users,
+  // изменившиеся одновременно, вызовут renderStudents лишь раз.
+  const _pendingRenders = {};
+  const _flushRender = debounce(() => {
+    const tasks = Object.values(_pendingRenders);
+    for (const k in _pendingRenders) delete _pendingRenders[k];
+    tasks.forEach(({ pageId, fn }) => {
+      if (!currentUser) return;
+      if (curPage !== pageId) return;
+      if (typeof window[fn] === 'function') window[fn]();
+    });
+  }, 300);
+
+  function _scheduleRender(pageId, fn) {
+    const key = pageId + '|' + fn;
+    _pendingRenders[key] = { pageId, fn };
+    _flushRender();
+  }
+
+  // Подписки на все коллекции: кеш обновляется немедленно,
+  // рендер — дебаунсированно через _scheduleRender.
   COLLECTIONS.forEach(k => {
     db.ref('db/' + k).on('value', snap => {
       const val = snap.val();
       _cache[k] = val !== undefined ? val : null;
+
+      if (!currentUser) return;
+      const entry = PAGE_MAP[k];
+      if (!entry) return;
+      const m = entry[currentUser.role] || entry['admin'];
+      if (m) _scheduleRender(m.pageId, m.fn);
     });
   });
-  db.ref('db/notifs').on('value', () => {
-    if(typeof updateNotifBadge === 'function') updateNotifBadge();
-    if(currentUser && currentUser.role === 'student'){
-      const el = document.getElementById('student-notifs-list');
-      if(el && typeof renderStudentNotifs === 'function') renderStudentNotifs();
-    }
-  });
 
-  // Admin notifications (from students) — перенесены из localStorage в Firebase
+  // notifs — дебаунсированный badge + список
+  const _flushNotifs = debounce(() => {
+    if (typeof updateNotifBadge === 'function') updateNotifBadge();
+    if (currentUser && currentUser.role === 'student') {
+      const el = document.getElementById('student-notifs-list');
+      if (el && typeof renderStudentNotifs === 'function') renderStudentNotifs();
+    }
+  }, 300);
+  db.ref('db/notifs').on('value', _flushNotifs);
+
+  // admin_notifs — дебаунсированный badge + список
+  const _flushAdminNotifs = debounce(() => {
+    updateChatBadge();
+    if (currentUser && currentUser.role === 'admin' && typeof renderAdminNotifsList === 'function') {
+      renderAdminNotifsList();
+    }
+  }, 300);
   db.ref('admin_notifs').on('value', snap => {
     const val = snap.val();
     _adminNotifsCache = val ? (Array.isArray(val) ? val : Object.values(val)) : [];
-    updateChatBadge();
-    if(currentUser && currentUser.role==='admin' && typeof renderAdminNotifsList === 'function'){
-      renderAdminNotifsList();
-    }
-  });
-
-  // Дебаунсированные рендеры — не чаще 1 раза в 300мс, только на активной странице
-  const _debouncedRender = {};
-  const studentPageMap = {
-    content: { pageId: 'student-library', fn: 'renderStudentLibrary' },
-    tests:   { pageId: 'student-works',   fn: 'renderStudentWorks'   },
-    hw:      { pageId: 'student-works',   fn: 'renderStudentWorks'   },
-    trials:  { pageId: 'student-works',   fn: 'renderStudentWorks'   },
-  };
-  const adminPageMap = {
-    users:    { pageId: 'students',     fn: 'renderStudents'    },
-    payments: { pageId: 'students',     fn: 'renderStudents'    },
-    tests:    { pageId: 'tests-admin',  fn: 'renderTestsAdmin'  },
-    hw:       { pageId: 'hw-admin',     fn: 'renderHWAdmin'     },
-    content:  { pageId: 'content-admin',fn: 'renderContentAdmin'},
-    trials:   { pageId: 'trial-admin',  fn: 'renderTrialAdmin'  },
-  };
-
-  Object.keys({...studentPageMap, ...adminPageMap}).forEach(k => {
-    if (_debouncedRender[k]) return; // одна подписка на ключ
-    _debouncedRender[k] = debounce(() => {
-      if (!currentUser) return;
-      const map = currentUser.role === 'student' ? studentPageMap : adminPageMap;
-      const m   = map[k];
-      if (!m) return;
-      // Рендерим только если соответствующая страница сейчас активна
-      if (curPage !== m.pageId) return;
-      if (typeof window[m.fn] === 'function') window[m.fn]();
-    }, 300);
-
-    db.ref('db/' + k).on('value', () => {
-      if (_debouncedRender[k]) _debouncedRender[k]();
-    });
+    _flushAdminNotifs();
   });
 }
 
@@ -2566,10 +2632,8 @@ function addTheory(){
 
 // Stubs
 function addTheoryImage(){}
-function renderTheoryImages(){}
 function previewTheoryVideo(){}
 function addTheoryFile(){}
-function renderTheoryFiles(){}
 let _theoryImages=[];
 let _theoryFiles=[];
 
@@ -13828,7 +13892,7 @@ function renderStudentGoals(containerId) {
       <div style="font-size:0.83rem;color:var(--text3);margin-bottom:16px">Укажите желаемый процент выполнения по каждому предмету (например, 85 = 85%)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
 
-        ${(isBio || (!isChem)) ? `
+        ${isBio ? `
         <div style="background:var(--bg);border-radius:12px;padding:16px;border:1.5px solid var(--green-pale)">
           <div style="font-weight:700;color:var(--green-deep);margin-bottom:10px;display:flex;align-items:center;gap:6px">🌿 Биология</div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
