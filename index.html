@@ -254,7 +254,7 @@ html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--
 .main { margin-left: 240px; min-height: 100vh; padding: 72px 40px 36px; }
 .page { display: none; animation: fadeIn 0.3s ease; }
 .page.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 .page-title { font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--accent); margin-bottom: 6px; }
 .page-sub { font-size: 0.9rem; color: var(--text3); margin-bottom: 28px; }
@@ -3265,6 +3265,9 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<!-- Flashcard modals — вынесены на уровень body, вне .page с анимацией fadeIn,
+     чтобы position:fixed работал относительно viewport, а не анимирующегося предка -->
+<div id="fc-modals-portal"></div>
 
 </body>
 </html>
