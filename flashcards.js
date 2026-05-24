@@ -118,10 +118,14 @@ function renderFlashcardsAdmin() {
       <div style="font-size:0.85rem">Создайте первую колоду — добавьте термины и определения для учеников</div>
     </div>
   ` : decks.map(deck => fcRenderDeckCard(deck, students)).join('')}
-
-  ${fcModalCreateDeckHTML()}
-  ${fcModalEditCardHTML()}
   `;
+
+  // Модальные окна рендерим в портал на уровне <body>, чтобы position:fixed
+  // был относительно viewport, а не анимирующегося предка (.page с fadeIn).
+  const portal = document.getElementById('fc-modals-portal');
+  if (portal) {
+    portal.innerHTML = fcModalCreateDeckHTML() + fcModalEditCardHTML();
+  }
 }
 
 function fcRenderDeckCard(deck, students) {
