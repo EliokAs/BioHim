@@ -1236,6 +1236,108 @@ async function preloadCache(){
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// VIEWED CACHE — просмотренные материалы (db/viewed/{sid})
+// ═══════════════════════════════════════════════════════════════
+const _viewedCache = {};
+
+function _getViewedCache(sid) {
+  return _viewedCache[sid] || {};
+}
+function _saveViewed(sid, map) {
+  _viewedCache[sid] = map;
+  _fbInit().ref('db/viewed/' + sid).set(map)
+    .catch(e => console.error('[Firebase] viewed save', e));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PRELOAD USER DATA — вызывать после preloadCache() при входе
+// Загружает данные текущего пользователя из Firebase в кэши памяти
+// ═══════════════════════════════════════════════════════════════
+async function preloadUserData(user) {
+  if (!user || !user.id) return;
+  const sid = user.id;
+  const db = _fbInit();
+  try {
+    const [
+      walletSnap, srSnap, viewedSnap, videoSnap,
+      goalsSnap, notifSnap, dailyLogSnap, dailyAnsSnap
+    ] = await Promise.all([
+      db.ref('db/wallet/'         + sid).get(),
+      db.ref('db/sr/'             + sid).get(),
+      db.ref('db/viewed/'         + sid).get(),
+      db.ref('db/video_progress/' + sid).get(),
+      db.ref('db/goals/'          + sid).get(),
+      db.ref('db/notif_settings/' + sid).get(),
+      db.ref('db/daily_task_log/' + sid).get(),
+      db.ref('db/daily_answers/'  + sid).get(),
+    ]);
+    if (walletSnap.val())    _walletCache[sid]         = walletSnap.val();
+    if (srSnap.val())        _srCache[sid]             = srSnap.val();
+    if (viewedSnap.val())    _viewedCache[sid]         = viewedSnap.val();
+    if (notifSnap.val())     _notifSettingsCache[sid]  = notifSnap.val();
+    if (goalsSnap.val())     _goalsCache[sid]          = goalsSnap.val();
+    if (dailyLogSnap.val())  _dailyTaskLogCache[sid]   = dailyLogSnap.val();
+    if (dailyAnsSnap.val())  _dailyAnswersCache[sid]   = dailyAnsSnap.val();
+    // video_progress хранится как {vidId: pct} — разворачиваем в плоский кэш
+    if (videoSnap.val()) {
+      const vmap = videoSnap.val();
+      Object.keys(vmap).forEach(vidId => {
+        _videoProgressCache[sid + '_' + vidId] = vmap[vidId];
+      });
+    }
+    console.log('[preloadUserData] Данные пользователя загружены', sid);
+  } catch(e) {
+    console.warn('[preloadUserData] Ошибка загрузки, продолжаем с пустыми кэшами:', e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ОДНОРАЗОВАЯ МИГРАЦИЯ localStorage → Firebase
+// Запускается при первом входе, затем помечается флагом и не повторяется
+// ═══════════════════════════════════════════════════════════════
+async function runLocalStorageMigration(user) {
+  if (!user || !user.id) return;
+  const sid = user.id;
+  try {
+    const flagRef = _fbInit().ref('migrations/ls_v1/' + sid);
+    const flagSnap = await flagRef.get();
+    if (flagSnap.val() === true) return; // уже мигрировано
+
+    console.log('[Migration] Старт для', sid);
+    const db = _fbInit();
+
+    async function migrateKey(lsKey, fbPath) {
+      const raw = localStorage.getItem(lsKey);
+      if (raw === null) return false;
+      let parsed; try { parsed = JSON.parse(raw); } catch(e) { parsed = raw; }
+      const existing = await db.ref(fbPath).get();
+      if (existing.val() === null) await db.ref(fbPath).set(parsed);
+      localStorage.removeItem(lsKey);
+      return true;
+    }
+
+    await Promise.allSettled([
+      migrateKey('biohim_wallet_'         + sid, 'db/wallet/'         + sid),
+      migrateKey('biohim_sr_'             + sid, 'db/sr/'             + sid),
+      migrateKey('biohim_viewed_'         + sid, 'db/viewed/'         + sid),
+      migrateKey('biohim_goals_'          + sid, 'db/goals/'          + sid),
+      migrateKey('biohim_notif_settings_' + sid, 'db/notif_settings/' + sid),
+      migrateKey('biohim_daily_task_log',        'db/daily_task_log_legacy/' + sid),
+      migrateKey('biohim_daily_answers',         'db/daily_answers_legacy/'  + sid),
+      migrateKey('biohim_video_progress',        'db/video_progress/'        + sid),
+    ]);
+
+    await flagRef.set(true);
+    console.log('[Migration] Завершена для', sid);
+
+    // Перезагружаем кэши из Firebase после миграции
+    await preloadUserData(user);
+  } catch(e) {
+    console.error('[Migration] Ошибка (вход продолжается):', e);
+  }
+}
+
 // ══════════════════════════════════════════════════════
 // SECURITY CORE
 // ══════════════════════════════════════════════════════
@@ -1596,6 +1698,9 @@ function _startSession(user){
   initDarkTheme();
   buildNav();
   subscribeRealtime();
+  // Загружаем пользовательские данные из Firebase в кэш + одноразовая миграция из localStorage
+  await runLocalStorageMigration(user);
+  await preloadUserData(user);
   const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
   let lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
   // Redirect legacy student page IDs to new combined pages
@@ -2203,10 +2308,10 @@ function toggleAccordion(el){
     const cid = item.getAttribute('data-content-id');
     if(cid){
       const key = 'biohim_viewed_'+currentUser.id;
-      const viewed = JSON.parse(localStorage.getItem(key)||'{}');
+      const viewed = _getViewedCache(currentUser.id);
       if(!viewed[cid]){
         viewed[cid] = true;
-        localStorage.setItem(key, JSON.stringify(viewed));
+        _saveViewed(currentUser.id, viewed);
         // Update badge in place without full re-render
         const badgeEl = item.querySelector('.accordion-header .accordion-badge[style*="1565c0"]');
         if(badgeEl) badgeEl.outerHTML = '<span class="accordion-badge" style="background:#e8f8f0;color:#27ae60">✅ Просмотрено</span>';
@@ -4658,12 +4763,20 @@ const SR_INTERVALS = {1:1, 2:3, 3:5, 4:7, 5:14};
 
 function srKey(sid){ return 'sr_'+sid; }
 
+// SR-данные — Firebase (путь db/sr/{sid})
+const _srCache = {};
 function getSRData(sid){
-  const raw = localStorage.getItem('biohim_'+srKey(sid));
-  return raw ? JSON.parse(raw) : {};
+  return _srCache[sid] !== undefined ? _srCache[sid] : {};
+}
+async function loadSRDataAsync(sid){
+  const snap = await _fbInit().ref('db/sr/'+sid).get();
+  _srCache[sid] = snap.val() || {};
+  return _srCache[sid];
 }
 function saveSRData(sid, data){
-  localStorage.setItem('biohim_'+srKey(sid), JSON.stringify(data));
+  _srCache[sid] = data;
+  _fbInit().ref('db/sr/'+sid).set(data)
+    .catch(e => console.error('[Firebase] sr save', e));
 }
 
 // Returns today as YYYY-MM-DD string
@@ -6214,16 +6327,28 @@ function getStudentSubjectFilter(sid){
   return allowed;
 }
 
-function getDailyTask(sid){
+// daily_task_log — Firebase (путь db/daily_task_log/{sid})
+const _dailyTaskLogCache = {};
+async function _loadDailyTaskLog(sid){
+  if(_dailyTaskLogCache[sid] !== undefined) return _dailyTaskLogCache[sid];
+  const snap = await _fbInit().ref('db/daily_task_log/'+sid).get();
+  _dailyTaskLogCache[sid] = snap.val() || [];
+  return _dailyTaskLogCache[sid];
+}
+function _saveDailyTaskLog(sid, arr){
+  _dailyTaskLogCache[sid] = arr;
+  _fbInit().ref('db/daily_task_log/'+sid).set(arr)
+    .catch(e => console.error('[Firebase] daily_task_log save', e));
+}
+
+async function getDailyTask(sid){
   let tasks=load('taskbank')||[];
   if(!tasks.length) return null;
-  // Filter by student's enrolled courses
   const subjectFilter=getStudentSubjectFilter(sid);
   if(subjectFilter) tasks=tasks.filter(t=>!t.subject||subjectFilter.has(t.subject));
   if(!tasks.length) return null;
   const today=todayStr();
-  const log=JSON.parse(localStorage.getItem('biohim_daily_task_log')||'{}');
-  const sidLog=log[sid]||[];
+  const sidLog = await _loadDailyTaskLog(sid);
   const todayEntry=sidLog.find(e=>e.date===today);
   if(todayEntry){ return {task:tasks.find(t=>t.id===todayEntry.taskId)||null,isNew:false}; }
   const usedIds=new Set(sidLog.map(e=>e.taskId));
@@ -6231,23 +6356,27 @@ function getDailyTask(sid){
   const pool=available.length?available:tasks;
   const task=pool[Math.floor(seededRandom(sid+today)*pool.length)];
   if(!task) return null;
-  log[sid]=[...sidLog,{date:today,taskId:task.id}].slice(-365);
-  localStorage.setItem('biohim_daily_task_log',JSON.stringify(log));
+  const newLog=[...sidLog,{date:today,taskId:task.id}].slice(-365);
+  _saveDailyTaskLog(sid, newLog);
   return {task,isNew:true};
 }
 function seededRandom(seed){
   let h=0; for(let i=0;i<seed.length;i++) h=(Math.imul(31,h)+seed.charCodeAt(i))|0;
   return Math.abs(h)/2147483647;
 }
-function getDailyAnswer(sid){
-  const answers=JSON.parse(localStorage.getItem('biohim_daily_answers')||'{}');
-  return (answers[sid]||{})[todayStr()]||null;
+// daily_answers — Firebase (путь db/daily_answers/{sid}/{date})
+const _dailyAnswersCache = {};
+async function getDailyAnswer(sid){
+  if(_dailyAnswersCache[sid] !== undefined) return (_dailyAnswersCache[sid]||{})[todayStr()]||null;
+  const snap = await _fbInit().ref('db/daily_answers/'+sid).get();
+  _dailyAnswersCache[sid] = snap.val() || {};
+  return (_dailyAnswersCache[sid])[todayStr()]||null;
 }
 function saveDailyAnswer(sid,data){
-  const answers=JSON.parse(localStorage.getItem('biohim_daily_answers')||'{}');
-  if(!answers[sid]) answers[sid]={};
-  answers[sid][todayStr()]=data;
-  localStorage.setItem('biohim_daily_answers',JSON.stringify(answers));
+  if(!_dailyAnswersCache[sid]) _dailyAnswersCache[sid]={};
+  _dailyAnswersCache[sid][todayStr()]=data;
+  _fbInit().ref('db/daily_answers/'+sid+'/'+todayStr()).set(data)
+    .catch(e => console.error('[Firebase] daily_answers save', e));
 }
 
 function renderDailyTaskBlock(sid){
@@ -6801,7 +6930,7 @@ function _renderStudentCourseProgress(sid) {
     if (!total) return ''; // нет контента — не показываем
 
     const viewedKey = 'biohim_viewed_' + sid;
-    const viewed    = (() => { try { return JSON.parse(localStorage.getItem(viewedKey) || '{}'); } catch(e) { return {}; } })();
+    const viewed    = _getViewedCache(sid);
 
     const doneMats  = courseMats.filter(c => viewed[c.id]).length;
     const doneTests = courseTests.filter(t => t.submitted).length;
@@ -8029,7 +8158,7 @@ function renderStudentMaterials(){
   let all = [...theories, ...legacyAsTheory];
 
   // Apply filter — use c.viewed flag
-  const viewed = JSON.parse(localStorage.getItem('biohim_viewed_'+sid)||'{}');
+  const viewed = _getViewedCache(sid);
   if(_materialFilter==='viewed') all = all.filter(c=>viewed[c.id]);
   if(_materialFilter==='new')    all = all.filter(c=>!viewed[c.id]);
 
@@ -9750,7 +9879,7 @@ function generateReport(){
   const srRepetitions= srItems.reduce((s,c)=>s+(srData[c.id].repetitions||0),0);
 
   // ── Daily tasks
-  const taskLog = JSON.parse(localStorage.getItem('biohim_daily_task_log')||'{}');
+  const taskLog = _dailyTaskLogCache[sid] ? {[sid]: _dailyTaskLogCache[sid]} : {};
   const tasksDone = Object.values(taskLog[sid]||[]).filter(e=>!dateFrom||(e.date>=dateFrom&&e.date<=(dateTo||'9999'))).length;
 
   // ── Helpers
@@ -10082,8 +10211,8 @@ function downloadReport(sid){
   const srData   = getSRData(sid);
   const theory   = content.filter(c=>c.type==='theory');
   const srDone   = theory.filter(c=>srData[c.id]&&(srData[c.id].repetitions||0)>0).length;
-  const taskLog  = JSON.parse(localStorage.getItem('biohim_daily_task_log')||'{}');
-  const tasksDone = Object.keys(taskLog).filter(k=>k.endsWith('_'+sid)).length;
+  const taskLog  = _dailyTaskLogCache[sid] ? {[sid]: _dailyTaskLogCache[sid]} : {};
+  const tasksDone = (_dailyTaskLogCache[sid]||[]).length;
 
   const line = '─'.repeat(48);
   let txt = `ОТЧЁТ ПО УЧЕНИКУ\n${line}\n`;
@@ -10358,6 +10487,9 @@ function _loadingDone(){
         if(user.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
         buildNav();
         subscribeRealtime();
+        // Загружаем пользовательские данные из Firebase в кэш + одноразовая миграция из localStorage
+        await runLocalStorageMigration(user);
+        await preloadUserData(user);
         const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
         const lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
         navigateTo(lastPage);
@@ -11501,16 +11633,21 @@ function notifSettingsKey(sid){ return 'biohim_notif_settings_'+sid; }
 function adminTgBotKey(){ return 'biohim_admin_tg_bot'; }
 function adminTgTokenKey(){ return 'biohim_admin_tg_token'; }
 
+const _notifSettingsCache = {};
 function loadNotifSettings(sid){
-  const raw = localStorage.getItem(notifSettingsKey(sid));
+  const cached = _notifSettingsCache[sid];
   const def = {
     tgChatId: '',
     types: { lesson:true, hw:true, test:true, payment:true, chat:true, repeat:true }
   };
-  if(!raw) return def;
-  try{ return Object.assign({}, def, JSON.parse(raw)); } catch(e){ return def; }
+  if(!cached) return def;
+  try{ return Object.assign({}, def, cached); } catch(e){ return def; }
 }
-function saveNotifSettingsData(sid, s){ localStorage.setItem(notifSettingsKey(sid), JSON.stringify(s)); }
+function saveNotifSettingsData(sid, s){
+  _notifSettingsCache[sid] = s;
+  _fbInit().ref('db/notif_settings/'+sid).set(s)
+    .catch(e => console.error('[Firebase] notif_settings save', e));
+}
 
 const NOTIF_TYPE_MAP = {
   schedule:'lesson', hw:'hw', test:'test', trial:'test',
@@ -11746,12 +11883,16 @@ async function adminSendTestToStudent(sid){
 
 // WALLET (кошелёк)
 // ══════════════════════════════════════════
+const _walletCache = {};
 function walletKey(sid){ return 'biohim_wallet_' + sid; }
 function loadWallet(sid){
-  const raw = localStorage.getItem(walletKey(sid));
-  return raw ? JSON.parse(raw) : { balance: 0, txns: [] };
+  return _walletCache[sid] !== undefined ? _walletCache[sid] : { balance: 0, txns: [] };
 }
-function saveWallet(sid, w){ localStorage.setItem(walletKey(sid), JSON.stringify(w)); }
+function saveWallet(sid, w){
+  _walletCache[sid] = w;
+  _fbInit().ref('db/wallet/'+sid).set(w)
+    .catch(e => console.error('[Firebase] wallet save', e));
+}
 
 function walletTopUp(sid, amount, note){
   const w = loadWallet(sid);
@@ -13176,8 +13317,7 @@ function renderStudentAnalytics() {
 
   // ── activity heatmap data (last 12 months) ──
   const ACTIVITY_KEY = 'biohim_viewed_' + sid;
-  let viewedMap = {};
-  try { viewedMap = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || '{}'); } catch(e) {}
+  let viewedMap = _getViewedCache(sid);
   // Combine test submission dates + viewed material dates
   const activityDates = new Set();
   tests.forEach(t => { if (t.submittedAt) activityDates.add(t.submittedAt.substring(0, 10)); });
@@ -13548,43 +13688,42 @@ function _renderAnalyticsHeatmap(activityDates) {
 // ═══════════════════════════════════════════════
 
 const _VIDEO_PROGRESS_KEY = 'biohim_video_progress';
+const _videoProgressCache = {};
 
 function _getVideoProgressMap() {
-  try { return JSON.parse(localStorage.getItem(_VIDEO_PROGRESS_KEY) || '{}'); } catch(e) { return {}; }
+  return _videoProgressCache;
 }
 
 function _getVideoProgress(vidId) {
   if (!currentUser) return 0;
-  const map = _getVideoProgressMap();
-  return map[currentUser.id + '_' + vidId] || 0;
+  return _videoProgressCache[currentUser.id + '_' + vidId] || 0;
 }
 
 function _saveVideoProgress(vidId, pct) {
   if (!currentUser) return;
-  const map = _getVideoProgressMap();
   const key = currentUser.id + '_' + vidId;
-  const prev = map[key] || 0;
-  // Only save if progress increased (never go backwards)
+  const prev = _videoProgressCache[key] || 0;
   if (pct > prev) {
-    map[key] = Math.min(100, Math.round(pct));
-    localStorage.setItem(_VIDEO_PROGRESS_KEY, JSON.stringify(map));
+    _videoProgressCache[key] = Math.min(100, Math.round(pct));
+    _fbInit().ref('db/video_progress/' + currentUser.id + '/' + vidId)
+      .set(_videoProgressCache[key])
+      .catch(e => console.error('[Firebase] video_progress save', e));
     // Update progress bar in DOM
     const bar = document.getElementById('vp_' + vidId);
     const txt = document.getElementById('vp_' + vidId + '_txt');
-    if (bar) bar.style.width = map[key] + '%';
-    if (txt) txt.textContent = map[key] + '%';
+    if (bar) bar.style.width = _videoProgressCache[key] + '%';
+    if (txt) txt.textContent = _videoProgressCache[key] + '%';
     // If >= 90% — mark lesson as viewed too
-    if (map[key] >= 90 && currentUser.role === 'student') {
+    if (_videoProgressCache[key] >= 90 && currentUser.role === 'student') {
       const container = bar ? bar.closest('[data-video-id]') : null;
       const accItem = container ? container.closest('.accordion-item') : null;
       if (accItem) {
         const cid = accItem.getAttribute('data-content-id');
         if (cid) {
-          const viewKey = 'biohim_viewed_' + currentUser.id;
-          const viewed = JSON.parse(localStorage.getItem(viewKey) || '{}');
+          const viewed = _getViewedCache(currentUser.id);
           if (!viewed[cid]) {
             viewed[cid] = true;
-            localStorage.setItem(viewKey, JSON.stringify(viewed));
+            _saveViewed(currentUser.id, viewed);
           }
         }
       }
@@ -13724,12 +13863,15 @@ function videoJumpTo(btn, seconds) {
 // ═══════════════════════════════════════════════════════════════
 
 const GOALS_KEY = 'biohim_goals_';
+const _goalsCache = {};
 
 function _loadGoals(sid) {
-  try { return JSON.parse(localStorage.getItem(GOALS_KEY + sid) || '{}'); } catch(e) { return {}; }
+  return _goalsCache[sid] || {};
 }
 function _saveGoals(sid, data) {
-  localStorage.setItem(GOALS_KEY + sid, JSON.stringify(data));
+  _goalsCache[sid] = data;
+  _fbInit().ref('db/goals/'+sid).set(data)
+    .catch(e => console.error('[Firebase] goals save', e));
 }
 
 /**
