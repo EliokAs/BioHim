@@ -1681,7 +1681,7 @@ async function doLogin(){
   }
   _startSession(found);
 }
-function _startSession(user){
+async function _startSession(user){
   currentUser = user;
   // Сессия БЕЗ пароля, с временем истечения
   const sessionData = {
