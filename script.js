@@ -9633,8 +9633,10 @@ function renderFinanceDashboard() {
 
   function getAttIncome(year, month) {
     // month is 0-based
+    // Считаем только фактически оплаченные занятия (present=true И paid=true)
+    // чтобы долги не попадали одновременно и в доход, и в задолженность
     return att.filter(a => {
-      if (!a.present) return false;
+      if (!a.present || !a.paid) return false;
       const d = parseDate(a.date);
       if (!d) return false;
       return d.getFullYear() === year && d.getMonth() === month;
@@ -9847,7 +9849,7 @@ function renderFinanceDashboard() {
   const rows = students
     .filter(s => !search || s.name.toLowerCase().includes(search))
     .map(s => {
-      const sAtt   = att.filter(a => a.studentId === s.id && a.present);
+      const sAtt   = att.filter(a => a.studentId === s.id && a.present && a.paid);
       const curAtt = sAtt.filter(a => { const d = parseDate(a.date); return d && d.getFullYear() === curY && d.getMonth() === curM; });
       const sIncome = curAtt.reduce((sum, a) => sum + (+a.costPerStudent || 0), 0)
         + payments.filter(p => p.studentId === s.id && p.status === 'paid' && (() => { const d = parseDate(p.date); return d && d.getFullYear() === curY && d.getMonth() === curM; })()).reduce((sum, p) => sum + (+p.amount || 0), 0);
@@ -12016,12 +12018,29 @@ function saveWallet(sid, w){
     .catch(e => console.error('[Firebase] wallet save', e));
 }
 
-function walletTopUp(sid, amount, note){
+function walletTopUp(sid, amount, note, _skipPaymentRecord){
   const w = loadWallet(sid);
   w.balance += amount;
+  const dateStr = new Date().toLocaleDateString('ru');
   w.txns.push({ id:'tx'+Date.now(), type:'topup', amount, note: note||'Пополнение',
-    date: new Date().toLocaleDateString('ru'), ts: Date.now() });
+    date: dateStr, ts: Date.now() });
   saveWallet(sid, w);
+  // Записываем в payments как доход (статус paid), если это реальное пополнение от ученика
+  // _skipPaymentRecord=true используется для возвратов (отмена списания), чтобы не задваивать
+  if (!_skipPaymentRecord) {
+    const payments = load('payments') || [];
+    payments.push({
+      id: 'p_topup_' + Date.now(),
+      studentId: sid,
+      period: dateStr,
+      amount,
+      status: 'paid',
+      note: note || 'Пополнение кошелька',
+      date: dateStr,
+      _fromWallet: true
+    });
+    save('payments', payments);
+  }
   addNotif(sid, {type:'wallet', text:`💰 Кошелёк пополнен на ${amount}₽${note?' · '+note:''}`, nav:'student-payment'});
 }
 
@@ -12264,7 +12283,7 @@ function undoAttPaid(id){
   const a   = att.find(a=>a.id==id); if(!a){ console.warn('[undoAttPaid] запись не найдена, id=',id); return; }
   if(!confirm('Отменить списание и вернуть деньги на кошелёк?')) return;
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
-  walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`);
+  walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`, true/*skipPaymentRecord*/);
   a.paid = false;
   a.present = false;
   a.absentPaid = false;
