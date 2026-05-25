@@ -2285,9 +2285,9 @@ function theoryAccordionHTML(c, isAdmin, viewed){
     </div>` : '';
   const _availBadgeHtml = isAdmin ? availBadge(c) : '';
   const _availLockHtml  = (!isAdmin && availStatus(c)) ? availLockBanner(c) : '';
-  // video player
+  // video player — только для legacy (без c.blocks), иначе видео уже внутри nbRenderView
   let videoBlock='';
-  if(videoUrl){
+  if(videoUrl && !(c.blocks && c.blocks.length)){
     const embedUrl=getVideoEmbedUrl(videoUrl);
     if(embedUrl){
       const timestamps = c.videoTimestamps || [];
@@ -2325,50 +2325,51 @@ function theoryAccordionHTML(c, isAdmin, viewed){
     }
   }
   // text block — render using block-based content (new editor)
+  // ── Рендер содержимого: если есть блоки — показываем всё через nbRenderView
+  //    (сохраняет порядок: текст, картинки, видео, файлы — как в предпросмотре)
   let textBlock='';
+  let imgsBlock='';
+  let filesBlock='';
+
   if(c.blocks && c.blocks.length){
-    // New editor: use blocks directly, filter out video/file/image (rendered separately above)
-    const _textOnlyBlocks = c.blocks.filter(b=>!['video','image','image-upload','file'].includes(b.type));
-    if(_textOnlyBlocks.length && _textOnlyBlocks.some(b=>b.content && b.content.trim())){
+    // Новый редактор: рендерим все блоки через nbRenderView — один общий блок
+    textBlock=`<div style="margin-bottom:18px">${nbRenderView(c.blocks)}</div>`;
+    // Файлы из блоков типа 'file' уже внутри nbRenderView; legacy files (c.files) не дублируем
+  } else {
+    // Legacy: текст из c.body
+    if(c.body && c.body.trim()){
       textBlock=`<div style="margin-bottom:18px">
         <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
-        <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${nbRenderView(_textOnlyBlocks)}</div>
+        <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body).replace(/\n/g,'<br>')}</div>
       </div>`;
     }
-  } else if(c.body && c.body.trim()){
-    // Legacy plain-text fallback
-    textBlock=`<div style="margin-bottom:18px">
-      <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
-      <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body).replace(/\n/g,'<br>')}</div>
-    </div>`;
+    // Legacy: картинки из c.images
+    if(c.images && c.images.filter(Boolean).length){
+      imgsBlock=`<div style="margin-bottom:18px;display:flex;flex-wrap:wrap;gap:10px">`;
+      c.images.filter(Boolean).forEach(img=>{
+        imgsBlock+=`<img src="${safeUrl(img)}" alt="" style="max-width:100%;border-radius:10px;border:1px solid var(--green-pale);max-height:260px;object-fit:contain">`;
+      });
+      imgsBlock+=`</div>`;
+    }
+    // Legacy: файлы из c.files
+    if(files.length){
+      filesBlock=`<div style="margin-bottom:18px">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📎 Файлы</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${files.map(f=>`
+            <a href="${safeUrl(f.url)}" target="_blank" rel="noopener noreferrer" class="content-item" style="text-decoration:none;color:inherit">
+              <div class="content-icon">${f.type==='pdf'?'📄':'📋'}</div>
+              <div class="content-info">
+                <div class="content-name">${esc(f.name||'Файл')}</div>
+                <div class="content-meta">${f.type==='pdf'?'PDF-документ':'Word-документ'}</div>
+              </div>
+              <div style="color:var(--green-mid);font-size:0.85rem">⬇ Открыть</div>
+            </a>`).join('')}
+        </div>
+      </div>`;
+    }
   }
-  // images
-  let imgsBlock='';
-  if(c.images && c.images.filter(Boolean).length){
-    imgsBlock=`<div style="margin-bottom:18px;display:flex;flex-wrap:wrap;gap:10px">`;
-    c.images.filter(Boolean).forEach(img=>{
-      imgsBlock+=`<img src="${safeUrl(img)}" alt="" style="max-width:100%;border-radius:10px;border:1px solid var(--green-pale);max-height:260px;object-fit:contain">`;
-    });
-    imgsBlock+=`</div>`;
-  }
-  // files
-  let filesBlock='';
-  if(files.length){
-    filesBlock=`<div style="margin-bottom:18px">
-      <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📎 Файлы</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${files.map(f=>`
-          <a href="${safeUrl(f.url)}" target="_blank" rel="noopener noreferrer" class="content-item" style="text-decoration:none;color:inherit">
-            <div class="content-icon">${f.type==='pdf'?'📄':'📋'}</div>
-            <div class="content-info">
-              <div class="content-name">${esc(f.name||'Файл')}</div>
-              <div class="content-meta">${f.type==='pdf'?'PDF-документ':'Word-документ'}</div>
-            </div>
-            <div style="color:var(--green-mid);font-size:0.85rem">⬇ Открыть</div>
-          </a>`).join('')}
-      </div>
-    </div>`;
-  }
+
   return `<div class="accordion-item" id="acc-${c.id}" data-content-id="${c.id}">
     ${_availLockHtml}
     <div class="accordion-header" onclick="toggleAccordion(this)">
