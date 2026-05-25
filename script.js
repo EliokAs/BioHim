@@ -11778,6 +11778,15 @@ function addNotif(studentId, {type, text, nav}){
   const users = load('users')||[];
   const parent = users.find(u=>u.role==='parent' && u.linkedStudentId===studentId);
   if(parent) sendParentTelegramNotif(parent.id, type, text);
+  // Web Push (встроено сюда чтобы избежать рекурсии через _origAddNotif)
+  if (typeof wpIsEnabled === 'function' && wpIsEnabled(studentId)) {
+    if (document.visibilityState === 'hidden') {
+      wpShowDirect('BioХим', text, nav);
+    }
+    if (currentUser && currentUser.role === 'admin') {
+      wpSendToStudent(studentId, 'BioХим', text, nav);
+    }
+  }
 }
 
 // ── Отправка через Telegram Bot API (через серверный прокси /api/telegram) ──
@@ -13369,21 +13378,7 @@ function wpB64uToUint8(b64u) {
   return Uint8Array.from(bin, c => c.charCodeAt(0));
 }
 
-// ── Патчим addNotif: добавляем Web Push ──
-const _origAddNotif = addNotif;
-function addNotif(studentId, opts) {
-  _origAddNotif(studentId, opts);
-  if (wpIsEnabled(studentId)) {
-    // Если ученик сейчас онлайн и страница в фоне — показываем напрямую
-    if (document.visibilityState === 'hidden') {
-      wpShowDirect('BioХим', opts.text, opts.nav);
-    }
-    // Если репетитор отправляет уведомление другому пользователю — через API
-    if (currentUser && currentUser.role === 'admin') {
-      wpSendToStudent(studentId, 'BioХим', opts.text, opts.nav);
-    }
-  }
-}
+// Web Push интегрирован напрямую в addNotif (выше) — патч удалён во избежание рекурсии
 
 // ── Тест ──
 async function testWebPush() {
