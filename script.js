@@ -1232,10 +1232,28 @@ function renderNow(k) {
 
 function save(k, v){
   _cache[k] = v;
+  console.log('[SAVE] Сохранение данных:', k, 'записей:', Array.isArray(v) ? v.length : typeof v);
+  
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
   renderNow(k);
+  
   // Асинхронно пишем в Firebase (не блокируем UI)
-  _fbRef(k).set(v === null ? null : v).catch(e => console.error('[Firebase] save error', k, e));
+  const fbRef = _fbRef(k);
+  if (!fbRef) {
+    console.error('[Firebase] ОШИБКА: fbRef не инициализирован для ключа', k);
+    showNotif('⚠️ Ошибка соединения с сервером. Данные могут не сохраниться.');
+    return;
+  }
+  
+  fbRef.set(v === null ? null : v)
+    .then(() => {
+      console.log('[Firebase] ✅ Данные успешно сохранены:', k);
+    })
+    .catch(e => {
+      console.error('[Firebase] ❌ ОШИБКА сохранения', k, e);
+      console.error('[Firebase] Детали ошибки:', e.message, e.code);
+      showNotif('⚠️ Ошибка сохранения данных: ' + (e.message || 'Проверьте подключение к интернету'));
+    });
 }
 
 /**
@@ -1253,13 +1271,24 @@ async function preloadCache(){
     setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
   );
   const db = _fbInit();
+  console.log('[preloadCache] Начало загрузки данных из Firebase...');
+  
   try {
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
-    COLLECTIONS.forEach(k => { _cache[k] = data[k] !== undefined ? data[k] : null; });
+    console.log('[preloadCache] Данные получены из Firebase:', Object.keys(data));
+    
+    COLLECTIONS.forEach(k => { 
+      _cache[k] = data[k] !== undefined ? data[k] : null; 
+      const count = Array.isArray(_cache[k]) ? _cache[k].length : (_cache[k] ? 'объект' : 'null');
+      console.log('[preloadCache] Загружена коллекция:', k, '- записей:', count);
+    });
+    
+    console.log('[preloadCache] ✅ Все данные успешно загружены');
   } catch(e) {
     // При таймауте или сетевой ошибке — инициализируем пустым кешем и продолжаем.
     // Реальтайм-подписки (subscribeRealtime) заполнят кеш после восстановления соединения.
+    console.error('[Firebase] ❌ КРИТИЧЕСКАЯ ОШИБКА preloadCache:', e.message);
     console.warn('[Firebase] preloadCache failed, continuing with empty cache:', e.message);
     COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
     // Показываем ненавязчивое предупреждение — не блокируем вход
@@ -1499,6 +1528,7 @@ function setAnswer(storeName, qId, val){
 
 function subscribeRealtime(){
   const db = _fbInit();
+  console.log('[subscribeRealtime] Подписка на realtime обновления...');
 
   // Страницы, которые нужно перерисовать при изменении конкретной коллекции.
   // Ключ — имя коллекции; значение — { pageId, fn } для студента и для админа.
@@ -1557,7 +1587,15 @@ function subscribeRealtime(){
   COLLECTIONS.forEach(k => {
     db.ref('db/' + k).on('value', snap => {
       const val = snap.val();
+      const oldVal = _cache[k];
       _cache[k] = val !== undefined ? val : null;
+      
+      // Логируем только если данные изменились
+      const oldCount = Array.isArray(oldVal) ? oldVal.length : (oldVal ? 'объект' : 'null');
+      const newCount = Array.isArray(val) ? val.length : (val ? 'объект' : 'null');
+      if (JSON.stringify(oldVal) !== JSON.stringify(val)) {
+        console.log('[Realtime] Обновление коллекции:', k, 'было:', oldCount, 'стало:', newCount);
+      }
 
       if (!currentUser) return;
       const entry = PAGE_MAP[k];
@@ -1566,6 +1604,8 @@ function subscribeRealtime(){
       if (m) _scheduleRender(m.pageId, m.fn);
     });
   });
+
+  console.log('[subscribeRealtime] ✅ Подписки активированы для', COLLECTIONS.length, 'коллекций');
 
   // notifs — дебаунсированный badge + список
   const _flushNotifs = debounce(() => {
