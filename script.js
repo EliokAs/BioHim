@@ -6675,15 +6675,8 @@ function renderAttendanceAdmin(){
   }).join('');
 }
 
-function toggleAttPresence(id){
-  const att=load('attendance')||[];
-  const a=att.find(a=>a.id===id); if(!a) return;
-  a.present=!a.present;
-  if(!a.present) a.paid=false;
-  save('attendance',att);
-  renderAtpAttendance();
-  renderAtpWallet();
-}
+// toggleAttPresence replaced — используйте markAttPresent / markAttAbsentPaid
+function toggleAttPresence(id){ markAttPresent(id); }
 function deleteLesson(lessonId){
   if(!confirm('Удалить всё занятие?')) return;
   save('attendance',(load('attendance')||[]).filter(a=>a.lessonId!==lessonId));
@@ -12102,21 +12095,28 @@ function renderAtpAttendance(){
         const s = students.find(s=>s.id===a.studentId);
         const w = loadWallet(a.studentId);
         const balColor = w.balance < 0 ? 'color:#c0392b' : 'color:var(--green-deep)';
-        return `<div class="att-row att-${a.present?'present':'absent'}">
+        // Статус: present=был, paid=деньги списаны, absentPaid=не был но деньги списаны
+        const statusClass = a.present ? 'present' : (a.absentPaid ? 'absent' : 'absent');
+        return `<div class="att-row att-${statusClass}">
           <div style="flex:1">
             <div style="font-weight:600;font-size:0.88rem">${s?s.name:'—'}</div>
             <div style="font-size:0.75rem;${balColor};font-weight:700">Баланс: ${w.balance}₽</div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline btn-sm" onclick="toggleAttPresence('${a.id}')" style="min-width:80px">
-              ${a.present?'✅ Был':'❌ Не был'}
-            </button>
-            ${a.present ? `
-              <button class="btn ${a.paid?'btn-outline':'btn-green'} btn-sm" onclick="toggleAttPaid('${a.id}')" style="min-width:100px">
-                ${a.paid?'💳 Оплачено':'Списать ₽'}
+            ${a.paid ? `
+              <span class="att-badge-${a.present?'present':'absent'}" style="cursor:pointer" onclick="undoAttPaid('${a.id}')" title="Отменить списание">
+                ${a.present ? '✅ Был · списано' : '❌ Не был · списано'}
+              </span>
+              <span class="att-cost-badge">−${a.costPerStudent}₽ ✓</span>
+            ` : `
+              <button class="btn btn-outline btn-sm" onclick="markAttPresent('${a.id}')" style="border-color:#27ae60;color:#27ae60;min-width:90px">
+                ✅ Был
               </button>
-              ${!a.paid?`<span class="att-unpaid-badge">💳 ${a.costPerStudent}₽ не списано</span>`:''}
-            ` : ''}
+              <button class="btn btn-outline btn-sm" onclick="markAttAbsentPaid('${a.id}')" style="border-color:#856404;color:#856404;font-size:0.78rem" title="Не был, но списать деньги">
+                ❌ Списать
+              </button>
+              ${a.costPerStudent>0?`<span class="att-unpaid-badge">💳 ${a.costPerStudent}₽ не списано</span>`:''}
+            `}
           </div>
         </div>`;
       }).join('')}
@@ -12192,26 +12192,60 @@ function doDebit(){
   showNotif(`✅ Списано ${amount}₽`);
 }
 
-// ── Override toggleAttPaid: debit wallet + notify ──
-function toggleAttPaid(id){
+// ── Был — отметить присутствие и списать деньги ──
+function markAttPresent(id){
   const att = load('attendance')||[];
   const a   = att.find(a=>a.id===id); if(!a) return;
-  if(!a.paid){
-    // Debit from wallet
-    const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
+  const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
+  a.present = true;
+  a.absentPaid = false;
+  if(!a.paid && a.costPerStudent>0){
     walletDebit(a.studentId, +a.costPerStudent||0,
       `Занятие ${dateLabel}${a.topic?' · '+a.topic:''}${a.group?' · '+a.group:''}`);
     a.paid = true;
-  } else {
-    // Refund
-    const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
-    walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`);
-    a.paid = false;
   }
   save('attendance', att);
   renderAtpAttendance();
   renderAtpWallet();
+  showNotif('✅ Отмечен как присутствующий, деньги списаны');
 }
+
+// ── Не был, но списать деньги ──
+function markAttAbsentPaid(id){
+  const att = load('attendance')||[];
+  const a   = att.find(a=>a.id===id); if(!a) return;
+  const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
+  a.present = false;
+  a.absentPaid = true;
+  if(!a.paid && a.costPerStudent>0){
+    walletDebit(a.studentId, +a.costPerStudent||0,
+      `Занятие ${dateLabel} (не был)${a.topic?' · '+a.topic:''}${a.group?' · '+a.group:''}`);
+    a.paid = true;
+  }
+  save('attendance', att);
+  renderAtpAttendance();
+  renderAtpWallet();
+  showNotif('❌ Отмечен как отсутствующий, деньги списаны');
+}
+
+// ── Отменить списание (возврат) ──
+function undoAttPaid(id){
+  const att = load('attendance')||[];
+  const a   = att.find(a=>a.id===id); if(!a) return;
+  if(!confirm('Отменить списание и вернуть деньги на кошелёк?')) return;
+  const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
+  walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`);
+  a.paid = false;
+  a.present = false;
+  a.absentPaid = false;
+  save('attendance', att);
+  renderAtpAttendance();
+  renderAtpWallet();
+  showNotif('↩️ Списание отменено, деньги возвращены');
+}
+
+// legacy stub
+function toggleAttPaid(id){ markAttPresent(id); }
 
 // ── Override saveAttendance: prefill from slot ──
 function saveAttendance(){
@@ -12233,7 +12267,7 @@ function saveAttendance(){
       date, time, topic, group,
       costPerStudent: cost,
       slotId: slotId || null,
-      present:true, paid:false,
+      present:false, paid:false, absentPaid:false,
       createdAt: todayStr()
     });
   });
@@ -12341,8 +12375,10 @@ function renderStudentLessons(){
       ${att.map(a=>{
         const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{weekday:'short',day:'numeric',month:'long'}) : '—';
         const isUnpaid  = a.present && !a.paid;
-        return `<div style="padding:12px;border-radius:10px;margin-bottom:8px;border:1px solid var(--green-xpale);
-          ${isUnpaid?'border-left:3px solid #ef4444;background:#fef2f2;':a.present?'border-left:3px solid var(--green-mid);':''}">
+        // Для ученика: если absentPaid — показываем "Не был", деньги всё равно списаны
+        const borderColor = isUnpaid ? '#ef4444' : a.present ? 'var(--green-mid)' : a.absentPaid ? '#ef4444' : 'var(--green-xpale)';
+        const bgColor = isUnpaid ? '#fef2f2' : a.absentPaid && a.paid ? '#fef2f2' : '';
+        return `<div style="padding:12px;border-radius:10px;margin-bottom:8px;border:1px solid var(--green-xpale);border-left:3px solid ${borderColor};${bgColor?'background:'+bgColor+';':''}">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
             <div>
               <div style="font-weight:700;font-size:0.9rem;color:var(--accent)">${dateLabel}${a.time?' · '+a.time:''}</div>
@@ -12350,9 +12386,9 @@ function renderStudentLessons(){
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <span class="att-badge-${a.present?'present':'absent'}">${a.present?'✅ Был(а)':'❌ Не был(а)'}</span>
-              ${a.present?`<span class="att-cost-badge">−${a.costPerStudent}₽</span>`:''}
-              ${isUnpaid?`<span class="att-unpaid-badge">Не оплачено</span>`:''}
-              ${a.present&&a.paid?`<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✅ Оплачено</span>`:''}
+              ${(a.present||a.absentPaid)&&a.costPerStudent>0?`<span class="att-cost-badge">−${a.costPerStudent}₽</span>`:''}
+              ${isUnpaid&&!a.absentPaid?`<span class="att-unpaid-badge">Не оплачено</span>`:''}
+              ${a.paid?`<span style="background:#e8f8f0;color:#27ae60;font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:8px">✅ Оплачено</span>`:''}
             </div>
           </div>
         </div>`;
