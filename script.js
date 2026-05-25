@@ -12210,7 +12210,8 @@ function doDebit(){
 function markAttPresent(id){
   const raw = load('attendance')||[];
   const att = Array.isArray(raw) ? raw : Object.values(raw);
-  const a   = att.find(a=>a.id===id); if(!a) return;
+  // eslint-disable-next-line eqeqeq
+  const a   = att.find(a=>a.id==id); if(!a){ console.warn('[markAttPresent] запись не найдена, id=',id,'тип=',typeof id,'все id=',att.map(x=>x.id)); return; }
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   a.present = true;
   a.absentPaid = false;
@@ -12229,7 +12230,8 @@ function markAttPresent(id){
 function markAttAbsentPaid(id){
   const raw = load('attendance')||[];
   const att = Array.isArray(raw) ? raw : Object.values(raw);
-  const a   = att.find(a=>a.id===id); if(!a) return;
+  // eslint-disable-next-line eqeqeq
+  const a   = att.find(a=>a.id==id); if(!a){ console.warn('[markAttAbsentPaid] запись не найдена, id=',id,'тип=',typeof id,'все id=',att.map(x=>x.id)); return; }
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   a.present = false;
   a.absentPaid = true;
@@ -12248,7 +12250,8 @@ function markAttAbsentPaid(id){
 function undoAttPaid(id){
   const raw = load('attendance')||[];
   const att = Array.isArray(raw) ? raw : Object.values(raw);
-  const a   = att.find(a=>a.id===id); if(!a) return;
+  // eslint-disable-next-line eqeqeq
+  const a   = att.find(a=>a.id==id); if(!a){ console.warn('[undoAttPaid] запись не найдена, id=',id); return; }
   if(!confirm('Отменить списание и вернуть деньги на кошелёк?')) return;
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`);
@@ -12277,9 +12280,10 @@ function saveAttendance(){
   if(!checks.length){ showNotif('Выберите хотя бы одного ученика'); return; }
   const lessonId = 'les_'+Date.now();
   const att = load('attendance')||[];
+  let _attIdCounter = 0;
   checks.forEach(cb=>{
     att.push({
-      id:'att_'+Date.now()+'_'+cb.value,
+      id:'att_'+Date.now()+'_'+(++_attIdCounter)+'_'+cb.value,
       lessonId, studentId:cb.value,
       date, time, topic, group,
       costPerStudent: cost,
