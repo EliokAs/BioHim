@@ -2532,10 +2532,10 @@ function openModal(id, extra){
     document.getElementById('att-cost').value='';
     document.getElementById('att-slot-id').value='';
     const container=document.getElementById('att-student-checks');
-    container.style.cssText='display:flex;flex-wrap:wrap;gap:8px;align-items:center';
+    container.style.cssText='display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;overflow:visible;width:100%';
     container.innerHTML=getStudents().map(s=>`
-      <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">
-        <input type="checkbox" value="${s.id}" checked style="accent-color:var(--green-deep);flex-shrink:0"> ${esc(s.name)}
+      <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600;white-space:nowrap;flex-shrink:0;min-width:0;max-width:100%">
+        <input type="checkbox" value="${s.id}" checked style="accent-color:var(--green-deep);flex-shrink:0;width:15px;height:15px"> <span style="white-space:nowrap">${esc(s.name)}</span>
       </label>`).join('');
     setTimeout(prefillAttendanceFromSlot, 50);
   }
@@ -2564,8 +2564,8 @@ function populateModalStudents(containerId){
   // Если выбран конкретный ученик — отмечаем его, иначе отмечаем всех
   const cur=_selectedStudent;
   el.innerHTML=students.map(s=>`
-    <label class="chip-label">
-      <input type="checkbox" value="${s.id}" ${(!cur||s.id===cur)?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
+    <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">
+      <input type="checkbox" value="${s.id}" ${(!cur||s.id===cur)?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:15px;height:15px"><span style="white-space:nowrap">${esc(s.name)}</span>
     </label>`).join('');
 }
 function getCheckedModalStudents(containerId){
