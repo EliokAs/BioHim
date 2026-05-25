@@ -564,7 +564,7 @@ function _renderRecentLessons(){
     const priceLabel = a.costPerStudent ? `💰 ${a.costPerStudent}₽` : '';
     const meta = [s?s.name:'—', a.date, a.duration?a.duration+' мин':'', slotLabel, crsLabel, priceLabel].filter(Boolean).join(' · ');
     return `<div style="padding:8px 0;border-bottom:1px solid var(--green-xpale);font-size:0.83rem">
-      <div style="font-weight:600">${a.topic||'Без темы'}</div>
+      <div style="font-weight:600">${escHtml(a.topic||'Без темы')}</div>
       <div style="color:var(--text3)">${meta}</div>
     </div>`;
   }).join('');
@@ -1437,7 +1437,7 @@ function safeUrl(url){
   if(!url) return '#';
   const s = String(url).trim();
   // Блокируем javascript:, vbscript:, data: (кроме data:image и data:application/pdf)
-  if(/^(javascript|vbscript)/i.test(s)) return '#';
+  if(/^(javascript|vbscript|data(?!:image\/|:application\/pdf))/i.test(s)) return '#';
   if(/^data:/i.test(s) && !/^data:image\//i.test(s) && !/^data:application\/pdf/i.test(s)) return '#';
   return s;
 }
@@ -1822,6 +1822,7 @@ function doLogout(){
   document.getElementById('login-err').textContent='';
   document.getElementById('login-username').value='';
   document.getElementById('login-password').value='';
+  sessionStorage.removeItem('bf_login_attempts');
 }
 
 // ══════════════════════════════════════════
@@ -2982,7 +2983,7 @@ function testItemHTML(t){
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
       ${openUnchecked.map(q=>`
         <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
-          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
+          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${escHtml(q.text)}</div>
           <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${t.answers[q.id]||'—'}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <input type="number" id="pts-test-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="${q.earnedPts!=null?q.earnedPts:0}"
@@ -3010,7 +3011,7 @@ function renderOpenAnswers(){
     openQs.forEach(q=>{
       html+=`<div class="question-block">
         <div class="question-num">Тест: ${esc(t.title)}</div>
-        <div class="question-text">${q.text}</div>
+        <div class="question-text">${escHtml(q.text)}</div>
         <div class="feedback-box"><strong>Ответ ученика:</strong> ${t.answers[q.id]||'—'}</div>
         <div class="inline-actions">
           <button class="btn btn-green btn-sm" onclick="checkOpenAnswer('${t.id}','${q.id}')">✅ Проверить</button>
@@ -3026,7 +3027,7 @@ function checkOpenAnswer(testId,qId){
   const q=t.questions.find(q=>q.id===qId);
   const body=document.getElementById('check-answer-body');
   body.innerHTML=`
-    <div class="form-group"><label>Вопрос</label><div class="feedback-box">${q.text}</div></div>
+    <div class="form-group"><label>Вопрос</label><div class="feedback-box">${escHtml(q.text)}</div></div>
     <div class="form-group"><label>Ответ ученика</label><div class="feedback-box">${t.answers[q.id]||'—'}</div></div>
     <div class="form-group"><label>Ваш комментарий</label><textarea id="ca-comment" rows="3" placeholder="Обратная связь..."></textarea></div>
     <div class="form-group"><label>Оценка</label>
@@ -3632,7 +3633,7 @@ function hwItemHTML(h){
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
       ${openUnchecked.map(q=>`
         <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
-          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
+          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${escHtml(q.text)}</div>
           <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${h.answers[q.id]||'—'}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <input type="number" id="pts-hw-${h.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="${q.earnedPts!=null?q.earnedPts:0}"
@@ -3671,7 +3672,7 @@ function renderHWOpenAnswers(){
     (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked).forEach(q=>{
       html+=`<div class="question-block">
         <div class="question-num">ДЗ: ${esc(h.title)}</div>
-        <div class="question-text">${q.text}</div>
+        <div class="question-text">${escHtml(q.text)}</div>
         <div class="feedback-box"><strong>Ответ:</strong> ${h.answers[q.id]||'—'}</div>
         <button class="btn btn-green btn-sm" style="margin-top:8px" onclick="checkHWOpenAnswer('${h.id}','${q.id}')">✅ Проверить</button>
       </div>`;
@@ -3685,7 +3686,7 @@ function checkHWOpenAnswer(hwId,qId){
   const q=h.questions.find(q=>q.id===qId);
   const body=document.getElementById('check-answer-body');
   body.innerHTML=`
-    <div class="form-group"><label>Вопрос</label><div class="feedback-box">${q.text}</div></div>
+    <div class="form-group"><label>Вопрос</label><div class="feedback-box">${escHtml(q.text)}</div></div>
     <div class="form-group"><label>Ответ ученика</label><div class="feedback-box">${h.answers[q.id]||'—'}</div></div>
     <div class="form-group"><label>Ваш комментарий</label><textarea id="ca-comment" rows="3" placeholder="Обратная связь..."></textarea></div>
     <div class="form-group"><label>Оценка (5-балльная)</label>
@@ -5360,7 +5361,7 @@ function trialAdminItemHTML(t){
       <div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">📋 Ответы на открытые вопросы</div>
       ${openUnchecked.map(q=>`
         <div style="background:var(--white);border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid var(--green-xpale)">
-          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${q.text}</div>
+          <div style="font-size:0.83rem;font-weight:700;color:var(--accent);margin-bottom:4px">${escHtml(q.text)}</div>
           <div style="font-size:0.85rem;background:var(--bg);border-radius:6px;padding:8px;margin-bottom:8px;color:var(--text2)">${t.answers[q.id]||'—'}</div>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
@@ -5623,7 +5624,7 @@ function renderTrialOpenAnswers(){
     allQ.filter(q=>q.type==='open'&&t.answers&&t.answers[q.id]&&!q.checked).forEach(q=>{
       html+=`<div class="question-block">
         <div class="question-num">Пробник: ${esc(t.title)}</div>
-        <div class="question-text">${q.text}</div>
+        <div class="question-text">${escHtml(q.text)}</div>
         <div class="feedback-box"><strong>Ответ:</strong> ${t.answers[q.id]||'—'}</div>
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap">
           <input type="number" id="pts-tr-${t.id}-${q.id}" min="0" max="${+q.points||1}" step="0.5" value="0"
@@ -5930,7 +5931,7 @@ function renderTaskBankAdmin(){
             <span class="badge" style="background:var(--green-xpale);color:var(--green-deep);border:none;font-size:0.7rem">${typeLabel[t.answerType||'open']||'📝 Открытый'}</span>
             <span class="badge" style="background:#fef3cd;color:#856404;border:none;font-size:0.7rem">⭐ ${t.points||1} ${(t.points||1)===1?'балл':(t.points||1)<5?'балла':'баллов'}</span>
           </div>
-          <div style="font-size:0.92rem;font-weight:600;color:var(--accent);margin-bottom:6px;line-height:1.5">${t.text}</div>
+          <div style="font-size:0.92rem;font-weight:600;color:var(--accent);margin-bottom:6px;line-height:1.5">${escHtml(t.text)}</div>
           ${t.imageUrl?`<img src="${safeUrl(t.imageUrl)}" style="max-width:200px;border-radius:8px;border:1px solid var(--green-xpale);margin-bottom:6px" alt="">`:''}
           ${t.answerType==='choice'&&t.options?.length?`
             <div style="font-size:0.8rem;color:var(--text3);margin-bottom:4px">Варианты: ${t.options.join(' · ')}</div>
@@ -5939,7 +5940,7 @@ function renderTaskBankAdmin(){
           ${t.answerType==='short'?`
             <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctShort}</b>${t.explanation?` — ${t.explanation}`:''}</div>
           `:''}
-          ${t.answerType==='open'&&t.answer?`<div style="font-size:0.8rem;color:var(--text3);background:var(--bg);padding:8px 12px;border-radius:8px;border-left:3px solid var(--green-mid)">💡 ${t.answer}</div>`:''}
+          ${t.answerType==='open'&&t.answer?`<div style="font-size:0.8rem;color:var(--text3);background:var(--bg);padding:8px 12px;border-radius:8px;border-left:3px solid var(--green-mid)">💡 ${escHtml(t.answer)}</div>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn btn-outline btn-sm" onclick="openEditTask('${t.id}')">✏️</button>
@@ -6611,7 +6612,7 @@ function showDailyTaskResult(task, answerData){
   } else if(task.answer){
     correctBlock=`<div style="background:var(--bg);border-radius:10px;padding:10px 14px;border-left:3px solid var(--green-mid);font-size:0.88rem">
       <div style="font-size:0.75rem;font-weight:700;color:var(--green-deep);text-transform:uppercase;margin-bottom:4px">💡 Эталонный ответ</div>
-      <div style="color:var(--text1);line-height:1.6">${task.answer}</div>
+      <div style="color:var(--text1);line-height:1.6">${escHtml(task.answer)}</div>
     </div>`;
   }
 
@@ -6674,7 +6675,7 @@ function renderAttendanceAdmin(){
         <div>
           <div style="font-weight:700;font-size:0.97rem;color:var(--accent)">📅 ${dateLabel}${lg.time?' · '+lg.time:''}</div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:2px">
-            ${lg.topic?`📖 ${lg.topic} · `:''}${lg.group?`👥 ${lg.group} · `:''}💰 ${lg.costPerStudent}₽/чел.
+            ${lg.topic?`📖 ${escHtml(lg.topic)} · `:''}${lg.group?`👥 ${escHtml(lg.group)} · `:''}💰 ${+lg.costPerStudent||0}₽/чел.
           </div>
         </div>
         <button class="btn btn-red btn-sm" onclick="deleteLesson('${lg.lessonId}')">🗑 Занятие</button>
@@ -6684,7 +6685,7 @@ function renderAttendanceAdmin(){
         return `<div class="att-row att-${a.present?'present':'absent'}">
           <div style="flex:1">
             <div style="font-weight:600;font-size:0.88rem">${s?s.name:'—'}</div>
-            ${a.group?`<div style="font-size:0.75rem;color:var(--text3)">${a.group}</div>`:''}
+            ${a.group?`<div style="font-size:0.75rem;color:var(--text3)">${escHtml(a.group)}</div>`:''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span class="att-badge-${a.present?'present':'absent'}">${a.present?'✅ Был':'❌ Не был'}</span>
@@ -7566,7 +7567,7 @@ function _renderParentChatMessages(sid){
     const mine = isParent; // родитель видит свои сообщения справа
     let html = '';
     if(m.date !== lastDate){
-      html += `<div style="text-align:center;font-size:0.72rem;color:var(--text3);padding:6px 0">${m.date}</div>`;
+      html += `<div style="text-align:center;font-size:0.72rem;color:var(--text3);padding:6px 0">${escHtml(m.date)}</div>`;
       lastDate = m.date;
     }
     const label = isAdmin ? '👩‍🏫 Преподаватель' : isParent ? '👨‍👩‍👧 Вы' : '🎓 Ученик';
@@ -7575,7 +7576,7 @@ function _renderParentChatMessages(sid){
     html += `<div style="display:flex;flex-direction:column;align-items:${mine?'flex-end':'flex-start'};margin-bottom:6px">
       <div style="font-size:0.68rem;color:var(--text3);margin-bottom:2px">${label}</div>
       <div style="max-width:78%;padding:10px 14px;border-radius:${mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};background:${bg};color:${color};font-size:0.88rem;line-height:1.5;word-break:break-word">${escHtml(m.text)}</div>
-      <div style="font-size:0.68rem;color:var(--text3);margin-top:2px">${m.time||''}</div>
+      <div style="font-size:0.68rem;color:var(--text3);margin-top:2px">${escHtml(m.time||"")}</div>
     </div>`;
     return html;
   }).join('');
@@ -8594,7 +8595,7 @@ function doHW(id){
           <div class="question-num">Вопрос ${i+1}</div>
           <span style="font-size:0.78rem;color:var(--text3)">⭐ ${+q.points||1} ${ptWord(+q.points||1)}</span>
         </div>
-        <div class="question-text">${q.text}</div>
+        <div class="question-text">${escHtml(q.text)}</div>
         ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
         ${q.type==='auto'?`<div class="option-list">${q.options.map(o=>`
           <div class="option-item" onclick="selectHWOption('${q.id}','${o.replace(/'/g,"\\'")}',this)">${o}</div>`).join('')}</div>`
@@ -10107,7 +10108,7 @@ function generateReport(){
         const dateLabel=a.date?new Date(a.date).toLocaleDateString('ru',{day:'numeric',month:'short'}):a.date;
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:8px;border:1px solid var(--green-xpale);border-left:3px solid ${a.present?'var(--green-mid)':'#ef4444'}">
           <div style="font-size:0.8rem;color:var(--text3);min-width:60px">${dateLabel}${a.time?' '+a.time:''}</div>
-          <div style="flex:1;font-size:0.82rem;font-weight:600">${a.topic||'Занятие'}${a.group?' · '+a.group:''}</div>
+          <div style="flex:1;font-size:0.82rem;font-weight:600">${escHtml(a.topic||'Занятие')}${a.group?' · '+escHtml(a.group):''}</div>
           <span style="font-size:0.75rem;font-weight:700;color:${a.present?'var(--green-mid)':'#c0392b'}">${a.present?'✅ Был':'❌ Не был'}</span>
           ${a.present?`<span style="font-size:0.73rem;color:var(--text3)">${a.costPerStudent}₽</span>`:''}
           ${a.present&&!a.paid?`<span style="font-size:0.7rem;font-weight:700;color:#c0392b">не опл.</span>`:''}
@@ -11294,15 +11295,15 @@ function renderChatMessages(containerId, sid, myRole){
     const mine = m.from === myRole;
     let html = '';
     if(m.date !== lastDate){
-      html += `<div class="chat-date-divider">${m.date}</div>`;
+      html += `<div class="chat-date-divider">${escHtml(m.date)}</div>`;
       lastDate = m.date;
     }
-    const refBlock = m.ref ? `<div class="chat-bubble-ref">📎 ${m.ref}</div>` : '';
+    const refBlock = m.ref ? `<div class="chat-bubble-ref">📎 ${escHtml(m.ref)}</div>` : '';
     const senderLabel = m.from==='parent' && myRole==='admin'
       ? `<div style="font-size:0.68rem;color:var(--text3);margin-bottom:2px">👨‍👩‍👧 Родитель</div>` : '';
     html += `<div class="chat-msg ${mine?'mine':'theirs'}">
       ${senderLabel}<div class="chat-bubble">${refBlock}${escHtml(m.text)}</div>
-      <div class="chat-time">${m.time}</div>
+      <div class="chat-time">${escHtml(m.time||"")}</div>
     </div>`;
     return html;
   }).join('');
@@ -12182,8 +12183,8 @@ function renderAtpAttendance(){
             ${payBadge}
           </div>
           <div style="font-size:0.8rem;color:var(--text3);margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            ${lg.topic?`<span>📖 ${lg.topic}</span>`:''}
-            ${lg.group?`<span>👥 ${lg.group}</span>`:''}
+            ${lg.topic?`<span>📖 ${escHtml(lg.topic)}</span>`:''}
+            ${lg.group?`<span>👥 ${escHtml(lg.group)}</span>`:''}
             ${lg.duration?`<span>⏱ ${lg.duration} мин</span>`:''}
             ${lg.costPerStudent?`<span style="color:var(--green-deep);font-weight:700">💰 ${lg.costPerStudent}₽/чел.</span>`:''}
           </div>
@@ -12501,7 +12502,7 @@ function renderStudentLessons(){
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap">
             <div>
               <div style="font-weight:700;font-size:0.9rem;color:var(--accent)">${dateLabel}${a.time?' · '+a.time:''}</div>
-              ${a.topic||a.group?`<div style="font-size:0.78rem;color:var(--text2);margin-top:3px">${a.topic?'📖 '+a.topic:''}${a.group?' · 👥 '+a.group:''}</div>`:''}
+              ${a.topic||a.group?`<div style="font-size:0.78rem;color:var(--text2);margin-top:3px">${a.topic?'📖 '+escHtml(a.topic):''}${a.group?' · 👥 '+escHtml(a.group):''}</div>`:''}
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <span class="att-badge-${a.present?'present':'absent'}">${a.present?'✅ Был(а)':'❌ Не был(а)'}</span>
@@ -13000,7 +13001,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       <div class="question-num">${typeLabels[q.type]||q.type} · Вопрос ${idx+1}</div>
       <span style="font-size:0.78rem;color:var(--text3)">⭐ ${pts} б.</span>
     </div>
-    ${q.type!=='fill'?`<div class="question-text">${q.text}</div>`:''}
+    ${q.type!=='fill'?`<div class="question-text">${escHtml(q.text)}</div>`:''}
     ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
     ${body}
     ${q.hint?`<div style="margin-top:10px">
@@ -13046,7 +13047,7 @@ function renderReviewQuestion(q, answers){
   if(q.type==='open'){
     return `<div class="question-block">
       <div class="question-num">📝 Открытый · <span style="font-size:0.75rem;color:var(--text3)">⭐ ${pts} б.</span></div>
-      <div class="question-text">${q.text}</div>
+      <div class="question-text">${escHtml(q.text)}</div>
       ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
       <div class="feedback-box"><strong>Ваш ответ:</strong> ${ans||'—'}</div>
       ${q.checked?`<div class="feedback-box" style="border-left-color:var(--gold);margin-top:8px"><strong>Баллы: ${q.grade!=null?q.grade:q.earnedPts!=null?q.earnedPts:'—'}</strong><br>${q.comment||''}</div>`:`<div style="color:var(--text3);font-size:0.8rem;margin-top:6px">⏳ Ожидает проверки</div>`}
@@ -13075,7 +13076,7 @@ function renderReviewQuestion(q, answers){
       <div class="question-num">${typeLabels[q.type]||q.type}</div>
       <span style="font-size:0.78rem;font-weight:700;color:${correct?'var(--green-mid)':'var(--red)'}">⭐ ${correct?pts:0}/${pts} б.</span>
     </div>
-    <div class="question-text">${q.text}</div>
+    <div class="question-text">${escHtml(q.text)}</div>
     ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
     ${detail}
   </div>`;
