@@ -100,17 +100,25 @@ body.dark-theme input, body.dark-theme textarea, body.dark-theme select {
   color-scheme: dark;
 }
 
-/* плавный переход для всех цветовых свойств */
-*, *::before, *::after {
+/* плавный переход только для интерактивных элементов */
+.btn, button, .card, .nav-item, input, textarea, select, a,
+.sidebar-item, .option-item, .quick-send-item, .jitsi-join-btn,
+.q-img-tab, [class*="-btn"], [class*="-tab"] {
   transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
 }
-/* но не для анимированных элементов */
-.page, .modal-bg, .cal-popup-bg, .notif, iframe { transition: none !important; }
 
 
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: 'Nunito', sans-serif; background: var(--bg); color: var(--text); }
+
+/* ─── UTILITY CLASSES (extracted from inline styles) ─── */
+.text-hint { font-size: 0.78rem; color: var(--text3); }
+.text-xs-muted { font-size: 0.75rem; color: var(--text3); }
+.field-label { font-size: 0.78rem; color: var(--text3); display: block; margin-bottom: 4px; }
+.input-sm { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1.5px solid var(--green-pale); font-family: Nunito, sans-serif; }
+.flex-wrap-8 { display: flex; gap: 8px; flex-wrap: wrap; }
+.grid-2-12 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 /* ─── SVG BACKGROUND ─── */
 .leaf-bg {
@@ -3219,8 +3227,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <script src="timer.js"></script>
 <script src="weekly-report.js"></script>
 <script src="flashcards.js"></script>
-<script src="answer-draft.js"></script>
-<script src="gamification.js"></script>
+
 <script src="challenges.js"></script>
 <script src="trial-proctor.js"></script>
 
