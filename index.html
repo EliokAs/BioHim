@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- Базовая защита от clickjacking и XSS через мета-теги -->
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <!-- CSP: Firebase long-polling requires script-src + connect-src for firebasedatabase.app -->
@@ -30,6 +32,7 @@
   frame-src https://meet.jit.si https://www.youtube.com https://player.vimeo.com;
   object-src 'none';
   base-uri 'self';
+  frame-ancestors 'none';
 ">
 
 <!-- PWA -->
@@ -1035,8 +1038,8 @@ body.dark-theme .drawer-footer { background: var(--card); }
   <div class="login-card">
     <div class="login-logo">Bio<span>Хим</span></div>
     <div class="login-sub">Платформа репетитора</div>
-    <input type="text" id="login-username" placeholder="Логин" />
-    <input type="password" id="login-password" placeholder="Пароль" />
+    <input type="text" id="login-username" placeholder="Логин" autocomplete="username" />
+    <input type="password" id="login-password" placeholder="Пароль" autocomplete="current-password" />
     <button class="btn-main" onclick="doLogin()">Войти</button>
     <div id="login-err" class="login-err"></div>
     <div class="login-hint" style="margin-top:20px">
@@ -1330,7 +1333,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <div id="atp-wallet-topup-form" style="display:none;background:var(--bg);border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid var(--green-xpale)">
             <div style="font-weight:700;font-size:0.88rem;margin-bottom:10px;color:var(--green-deep)">Пополнение кошелька</div>
             <div style="display:flex;gap:8px;align-items:flex-end">
-              <div class="form-group" style="margin:0;flex:1"><label>Сумма (₽)</label><input type="number" id="atp-topup-amount" placeholder="3000" min="0"></div>
+              <div class="form-group" style="margin:0;flex:1"><label>Сумма (₽)</label><input type="number" id="atp-topup-amount" placeholder="3000" min="0" autocomplete="off"></div>
               <div class="form-group" style="margin:0;flex:2"><label>Комментарий</label><input id="atp-topup-note" placeholder="Оплата за май..."></div>
               <button class="btn btn-green btn-sm" style="margin-bottom:1px" onclick="doTopUp()">Сохранить</button>
               <button class="btn btn-outline btn-sm" style="margin-bottom:1px" onclick="document.getElementById('atp-wallet-topup-form').style.display='none'">✕</button>
