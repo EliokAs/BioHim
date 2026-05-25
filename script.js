@@ -9679,17 +9679,37 @@ function renderFinanceDashboard() {
   const thisIncome     = thisAttIncome + thisPaidIncome;
   const thisLessons    = getLessonCount(curY, curM);
 
-  // ── Debts: attendance present but not paid
+  // ── Debts: три источника долга
   const debtByStudent = {};
+
+  // 1. Занятия прошли, но деньги не списаны (present=true, paid=false)
   att.filter(a => a.present && !a.paid && (+a.costPerStudent || 0) > 0).forEach(a => {
     if (!debtByStudent[a.studentId]) debtByStudent[a.studentId] = 0;
     debtByStudent[a.studentId] += +a.costPerStudent;
   });
-  // Also unpaid payment records
-  payments.filter(p => p.status === 'unpaid').forEach(p => {
+
+  // 2. Ручные записи об оплате со статусом "не оплачено"
+  payments.filter(p => p.status === 'unpaid' && !p._fromWallet).forEach(p => {
     if (!debtByStudent[p.studentId]) debtByStudent[p.studentId] = 0;
     debtByStudent[p.studentId] += +p.amount || 0;
   });
+
+  // 3. Отрицательный баланс кошелька = ученик занял у репетитора
+  // (занятие списано walletDebit, но денег на счёте не было)
+  students.forEach(s => {
+    const w = loadWallet(s.id);
+    if (w.balance < 0) {
+      // Долг = абсолютное значение отрицательного баланса
+      // Вычитаем уже учтённые долги из attendance/payments чтобы не задвоить
+      const alreadyCounted = debtByStudent[s.id] || 0;
+      const walletDebt = Math.abs(w.balance);
+      // Берём максимум: кошелёк отражает суммарный реальный долг
+      if (walletDebt > alreadyCounted) {
+        debtByStudent[s.id] = walletDebt;
+      }
+    }
+  });
+
   const totalDebt = Object.values(debtByStudent).reduce((s, v) => s + v, 0);
   const debtorCount = Object.keys(debtByStudent).length;
 
@@ -9748,7 +9768,7 @@ function renderFinanceDashboard() {
 
   kpiEl.innerHTML = [
     { icon:'💰', label:'Доход этот месяц', value:`${thisIncome.toLocaleString('ru')} ₽`, sub:`${trend} ${trendLabel} vs прошлый месяц`, subColor: trendColor },
-    { icon:'❌', label:'Общая задолженность', value:`${totalDebt.toLocaleString('ru')} ₽`, sub:`${debtorCount} ${debtorCount===1?'должник':'должников'}`, subColor:'var(--red)' },
+    { icon:'❌', label:'Общая задолженность', value:`${totalDebt.toLocaleString('ru')} ₽`, sub: totalDebt > 0 ? `${debtorCount} ${debtorCount===1?'должник':debtorCount>=2&&debtorCount<=4?'должника':'должников'}` : 'Задолженностей нет', subColor: totalDebt > 0 ? 'var(--red)' : 'var(--green-mid)' },
     { icon:'📅', label:'Прогноз след. месяц', value:`${forecastTotal.toLocaleString('ru')} ₽`, sub:'На основе расписания', subColor:'var(--text3)' },
     { icon:'🎓', label:'Занятий этот месяц', value:`${thisLessons}`, sub:`студентов: ${students.length}`, subColor:'var(--text3)' },
   ].map(k => `
@@ -9822,11 +9842,23 @@ function renderFinanceDashboard() {
   if (!debtEntries.length) {
     debtsEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--green-mid);font-weight:700">🎉 Задолженностей нет!</div>`;
   } else {
-    debtsEl.innerHTML = debtEntries.map(d => `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--green-xpale)">
-        <div style="font-weight:600;font-size:0.9rem">${esc(d.name)}</div>
-        <span style="background:#fdecea;color:var(--red);font-weight:800;font-size:0.88rem;padding:3px 12px;border-radius:8px">${d.amt.toLocaleString('ru')} ₽</span>
-      </div>`).join('') +
+    debtsEl.innerHTML = debtEntries.map(d => {
+      const w = loadWallet(d.sid);
+      const isWalletDebt = w.balance < 0;
+      const attDebt = (att.filter(a => a.studentId === d.sid && a.present && !a.paid).reduce((s,a)=>s+(+a.costPerStudent||0),0));
+      const source = isWalletDebt && w.balance < 0
+        ? `<span style="font-size:0.72rem;color:#c0392b;margin-top:2px;display:block">💳 Кошелёк: ${w.balance.toLocaleString('ru')} ₽${attDebt>0?' · Занятия: '+attDebt.toLocaleString('ru')+' ₽':''}</span>`
+        : `<span style="font-size:0.72rem;color:#c0392b;margin-top:2px;display:block">📅 Неоплаченные занятия</span>`;
+      return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--green-xpale);cursor:pointer"
+           onclick="navigateTo('attend-pay-admin');setTimeout(()=>selectStudentById('${d.sid}'),80)">
+        <div>
+          <div style="font-weight:600;font-size:0.9rem">${esc(d.name)}</div>
+          ${source}
+        </div>
+        <span style="background:#fdecea;color:var(--red);font-weight:800;font-size:0.88rem;padding:3px 12px;border-radius:8px;flex-shrink:0;margin-left:12px">${d.amt.toLocaleString('ru')} ₽</span>
+      </div>`;
+    }).join('') +
       `<div style="display:flex;justify-content:space-between;padding-top:10px;font-weight:800;font-size:0.92rem">
         <span>Итого</span><span style="color:var(--red)">${totalDebt.toLocaleString('ru')} ₽</span>
       </div>`;
