@@ -2532,9 +2532,10 @@ function openModal(id, extra){
     document.getElementById('att-cost').value='';
     document.getElementById('att-slot-id').value='';
     const container=document.getElementById('att-student-checks');
+    container.style.cssText='display:flex;flex-wrap:wrap;gap:8px;align-items:center';
     container.innerHTML=getStudents().map(s=>`
-      <label style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600">
-        <input type="checkbox" value="${s.id}" checked style="accent-color:var(--green-deep)"> ${esc(s.name)}
+      <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600;white-space:nowrap;flex-shrink:0">
+        <input type="checkbox" value="${s.id}" checked style="accent-color:var(--green-deep);flex-shrink:0"> ${esc(s.name)}
       </label>`).join('');
     setTimeout(prefillAttendanceFromSlot, 50);
   }
