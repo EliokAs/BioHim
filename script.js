@@ -1232,7 +1232,6 @@ function renderNow(k) {
 
 function save(k, v){
   _cache[k] = v;
-  console.log('[SAVE] Сохранение данных:', k, 'записей:', Array.isArray(v) ? v.length : typeof v);
   
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
   renderNow(k);
@@ -1247,7 +1246,6 @@ function save(k, v){
   
   fbRef.set(v === null ? null : v)
     .then(() => {
-      console.log('[Firebase] ✅ Данные успешно сохранены:', k);
     })
     .catch(e => {
       console.error('[Firebase] ❌ ОШИБКА сохранения', k, e);
@@ -1271,12 +1269,10 @@ async function preloadCache(){
     setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
   );
   const db = _fbInit();
-  console.log('[preloadCache] Начало загрузки данных из Firebase...');
   
   try {
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
-    console.log('[preloadCache] Данные получены из Firebase:', Object.keys(data));
     
     const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses'];
     COLLECTIONS.forEach(k => { 
@@ -1288,15 +1284,12 @@ async function preloadCache(){
         _cache[k] = raw;
       }
       const count = Array.isArray(_cache[k]) ? _cache[k].length : (_cache[k] ? 'объект' : 'null');
-      console.log('[preloadCache] Загружена коллекция:', k, '- записей:', count);
     });
     
-    console.log('[preloadCache] ✅ Все данные успешно загружены');
   } catch(e) {
     // При таймауте или сетевой ошибке — инициализируем пустым кешем и продолжаем.
     // Реальтайм-подписки (subscribeRealtime) заполнят кеш после восстановления соединения.
     console.error('[Firebase] ❌ КРИТИЧЕСКАЯ ОШИБКА preloadCache:', e.message);
-    console.warn('[Firebase] preloadCache failed, continuing with empty cache:', e.message);
     COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
     // Показываем ненавязчивое предупреждение — не блокируем вход
     _preloadWarning = e.message;
@@ -1353,9 +1346,7 @@ async function preloadUserData(user) {
         _videoProgressCache[sid + '_' + vidId] = vmap[vidId];
       });
     }
-    console.log('[preloadUserData] Данные пользователя загружены', sid);
   } catch(e) {
-    console.warn('[preloadUserData] Ошибка загрузки, продолжаем с пустыми кэшами:', e.message);
   }
 }
 
@@ -1371,7 +1362,6 @@ async function runLocalStorageMigration(user) {
     const flagSnap = await flagRef.get();
     if (flagSnap.val() === true) return; // уже мигрировано
 
-    console.log('[Migration] Старт для', sid);
     const db = _fbInit();
 
     async function migrateKey(lsKey, fbPath) {
@@ -1396,7 +1386,6 @@ async function runLocalStorageMigration(user) {
     ]);
 
     await flagRef.set(true);
-    console.log('[Migration] Завершена для', sid);
 
     // Перезагружаем кэши из Firebase после миграции
     await preloadUserData(user);
@@ -1510,7 +1499,6 @@ const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
 function requireAdmin(fnName){
   if(!currentUser || currentUser.role !== 'admin'){
     showNotif('⛔ Нет доступа');
-    console.warn('Unauthorized call:', fnName, 'by', currentUser?.role);
     throw new Error('Unauthorized: ' + fnName);
   }
 }
@@ -1535,7 +1523,6 @@ function setAnswer(storeName, qId, val){
 
 function subscribeRealtime(){
   const db = _fbInit();
-  console.log('[subscribeRealtime] Подписка на realtime обновления...');
 
   // Страницы, которые нужно перерисовать при изменении конкретной коллекции.
   // Ключ — имя коллекции; значение — { pageId, fn } для студента и для админа.
@@ -1607,7 +1594,6 @@ function subscribeRealtime(){
       const oldCount = Array.isArray(oldVal) ? oldVal.length : (oldVal ? 'объект' : 'null');
       const newCount = Array.isArray(val) ? val.length : (val ? 'объект' : 'null');
       if (JSON.stringify(oldVal) !== JSON.stringify(val)) {
-        console.log('[Realtime] Обновление коллекции:', k, 'было:', oldCount, 'стало:', newCount);
       }
 
       if (!currentUser) return;
@@ -1618,7 +1604,6 @@ function subscribeRealtime(){
     });
   });
 
-  console.log('[subscribeRealtime] ✅ Подписки активированы для', COLLECTIONS.length, 'коллекций');
 
   // notifs — дебаунсированный badge + список
   const _flushNotifs = debounce(() => {
@@ -1682,7 +1667,7 @@ async function initData(){
       // (это было уязвимостью типа "backdoor" — сбрасывало пароль при каждом запуске)
       // Если нужно сбросить пароль — делайте это явно через интерфейс администратора.
     }
-  } catch(e){ console.warn('password migration error', e); }
+  } catch(e){ }
 
   if(!(load('users')||[]).length){
     const adminHash = await hashPassword('admin123');
@@ -1943,7 +1928,6 @@ function navigateTo(page){
   // Защита маршрутов — ученик не может зайти на страницы администратора
   if(ADMIN_PAGES.includes(page) && currentUser && currentUser.role !== 'admin'){
     showNotif('⛔ Нет доступа к этой странице');
-    console.warn('Route guard blocked:', page, 'for role:', currentUser.role);
     return;
   }
   // Admin cannot navigate to student-only pages
@@ -1952,7 +1936,6 @@ function navigateTo(page){
     'student-payment','student-schedule','student-repeat','student-lesson',
     'student-notif-settings','student-goals','student-challenges','student-library','student-works','student-progress','student-settings'];
   if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
-    console.warn('Admin blocked from student page:', page);
     return;
   }
   // Parent role: block all pages except parent-dashboard and parent-settings
@@ -2828,9 +2811,7 @@ function nbPreviewNew(){
 }
 
 // Patch existing nbRender and nbAddBlock to use new generic functions
-function nbRender(){ nbRenderCanvas(_nbBlocks,'_nbBlocks','nb-canvas'); }
-function nbAddBlock(type){ nbAddBlockToCanvas(type,'_nbBlocks','nb-canvas'); }
-function nbHandleImageUpload(input,idx){ nbHandleUploadFor(input,idx,'_nbBlocks','nb-canvas'); }
+// nbRender, nbAddBlock, nbHandleImageUpload defined below (full implementations)
 
 // Reset new canvas on modal open
 function nbResetNew(){
@@ -3133,11 +3114,8 @@ function saveItemOverallReview(itemId, itemType){
   else if(itemType==='trial'){ if(typeof renderTrialAdmin==='function') renderTrialAdmin(); }
   showNotif(`✅ Оценка ${grade} сохранена`);
 }
-function addTestQuestion(type){
-  const id='q'+Date.now();
-  _tempQuestions.push(initQuestion(id,type));
-  renderTestBuilder();
-}
+function addTestQuestion(type){ _tempQuestions.push(initQuestion('q'+Date.now(),type)); renderTestBuilder(); }
+function addHWQuestion(type){ _tempHWQuestions.push(initQuestion('q'+Date.now(),type)); renderHWBuilder(); }
 function renderTestBuilder(){
   const el=document.getElementById('nt-questions-list');
   const totalPts = _tempQuestions.reduce((s,q)=>s+(+q.points||1),0);
@@ -3702,11 +3680,6 @@ function checkHWOpenAnswer(hwId,qId){
     <button class="btn btn-green" onclick="submitCheck('${hwId}','${qId}','hw')">Сохранить</button>
   `;
   openModal('modal-check-answer');
-}
-function addHWQuestion(type){
-  const id='q'+Date.now();
-  _tempHWQuestions.push(initQuestion(id,type));
-  renderHWBuilder();
 }
 function renderHWBuilder(){
   const el=document.getElementById('nhw-questions-list');
@@ -4338,18 +4311,26 @@ function editQTypeBody(q, store, idx, reRender){
     >${(q.items||[]).join('\n').replace(/</g,'&lt;')}</textarea>`;
   return ''; // open — no extra fields
 }
-function renderEditTestBuilder(){
-  const el=document.getElementById('et-questions-list');
-  const totalPts=_editTestQuestions.reduce((s,q)=>s+(+q.points||1),0);
-  const hint=document.getElementById('et-total-hint');
-  if(hint) hint.textContent=_editTestQuestions.length?`· ${_editTestQuestions.length} вопросов · итого ${totalPts} б.`:'';
-  // Sync maxpts if not manual
-  if(!_editTestMaxPtsManual){
-    const maxEl=document.getElementById('et-maxpts');
+function _renderEditQuizBuilder(type){
+  const isTest = type === 'test';
+  const pfx = isTest ? 'et' : 'ehw';
+  const qPfx = isTest ? 'etq' : 'ehwq';
+  const arr = isTest ? _editTestQuestions : _editHWQuestions;
+  const maxPtsManual = isTest ? _editTestMaxPtsManual : _editHWMaxPtsManual;
+  const selfCall = isTest ? 'renderEditTestBuilder()' : 'renderEditHWBuilder()';
+  const arrStr = isTest ? '_editTestQuestions' : '_editHWQuestions';
+  const removeFn = isTest ? 'removeEditQ' : 'removeEditHWQ';
+  const el=document.getElementById(pfx+'-questions-list');
+  if(!el) return;
+  const totalPts=arr.reduce((s,q)=>s+(+q.points||1),0);
+  const hint=document.getElementById(pfx+'-total-hint');
+  if(hint) hint.textContent=arr.length?`· ${arr.length} вопросов · итого ${totalPts} б.`:'';
+  if(!maxPtsManual){
+    const maxEl=document.getElementById(pfx+'-maxpts');
     if(maxEl) maxEl.value=totalPts||0;
   }
-  el.innerHTML=_editTestQuestions.map((q,i)=>{
-    const typeBody = editQTypeBody(q,'_editTestQuestions',i,'renderEditTestBuilder()');
+  el.innerHTML=arr.map((q,i)=>{
+    const typeBody = editQTypeBody(q,arrStr,i,selfCall);
     const showText = q.type!=='fillin';
     return `<div class="question-block" style="margin-bottom:10px;border-left:3px solid var(--green-light)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
@@ -4360,40 +4341,42 @@ function renderEditTestBuilder(){
           <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
           <input type="number" min="0.5" step="0.5" value="${+q.points||1}"
             style="width:65px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem"
-            oninput="_editTestQuestions[${i}].points=+this.value||1;renderEditTestBuilder()">
-          <button class="btn btn-red btn-sm" onclick="removeEditQ(${i})">✕</button>
+            oninput="${arrStr}[${i}].points=+this.value||1;${selfCall}">
+          <button class="btn btn-red btn-sm" onclick="${removeFn}(${i})">✕</button>
         </div>
       </div>
       ${showText?`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
-        placeholder="Текст вопроса..." oninput="_editTestQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">`:''}
+        placeholder="Текст вопроса..." oninput="${arrStr}[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">` :''}
       ${typeBody}
       <div style="margin-top:8px">
         <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">🖼 Картинка к вопросу (необязательно)</label>
         <div class="q-img-tabs">
-          <div class="q-img-tab ${!(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('etq-${i}','url')">Ссылка</div>
-          <div class="q-img-tab ${(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('etq-${i}','file')">Загрузить</div>
+          <div class="q-img-tab ${!(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('${qPfx}-${i}','url')">Ссылка</div>
+          <div class="q-img-tab ${(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('${qPfx}-${i}','file')">Загрузить</div>
         </div>
-        <div id="etq-${i}-url" style="${(q.imageUrl||'').startsWith('data:')?'display:none':''}">
+        <div id="${qPfx}-${i}-url" style="${(q.imageUrl||'').startsWith('data:')?'display:none':''}">
           <input class="q-input" placeholder="https://example.com/image.jpg"
             value="${(q.imageUrl||'').startsWith('data:')?'':q.imageUrl||''}"
-            oninput="_editTestQuestions[${i}].imageUrl=this.value;updateQImgPreview('etq-pre-${i}',this.value)">
+            oninput="${arrStr}[${i}].imageUrl=this.value;updateQImgPreview('${qPfx}-pre-${i}',this.value)">
         </div>
-        <div id="etq-${i}-file" style="${(q.imageUrl||'').startsWith('data:')?'':'display:none'}">
+        <div id="${qPfx}-${i}-file" style="${(q.imageUrl||'').startsWith('data:')?'':'display:none'}">
           <input type="file" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
-            onchange="handleEditQImgUpload(this,'_editTestQuestions',${i},'etq-pre-${i}')">
+            onchange="handleEditQImgUpload(this,'${arrStr}',${i},'${qPfx}-pre-${i}')">
         </div>
-        <img id="etq-pre-${i}" class="q-img-preview" src="${safeUrl(q.imageUrl||'')} "style="${q.imageUrl?'':'display:none'}" alt="">
+        <img id="${qPfx}-pre-${i}" class="q-img-preview" src="${safeUrl(q.imageUrl||'')} "style="${q.imageUrl?'':'display:none'}" alt="">
       </div>
       <div style="margin-top:8px">
         <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
         <input style="width:100%;padding:7px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;background:var(--white)"
           placeholder="Подсказка для ученика — не раскрывает ответ..."
-          oninput="_editTestQuestions[${i}].hint=this.value"
+          oninput="${arrStr}[${i}].hint=this.value"
           value="${(q.hint||'').replace(/"/g,'&quot;')}">
       </div>
     </div>`;
   }).join('');
 }
+function renderEditTestBuilder(){ _renderEditQuizBuilder('test'); }
+function renderEditHWBuilder(){ _renderEditQuizBuilder('hw'); }
 function handleEditQImgUpload(input, store, idx, previewId){
   const file = input.files[0];
   if(!file) return;
@@ -4469,63 +4452,6 @@ function openEditHW(id){
   renderEditHWBuilder();
   _setDirty(false);
   openModalEl('modal-edit-hw');
-}
-function renderEditHWBuilder(){
-  const el=document.getElementById('ehw-questions-list');
-  if(!el) return;
-  const totalPts=_editHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
-  const hint=document.getElementById('ehw-total-hint');
-  if(hint) hint.textContent=_editHWQuestions.length?`· ${_editHWQuestions.length} вопросов · итого ${totalPts} б.`:'';
-  // Sync maxpts if not manual
-  if(!_editHWMaxPtsManual){
-    const maxEl=document.getElementById('ehw-maxpts');
-    if(maxEl) maxEl.value=totalPts||0;
-  }
-  el.innerHTML=_editHWQuestions.map((q,i)=>{
-    const typeBody = editQTypeBody(q,'_editHWQuestions',i,'renderEditHWBuilder()');
-    const showText = q.type!=='fillin';
-    return `<div class="question-block" style="margin-bottom:10px;border-left:3px solid var(--green-light)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <div class="question-num">${qTypeLabel(q.type)} #${i+1}
-          <span style="font-size:0.7rem;font-weight:600;margin-left:6px;color:${isAutoScored(q.type)?'var(--green-mid)':'var(--gold)'}">
-            ${isAutoScored(q.type)?'✅ Авто':'👁 Вручную'}</span></div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
-          <input type="number" min="0.5" step="0.5" value="${+q.points||1}"
-            style="width:65px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem"
-            oninput="_editHWQuestions[${i}].points=+this.value||1;renderEditHWBuilder()">
-          <button class="btn btn-red btn-sm" onclick="removeEditHWQ(${i})">✕</button>
-        </div>
-      </div>
-      ${showText?`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
-        placeholder="Текст вопроса..." oninput="_editHWQuestions[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">`:''}
-      ${typeBody}
-      <div style="margin-top:8px">
-        <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">🖼 Картинка к вопросу (необязательно)</label>
-        <div class="q-img-tabs">
-          <div class="q-img-tab ${!(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('ehwq-${i}','url')">Ссылка</div>
-          <div class="q-img-tab ${(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('ehwq-${i}','file')">Загрузить</div>
-        </div>
-        <div id="ehwq-${i}-url" style="${(q.imageUrl||'').startsWith('data:')?'display:none':''}">
-          <input class="q-input" placeholder="https://example.com/image.jpg"
-            value="${(q.imageUrl||'').startsWith('data:')?'':q.imageUrl||''}"
-            oninput="_editHWQuestions[${i}].imageUrl=this.value;updateQImgPreview('ehwq-pre-${i}',this.value)">
-        </div>
-        <div id="ehwq-${i}-file" style="${(q.imageUrl||'').startsWith('data:')?'':'display:none'}">
-          <input type="file" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
-            onchange="handleEditQImgUpload(this,'_editHWQuestions',${i},'ehwq-pre-${i}')">
-        </div>
-        <img id="ehwq-pre-${i}" class="q-img-preview" src="${safeUrl(q.imageUrl||'')} "style="${q.imageUrl?'':'display:none'}" alt="">
-      </div>
-      <div style="margin-top:8px">
-        <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
-        <input style="width:100%;padding:7px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;background:var(--white)"
-          placeholder="Подсказка для ученика — не раскрывает ответ..."
-          oninput="_editHWQuestions[${i}].hint=this.value"
-          value="${(q.hint||'').replace(/"/g,'&quot;')}">
-      </div>
-    </div>`;
-  }).join('');
 }
 function addEditHWQuestion(type){
   _setDirty(true);
@@ -5804,7 +5730,7 @@ function startTrial(id){
   const t=(load('trials')||[]).find(t=>t.id===id);
   if(!t) return;
   if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
-    showNotif('⛔ Нет доступа к этому пробнику'); console.warn('IDOR attempt startTrial',id); return;
+    showNotif('⛔ Нет доступа к этому пробнику'); return;
   }
   _activeTrial=t;
   _trialAnswers={};
@@ -6772,7 +6698,6 @@ function openStudentProfileModal(id){
   
   bodyEl.innerHTML = buildProfileHTML(u, true);
   modalEl.classList.add('open');
-  console.log('Профиль открыт для ученика:', u.name);
 }
 
 function buildProfileHTML(u, isAdmin){
@@ -7156,7 +7081,7 @@ async function sendParentTelegramNotif(pid, type, text){
   const msg = `👨‍👩‍👧 *BioХим* — ${name}\n\n${text}`;
   try{
     await tgApiCall('sendMessage', { chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' });
-  } catch(e){ console.warn('Parent TG send error:', e); }
+  } catch(e){ }
 }
 
 function _renderParentTgSettings(container){
@@ -8429,7 +8354,7 @@ function takeTest(id) {
   const t=tests.find(t=>t.id===id);
   if(!t){ showNotif('Тест не найден'); return; }
   if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
-    showNotif('⛔ Нет доступа к этому тесту'); console.warn('IDOR attempt takeTest',id); return;
+    showNotif('⛔ Нет доступа к этому тесту'); return;
   }
   const maxAttempts=t.maxAttempts||0;
   const attemptsUsed=(t.attempts||[]).length;
@@ -9530,57 +9455,31 @@ function buildMultiStudentCheckboxes(containerId){
 function getCheckedStudents(containerId){
   return [...document.querySelectorAll(`#${containerId} input[type=checkbox]:checked`)].map(cb=>cb.value);
 }
-function sendToMultiple(){
-  const ids=getCheckedStudents('multi-student-checkboxes');
+function _sendToMultipleBase(checkboxId, dataKey, idPrefix, extraFields, toggleFn, label){
+  const ids=getCheckedStudents(checkboxId);
   if(!ids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
-  // Copy all content of current selected student to chosen students
   const sid=getSelectedStudent();
-  const content=load('content')||[];
-  const toCopy=content.filter(c=>c.studentId===sid);
-  if(!toCopy.length){ showNotif('Нет материалов для отправки'); return; }
+  const items=load(dataKey)||[];
+  const toCopy=items.filter(i=>i.studentId===sid);
+  if(!toCopy.length){ showNotif('Нет '+(label||'элементов')+' для отправки'); return; }
   ids.forEach(targetId=>{
     if(targetId===sid) return;
-    toCopy.forEach(c=>{
-      content.push({...c, id:'ct_'+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId});
+    toCopy.forEach(item=>{
+      items.push({...item, id:idPrefix+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId, ...extraFields});
     });
   });
-  save('content',content);
-  toggleMultiSend(false);
-  showNotif(`✅ Материалы отправлены ${ids.length} ученикам`);
+  save(dataKey,items);
+  toggleFn(false);
+  showNotif(`✅ ${label||'Элементы'} отправлены ${ids.length} ученикам`);
+}
+function sendToMultiple(){
+  _sendToMultipleBase('multi-student-checkboxes','content','ct_',{},toggleMultiSend,'Материалы');
 }
 function sendTestToMultiple(){
-  const ids=getCheckedStudents('multi-student-tests-checkboxes');
-  if(!ids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
-  const sid=getSelectedStudent();
-  const tests=load('tests')||[];
-  const toCopy=tests.filter(t=>t.studentId===sid);
-  if(!toCopy.length){ showNotif('Нет тестов для отправки'); return; }
-  ids.forEach(targetId=>{
-    if(targetId===sid) return;
-    toCopy.forEach(t=>{
-      tests.push({...t, id:'t'+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId, submitted:false, answers:{}, autoScore:0});
-    });
-  });
-  save('tests',tests);
-  toggleMultiSendTests(false);
-  showNotif(`✅ Тесты отправлены ${ids.length} ученикам`);
+  _sendToMultipleBase('multi-student-tests-checkboxes','tests','t',{submitted:false,answers:{},autoScore:0},toggleMultiSendTests,'Тесты');
 }
 function sendHWToMultiple(){
-  const ids=getCheckedStudents('multi-student-hw-checkboxes');
-  if(!ids.length){ showNotif('Выберите хотя бы одного ученика'); return; }
-  const sid=getSelectedStudent();
-  const hws=load('hw')||[];
-  const toCopy=hws.filter(h=>h.studentId===sid);
-  if(!toCopy.length){ showNotif('Нет ДЗ для отправки'); return; }
-  ids.forEach(targetId=>{
-    if(targetId===sid) return;
-    toCopy.forEach(h=>{
-      hws.push({...h, id:'hw'+Date.now()+'_'+Math.random().toString(36).slice(2), studentId:targetId, submitted:false, answers:{}});
-    });
-  });
-  save('hw',hws);
-  toggleMultiSendHW(false);
-  showNotif(`✅ ДЗ отправлены ${ids.length} ученикам`);
+  _sendToMultipleBase('multi-student-hw-checkboxes','hw','hw',{submitted:false,answers:{}},toggleMultiSendHW,'ДЗ');
 }
 
 // ═══════════════════════════════════════════
@@ -10633,7 +10532,6 @@ function _loadingDone(){
       if(user){
         // Проверяем что роль в сессии совпадает с ролью в базе (защита от ручного изменения)
         if(savedUser.role && savedUser.role !== user.role){
-          console.warn('[Security] Session role mismatch — forced logout');
           localStorage.removeItem('biohim_session');
           return;
         }
@@ -11850,7 +11748,6 @@ async function sendTelegramNotif(sid, type, text){
   try{
     await tgApiCall('sendMessage', { chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' });
   } catch(e){
-    console.warn('TG send error:', e);
   }
 }
 
@@ -12310,7 +12207,7 @@ function markAttPresent(id){
   const raw = load('attendance')||[];
   const att = Array.isArray(raw) ? raw : Object.values(raw);
   // eslint-disable-next-line eqeqeq
-  const a   = att.find(a=>a.id==id); if(!a){ console.warn('[markAttPresent] запись не найдена, id=',id,'тип=',typeof id,'все id=',att.map(x=>x.id)); return; }
+  const a   = att.find(a=>a.id==id); if(!a){ return; }
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   a.present = true;
   a.absentPaid = false;
@@ -12330,7 +12227,7 @@ function markAttAbsentPaid(id){
   const raw = load('attendance')||[];
   const att = Array.isArray(raw) ? raw : Object.values(raw);
   // eslint-disable-next-line eqeqeq
-  const a   = att.find(a=>a.id==id); if(!a){ console.warn('[markAttAbsentPaid] запись не найдена, id=',id,'тип=',typeof id,'все id=',att.map(x=>x.id)); return; }
+  const a   = att.find(a=>a.id==id); if(!a){ return; }
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   a.present = false;
   a.absentPaid = true;
@@ -12350,7 +12247,7 @@ function undoAttPaid(id){
   const raw = load('attendance')||[];
   const att = Array.isArray(raw) ? raw : Object.values(raw);
   // eslint-disable-next-line eqeqeq
-  const a   = att.find(a=>a.id==id); if(!a){ console.warn('[undoAttPaid] запись не найдена, id=',id); return; }
+  const a   = att.find(a=>a.id==id); if(!a){ return; }
   if(!confirm('Отменить списание и вернуть деньги на кошелёк?')) return;
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   walletTopUp(a.studentId, +a.costPerStudent||0, `Возврат: занятие ${dateLabel}`, true/*skipPaymentRecord*/);
@@ -13405,7 +13302,6 @@ async function wpSubscribe() {
     setTimeout(() => wpShowDirect('BioХим', '🔔 Web Push подключён! Уведомления придут даже при закрытом сайте.', ''), 600);
 
   } catch (err) {
-    console.warn('wpSubscribe error:', err);
     showNotif('❌ Ошибка подписки: ' + err.message);
   }
 }
@@ -13438,7 +13334,7 @@ async function wpShowDirect(title, body, nav) {
       data: { nav: nav || '' },
       vibrate: [200, 100, 200],
     });
-  } catch (e) { console.warn('wpShowDirect:', e); }
+  } catch (e) { }
 }
 
 // ── Отправить push через Vercel API (вызывается на стороне репетитора) ──
@@ -13457,7 +13353,7 @@ async function wpSendToStudent(sid, title, body, nav) {
         payload: JSON.stringify({ title: title || 'BioХим', body, nav: nav || '' })
       })
     });
-  } catch (e) { console.warn('wpSend error:', e); }
+  } catch (e) { }
 }
 
 // ── helper: base64url → Uint8Array (для applicationServerKey) ──
