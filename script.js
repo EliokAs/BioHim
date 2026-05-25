@@ -2043,6 +2043,17 @@ function buildStudentSelector(containerId, onChange){
 }
 function selectStudent(id, containerId){
   _selectedStudent=id;
+  // Сбрасываем кэш кошелька выбранного ученика — чтобы при переключении
+  // admin видел свежие данные из Firebase, а не пустой кэш
+  if(_walletCache[id] !== undefined) {
+    // Уже загружен — принудительно обновляем в фоне
+    _fbInit().ref('db/wallet/'+id).get().then(snap=>{
+      _walletCache[id] = snap.val() || {balance:0, txns:[]};
+    }).catch(()=>{});
+  } else {
+    // Ещё не загружен — пометим как undefined чтобы renderAtpWallet загрузил
+    delete _walletCache[id];
+  }
   const el=document.getElementById(containerId);
   const onChange = el ? el._selectorOnChange : null;
   buildStudentSelector(containerId, onChange||function(){});
@@ -12055,6 +12066,7 @@ function walletDebit(sid, amount, note){
 
 // ── ATP PAGE (unified attend+pay admin) ──
 let _atpTab = 'attendance';
+let _walletRealtimeSid = null; // sid текущей подписки на кошелёк
 function switchAtpTab(tab, el){
   _atpTab = tab;
   document.querySelectorAll('#page-attend-pay-admin .tab').forEach(t=>t.classList.remove('active'));
@@ -12063,6 +12075,18 @@ function switchAtpTab(tab, el){
     const el2 = document.getElementById('atp-tab-'+t);
     if(el2) el2.style.display = t===tab ? '' : 'none';
   });
+  // Подписываемся на realtime обновления кошелька выбранного ученика
+  if(tab === 'wallet'){
+    const sid = getSelectedStudent();
+    if(sid && sid !== _walletRealtimeSid){
+      if(_walletRealtimeSid) _fbInit().ref('db/wallet/'+_walletRealtimeSid).off('value');
+      _walletRealtimeSid = sid;
+      _fbInit().ref('db/wallet/'+sid).on('value', snap=>{
+        _walletCache[sid] = snap.val() || {balance:0, txns:[]};
+        if(_atpTab === 'wallet' && getSelectedStudent() === sid) renderAtpWallet();
+      });
+    }
+  }
   renderAtpTab();
 }
 
@@ -12171,6 +12195,19 @@ function renderAtpAttendance(){
 function renderAtpWallet(){
   const sid = getSelectedStudent();
   if(!sid) return;
+  // Если кошелёк ученика не в кэше (admin смотрит чужой кошелёк) — грузим из Firebase
+  if(_walletCache[sid] === undefined){
+    // Показываем загрузку
+    const balEl0 = document.getElementById('atp-wallet-balance');
+    if(balEl0) balEl0.textContent = '…';
+    const histEl0 = document.getElementById('atp-wallet-history');
+    if(histEl0) histEl0.innerHTML = '<div style="color:var(--text3);font-size:0.85rem;padding:12px 0">Загрузка…</div>';
+    _fbInit().ref('db/wallet/'+sid).get().then(snap=>{
+      _walletCache[sid] = snap.val() || {balance:0, txns:[]};
+      renderAtpWallet(); // перерисовываем после загрузки
+    }).catch(()=>{ _walletCache[sid] = {balance:0, txns:[]}; renderAtpWallet(); });
+    return; // ждём загрузки
+  }
   const w = loadWallet(sid);
   const balEl = document.getElementById('atp-wallet-balance');
   if(balEl){
