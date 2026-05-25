@@ -1548,7 +1548,7 @@ function subscribeRealtime(){
                       student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
     bookings:       { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  },
                       student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
-    attendance:     { admin:   { pageId: 'atp-admin',        fn: 'renderAtpAttendance'  },
+    attendance:     { admin:   { pageId: 'attend-pay-admin', fn: 'renderAtpAttendance'  },
                       student: { pageId: 'student-payment',  fn: 'renderStudentPayment' } },
     groups:         { admin:   { pageId: 'students',         fn: 'renderStudents'       },
                       student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
@@ -12104,15 +12104,15 @@ function renderAtpAttendance(){
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             ${a.paid ? `
-              <span class="att-badge-${a.present?'present':'absent'}" style="cursor:pointer" onclick="undoAttPaid('${a.id}')" title="Отменить списание">
+              <span class="att-badge-${a.present?'present':'absent'}" style="cursor:pointer" onclick="undoAttPaid('${escAttr(a.id)}')" title="Отменить списание">
                 ${a.present ? '✅ Был · списано' : '❌ Не был · списано'}
               </span>
               <span class="att-cost-badge">−${a.costPerStudent}₽ ✓</span>
             ` : `
-              <button class="btn btn-outline btn-sm" onclick="markAttPresent('${a.id}')" style="border-color:#27ae60;color:#27ae60;min-width:90px">
+              <button class="btn btn-outline btn-sm" onclick="markAttPresent('${escAttr(a.id)}')" style="border-color:#27ae60;color:#27ae60;min-width:90px">
                 ✅ Был
               </button>
-              <button class="btn btn-outline btn-sm" onclick="markAttAbsentPaid('${a.id}')" style="border-color:#856404;color:#856404;font-size:0.78rem" title="Не был, но списать деньги">
+              <button class="btn btn-outline btn-sm" onclick="markAttAbsentPaid('${escAttr(a.id)}')" style="border-color:#856404;color:#856404;font-size:0.78rem" title="Не был, но списать деньги">
                 ❌ Списать
               </button>
               ${a.costPerStudent>0?`<span class="att-unpaid-badge">💳 ${a.costPerStudent}₽ не списано</span>`:''}
