@@ -1278,8 +1278,15 @@ async function preloadCache(){
     const data = snap.val() || {};
     console.log('[preloadCache] Данные получены из Firebase:', Object.keys(data));
     
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses'];
     COLLECTIONS.forEach(k => { 
-      _cache[k] = data[k] !== undefined ? data[k] : null; 
+      const raw = data[k] !== undefined ? data[k] : null;
+      // Firebase хранит массивы как объекты — конвертируем
+      if (raw !== null && !Array.isArray(raw) && typeof raw === 'object' && ARRAY_COLLECTIONS.includes(k)) {
+        _cache[k] = Object.values(raw);
+      } else {
+        _cache[k] = raw;
+      }
       const count = Array.isArray(_cache[k]) ? _cache[k].length : (_cache[k] ? 'объект' : 'null');
       console.log('[preloadCache] Загружена коллекция:', k, '- записей:', count);
     });
@@ -1588,7 +1595,13 @@ function subscribeRealtime(){
     db.ref('db/' + k).on('value', snap => {
       const val = snap.val();
       const oldVal = _cache[k];
-      _cache[k] = val !== undefined ? val : null;
+      // Firebase возвращает объект вместо массива — конвертируем обратно
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses'];
+      if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
+        _cache[k] = Object.values(val);
+      } else {
+        _cache[k] = val !== undefined ? val : null;
+      }
       
       // Логируем только если данные изменились
       const oldCount = Array.isArray(oldVal) ? oldVal.length : (oldVal ? 'объект' : 'null');
@@ -6610,7 +6623,7 @@ let _attSelectedSid = 'all';
 
 function renderAttendanceAdmin(){
   const students = getStudents();
-  const allAtt = (load('attendance')||[]).slice().reverse();
+  const allAtt = (()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().slice().reverse();
 
   // Chip bar
   const chipsEl = document.getElementById('attendance-student-chips');
@@ -6679,13 +6692,13 @@ function renderAttendanceAdmin(){
 function toggleAttPresence(id){ markAttPresent(id); }
 function deleteLesson(lessonId){
   if(!confirm('Удалить всё занятие?')) return;
-  save('attendance',(load('attendance')||[]).filter(a=>a.lessonId!==lessonId));
+  save('attendance',(()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().filter(a=>a.lessonId!==lessonId));
   renderAtpAttendance();
 }
 
 function renderStudentAttendance(){
   const sid=currentUser.id;
-  const att=(load('attendance')||[]).filter(a=>a.studentId===sid).slice().reverse();
+  const att=(()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().filter(a=>a.studentId===sid).slice().reverse();
   const el=document.getElementById('student-attendance-list');
   if(!el) return;
   if(!att.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
@@ -7405,7 +7418,7 @@ function _buildParentFeed(sid, student){
   const tests    = (load('tests')||[]).filter(t=>t.studentId===sid&&!t.isLibrary);
   const hws      = (load('hw')||[]).filter(h=>h.studentId===sid&&!h.isLibrary);
   const trials   = (load('trials')||[]).filter(t=>t.studentId===sid&&!t.isLibrary);
-  const att      = (load('attendance')||[]).filter(a=>a.studentId===sid);
+  const att      = (()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().filter(a=>a.studentId===sid);
 
   const events = [];
 
@@ -7693,7 +7706,7 @@ function _buildParentPayments(sid){
 
 // ── ЗАНЯТИЯ ──────────────────────────────────────────────────────
 function _buildParentLessons(sid){
-  const att = (load('attendance')||[]).filter(a=>a.studentId===sid);
+  const att = (()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().filter(a=>a.studentId===sid);
   if(!att.length) return `<div class="card"><div class="empty-state"><div class="big">📅</div><p>Занятий пока нет</p></div></div>`;
   const present = att.filter(a=>a.present).length;
   const absent  = att.filter(a=>!a.present).length;
@@ -9904,7 +9917,7 @@ function generateReport(){
   const allTests = (load('tests')||[]).filter(t=>t.studentId===sid);
   const allHws   = (load('hw')||[]).filter(h=>h.studentId===sid);
   const allTrials= (load('trials')||[]).filter(t=>t.studentId===sid);
-  const allAtt   = (load('attendance')||[]).filter(a=>a.studentId===sid);
+  const allAtt   = (()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().filter(a=>a.studentId===sid);
   const srData   = getSRData(sid);
 
   // Filter by period
@@ -12038,7 +12051,8 @@ function renderAtpTab(){
 function renderAtpAttendance(){
   const sid = getSelectedStudent();
   const students = getStudents();
-  const allAtt = (load('attendance')||[]).slice().reverse();
+  const rawAtt = load('attendance')||[];
+  const allAtt = (Array.isArray(rawAtt) ? rawAtt : Object.values(rawAtt)).slice().reverse();
   const el = document.getElementById('atp-attendance-list');
   if(!el) return;
 
@@ -12194,7 +12208,8 @@ function doDebit(){
 
 // ── Был — отметить присутствие и списать деньги ──
 function markAttPresent(id){
-  const att = load('attendance')||[];
+  const raw = load('attendance')||[];
+  const att = Array.isArray(raw) ? raw : Object.values(raw);
   const a   = att.find(a=>a.id===id); if(!a) return;
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   a.present = true;
@@ -12212,7 +12227,8 @@ function markAttPresent(id){
 
 // ── Не был, но списать деньги ──
 function markAttAbsentPaid(id){
-  const att = load('attendance')||[];
+  const raw = load('attendance')||[];
+  const att = Array.isArray(raw) ? raw : Object.values(raw);
   const a   = att.find(a=>a.id===id); if(!a) return;
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
   a.present = false;
@@ -12230,7 +12246,8 @@ function markAttAbsentPaid(id){
 
 // ── Отменить списание (возврат) ──
 function undoAttPaid(id){
-  const att = load('attendance')||[];
+  const raw = load('attendance')||[];
+  const att = Array.isArray(raw) ? raw : Object.values(raw);
   const a   = att.find(a=>a.id===id); if(!a) return;
   if(!confirm('Отменить списание и вернуть деньги на кошелёк?')) return;
   const dateLabel = a.date ? new Date(a.date+'T12:00').toLocaleDateString('ru',{day:'numeric',month:'long'}) : '';
@@ -12343,7 +12360,7 @@ function renderStudentWallet(){
 
 function renderStudentLessons(){
   const sid = currentUser.id;
-  const att = (load('attendance')||[]).filter(a=>a.studentId===sid).slice().reverse();
+  const att = (()=>{const _r=load('attendance')||[];return Array.isArray(_r)?_r:Object.values(_r);})().filter(a=>a.studentId===sid).slice().reverse();
   const el  = document.getElementById('student-lessons-block');
   if(!el) return;
   if(!att.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
