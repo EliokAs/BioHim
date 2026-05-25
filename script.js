@@ -2249,7 +2249,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
   const files    = c.files || (c.attachmentUrl ? [{type:'pdf', name:'Прикреплённый файл', url:c.attachmentUrl}] : []);
 
   const hasVideo = !!(videoUrl && getVideoEmbedUrl(videoUrl));
-  const hasText  = !!(c.body && c.body.trim());
+  const hasText  = !!(c.body && c.body.trim()) || !!(c.blocks && c.blocks.length);
   const hasPdf   = files.some(f=>f.type==='pdf');
   const hasWord  = files.some(f=>f.type==='word');
 
@@ -2324,12 +2324,22 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       </div>`;
     }
   }
-  // text block
+  // text block — render using block-based content (new editor)
   let textBlock='';
-  if(c.body && c.body.trim()){
+  if(c.blocks && c.blocks.length){
+    // New editor: use blocks directly, filter out video/file/image (rendered separately above)
+    const _textOnlyBlocks = c.blocks.filter(b=>!['video','image','image-upload','file'].includes(b.type));
+    if(_textOnlyBlocks.length && _textOnlyBlocks.some(b=>b.content && b.content.trim())){
+      textBlock=`<div style="margin-bottom:18px">
+        <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
+        <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${nbRenderView(_textOnlyBlocks)}</div>
+      </div>`;
+    }
+  } else if(c.body && c.body.trim()){
+    // Legacy plain-text fallback
     textBlock=`<div style="margin-bottom:18px">
       <div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:0.9rem">📖 Текст урока</div>
-      <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body)}</div>
+      <div style="line-height:1.8;color:var(--text2);font-size:0.92rem;background:var(--bg);padding:16px;border-radius:10px;border:1px solid var(--green-xpale)">${esc(c.body).replace(/\n/g,'<br>')}</div>
     </div>`;
   }
   // images
