@@ -9,6 +9,9 @@
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <!-- CSP: Firebase long-polling requires script-src + connect-src for firebasedatabase.app -->
+<!-- ⚠️ 'unsafe-inline' в script-src необходим пока скрипты встроены в HTML.
+     Для production замените на nonce-based CSP: добавьте nonce="..." к каждому <script>
+     и укажите 'nonce-YOURVALUE' вместо 'unsafe-inline'. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   script-src 'self' 'unsafe-inline'
@@ -33,6 +36,7 @@
   object-src 'none';
   base-uri 'self';
   frame-ancestors 'none';
+  upgrade-insecure-requests;
 ">
 
 <!-- PWA -->
@@ -41,10 +45,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="BioХим">
+<meta name="apple-mobile-web-app-title" content="Осмос">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232d6a4f'/%3E%3Ctext x='90' y='130' text-anchor='middle' font-family='Georgia,serif' font-size='96' font-weight='700' fill='white'%3EB%3C/text%3E%3C/svg%3E">
 
-<title>BioХим — Платформа репетитора</title>
+<title>Осмос — Платформа репетитора</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -778,6 +782,10 @@ body.dark-theme .drawer-footer { background: var(--card); }
 .hw-status-dot.pending { background: var(--gold); }
 .hw-status-dot.new { background: #3498db; }
 
+/* ─── TEACHER / SALARY STYLES ─── */
+.salary-paid-badge { background:#e8f8f0; color:#27ae60; font-size:0.75rem; font-weight:700; padding:3px 10px; border-radius:10px; }
+.salary-unpaid-badge { background:#fdecea; color:#c0392b; font-size:0.75rem; font-weight:700; padding:3px 10px; border-radius:10px; }
+
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -1044,7 +1052,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <!-- LOGIN SCREEN -->
 <div id="login-screen">
   <div class="login-card">
-    <div class="login-logo">Bio<span>Хим</span></div>
+    <div class="login-logo">Осмос</div>
     <div class="login-sub">Платформа репетитора</div>
     <input type="text" id="login-username" placeholder="Логин" autocomplete="username" />
     <input type="password" id="login-password" placeholder="Пароль" autocomplete="current-password" />
@@ -1060,7 +1068,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <!-- APP SHELL -->
 <div id="app">
   <div class="sidebar">
-    <div class="sidebar-logo">Bio<span>Хим</span><div class="sidebar-role" id="sidebar-role">загрузка...</div></div>
+    <div class="sidebar-logo">Осмос<div class="sidebar-role" id="sidebar-role">загрузка...</div></div>
     <nav class="sidebar-nav" id="sidebar-nav"></nav>
     <div class="sidebar-footer">
       <div class="sidebar-user"><b id="sidebar-name">—</b>Личный кабинет</div>
@@ -1473,6 +1481,36 @@ body.dark-theme .drawer-footer { background: var(--card); }
       <div id="report-output"></div>
     </div>
 
+    <!-- Teachers Admin -->
+    <div class="page" id="page-teachers">
+      <!-- Rendered by renderTeachersAdmin() -->
+    </div>
+
+    <!-- Salary Admin -->
+    <div class="page" id="page-salary-admin">
+      <!-- Rendered by renderSalaryAdmin() -->
+    </div>
+
+    <!-- Teacher Dashboard -->
+    <div class="page" id="page-teacher-dashboard">
+      <!-- Rendered by renderTeacherDashboard() -->
+    </div>
+
+    <!-- Teacher pages (shared with admin pages via renderPage routing) -->
+    <div class="page" id="page-teacher-content"></div>
+    <div class="page" id="page-teacher-tests"></div>
+    <div class="page" id="page-teacher-hw"></div>
+    <div class="page" id="page-teacher-trial"></div>
+    <div class="page" id="page-teacher-taskbank"></div>
+    <div class="page" id="page-teacher-flashcards"></div>
+    <div class="page" id="page-teacher-grades"></div>
+    <div class="page" id="page-teacher-chat"></div>
+    <div class="page" id="page-teacher-schedule"></div>
+    <div class="page" id="page-teacher-attend"></div>
+    <div class="page" id="page-teacher-reports"></div>
+    <div class="page" id="page-teacher-notif"></div>
+    <div class="page" id="page-teacher-lesson"></div>
+
     <!-- ── STUDENT PAGES ── -->
 
     <!-- Student Dashboard -->
@@ -1791,7 +1829,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <div class="chat-main" id="chat-student-main" style="display:flex;flex-direction:column">
           <div class="chat-header">
             <div class="chat-avatar">П</div>
-            <div><div class="chat-header-name">Преподаватель</div><div class="chat-header-sub">BioХим</div></div>
+            <div><div class="chat-header-name">Преподаватель</div><div class="chat-header-sub">Осмос</div></div>
           </div>
           <div class="chat-messages" id="chat-student-messages"></div>
           <div class="chat-input-bar">
@@ -2552,6 +2590,11 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <input id="att-topic" placeholder="Строение клетки, Органика..."></div>
       <div class="form-group"><label>Группа / пара</label>
         <input id="att-group" placeholder="Группа А, Индивидуально..."></div>
+      <div class="form-group"><label>Преподаватель <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="att-teacher" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)">
+          <option value="">— Не указан —</option>
+        </select>
+      </div>
       <div class="form-group"><label>Стоимость занятия (₽)</label>
         <input id="att-cost" type="number" min="0" placeholder="1500"></div>
       <div class="form-group"><label>Ученики</label>
@@ -2587,7 +2630,10 @@ body.dark-theme .drawer-footer { background: var(--card); }
     <div class="drawer-body">
       <div class="form-group"><label>Название курса</label><input id="nc-title" placeholder="Биология ЕГЭ"></div>
       <div class="form-group"><label>Предмет</label>
-        <select id="nc-subject"><option>Биология</option><option>Химия</option><option>Биология + Химия</option></select></div>
+        <input id="nc-subject" list="nc-subject-list" placeholder="Биология, Химия, Математика…" autocomplete="off">
+        <datalist id="nc-subject-list" id="nc-subject-datalist"></datalist>
+        <div style="font-size:0.75rem;color:var(--text3);margin-top:4px">Выберите из списка или введите свой предмет</div>
+      </div>
       <div class="form-group"><label>Формат</label>
         <select id="nc-format"><option value="individual">Индивидуальный</option><option value="group">Групповой</option><option value="pair">Парный</option></select></div>
       <div class="form-group"><label>Стоимость (₽/занятие)</label><input id="nc-price" type="number" placeholder="1500"></div>
