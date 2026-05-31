@@ -142,8 +142,8 @@ function performGlobalSearch(query) {
     trials: []
   };
 
-  // Поиск по ученикам (только для администратора)
-  if (currentUser && currentUser.role === 'admin') {
+  // Поиск по ученикам (только для администратора и преподавателя)
+  if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'teacher')) {
     (load('users') || []).filter(u => u.role === 'student').forEach(u => {
       const name    = (u.name    || '').toLowerCase();
       const login   = (u.login   || '').toLowerCase();
@@ -318,10 +318,12 @@ function showSearchResults(query, results) {
   document.querySelector('.main').appendChild(searchPage);
 }
 
+/** Returns HTML-escaped user name safe for innerHTML insertion */
 function getUserName(userId) {
   const users = load('users') || [];
   const user = users.find(u => u.id === userId);
-  return user ? user.name : 'Неизвестно';
+  // FIX: escape output — was inserted raw into innerHTML in search results (XSS risk)
+  return user ? esc(user.name) : 'Неизвестно';
 }
 
 // ═══════════════════════════════════════════════
@@ -626,8 +628,8 @@ function _renderActiveLessonAdmin(el, live){
         <div class="lesson-panel" style="padding:12px 14px">
           <div class="lesson-panel-title" style="margin-bottom:8px">📤 Быстрая отправка</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${allTests.map(t=>`<div class="quick-send-item" onclick="lsQuickSend('test','${t.id}','${(t.title||'').replace(/'/g,"\\'")}')" title="Тест">📝 ${(t.title||'').substring(0,20)}</div>`).join('')}
-            ${allHWs.map(hw=>`<div class="quick-send-item" onclick="lsQuickSend('hw','${hw.id}','${(hw.title||'').replace(/'/g,"\\'")}')" title="ДЗ">✏️ ${(hw.title||'').substring(0,20)}</div>`).join('')}
+            ${allTests.map(t=>`<div class="quick-send-item" onclick="lsQuickSend('test','${escAttr(t.id)}','${escAttr(t.title||'')}')" title="Тест">📝 ${esc((t.title||'').substring(0,20))}</div>`).join('')}
+            ${allHWs.map(hw=>`<div class="quick-send-item" onclick="lsQuickSend('hw','${escAttr(hw.id)}','${escAttr(hw.title||'')}')" title="ДЗ">✏️ ${esc((hw.title||'').substring(0,20))}</div>`).join('')}
           </div>
         </div>`:''}
 
@@ -938,7 +940,9 @@ function _jitsiRoomUrl(room, displayName){
     'config.requireDisplayName=false',
     'config.enableLobby=false',
   ].join('&');
-  return `https://meet.jit.si/${room}#${params}`;
+  // FIX: displayName was accepted but never applied — add it to the hash fragment
+  const nameFragment = displayName ? `&userInfo.displayName="${encodeURIComponent(displayName)}"` : '';
+  return `https://meet.jit.si/${encodeURIComponent(room)}#${params}${nameFragment}`;
 }
 
 function _initJitsiAPI(room, displayName){ _embedJitsi(room, displayName); }
@@ -1422,12 +1426,15 @@ function escAttr(str){
 
 
 // ИСПРАВЛЕНО: блокируем все data: URI кроме изображений (было data(?!:image) — добавляем полный список)
+// FIX: also block protocol-relative URLs like //evil.com (could be used for open redirect)
 function safeUrl(url){
   if(!url) return '#';
   const s = String(url).trim();
   // Блокируем javascript:, vbscript:, data: (кроме data:image и data:application/pdf)
   if(/^(javascript|vbscript|data(?!:image\/|:application\/pdf))/i.test(s)) return '#';
   if(/^data:/i.test(s) && !/^data:image\//i.test(s) && !/^data:application\/pdf/i.test(s)) return '#';
+  // FIX: block protocol-relative URLs — browser resolves them as current-protocol, attacker can use //evil.com
+  if(/^\/\//.test(s)) return '#';
   return s;
 }
 
@@ -1489,7 +1496,11 @@ function resetLoginAttempts(login){
 const ADMIN_PAGES = ['students','tests-admin','hw-admin','content-admin',
   'payments','schedule-admin','courses','analytics','settings',
   'reports-admin','taskbank-admin','flashcards-admin','notif-settings-admin','finance-admin',
-  'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin','challenges-admin'];
+  'zoom-settings','attend-pay-admin','admin-lesson','dashboard','grades-admin','challenges-admin',
+  'teachers'];
+const TEACHER_PAGES = ['teacher-dashboard','teacher-content','teacher-tests','teacher-hw',
+  'teacher-trial','teacher-taskbank','teacher-flashcards','teacher-grades',
+  'teacher-chat','teacher-schedule','teacher-attend','teacher-notif','teacher-lesson','teacher-reports'];
 const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'deleteStudent','saveTest','saveHW','addTheory','saveTrial',
   'saveSlot','deleteSlot','saveEditTest','saveEditHW','saveEditTrial',
@@ -1497,9 +1508,15 @@ const ADMIN_FNS = ['deleteTest','deleteHW','deleteContent','deleteTrial',
   'resetAllData'];
 
 function requireAdmin(fnName){
-  if(!currentUser || currentUser.role !== 'admin'){
+  // Teachers can do most content operations, but not student/user management or data reset
+  const teacherForbidden = ['deleteStudent','resetAllData','addStudent'];
+  if(!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'teacher')){
     showNotif('⛔ Нет доступа');
     throw new Error('Unauthorized: ' + fnName);
+  }
+  if(currentUser.role === 'teacher' && teacherForbidden.includes(fnName)){
+    showNotif('⛔ Нет доступа (только администратор)');
+    throw new Error('Unauthorized for teacher: ' + fnName);
   }
 }
 
@@ -1633,8 +1650,13 @@ function subscribeRealtime(){
 // ХЕШИРОВАНИЕ ПАРОЛЕЙ (Web Crypto API)
 // ══════════════════════════════════════════
 // ИСПРАВЛЕНО: используем HMAC-SHA256 с солью вместо чистого SHA-256
-// Замените _SITE_SALT уникальным секретом при развёртывании
-const _SITE_SALT = 'biohim_s@lt_2024_CHANGE_ME_IN_PRODUCTION';
+// ⚠️  КРИТИЧЕСКИ ВАЖНО: замените _SITE_SALT уникальным секретом перед публикацией.
+//     Текущее значение — дефолтное и видно всем в исходном коде (F12 → Sources).
+//     Рекомендация: сгенерируйте случайную строку ≥32 символов, например:
+//       crypto.getRandomValues(new Uint8Array(32)) → hex
+//     и пропишите её в переменную окружения / конфиг сборщика, а не хардкодом.
+//     После смены соли все существующие пароли придётся сбросить (хеши станут недействительны).
+const _SITE_SALT = 'biohim_s@lt_2024_CHANGE_ME_IN_PRODUCTION'; // ← ЗАМЕНИТЬ перед деплоем!
 async function hashPassword(plain){
   const enc = new TextEncoder();
   const key  = await crypto.subtle.importKey('raw', enc.encode(_SITE_SALT), {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
@@ -1780,7 +1802,7 @@ async function _startSession(user){
   // Загружаем пользовательские данные из Firebase в кэш + одноразовая миграция из localStorage
   await runLocalStorageMigration(user);
   await preloadUserData(user);
-  const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
+  const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='teacher' ? 'teacher-dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
   let lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
   // Redirect legacy student page IDs to new combined pages
   const _legacyPageMap = {
@@ -1807,7 +1829,7 @@ function doLogout(){
   document.getElementById('login-err').textContent='';
   document.getElementById('login-username').value='';
   document.getElementById('login-password').value='';
-  sessionStorage.removeItem('bf_login_attempts');
+  sessionStorage.removeItem('biohim_bf'); // FIX: was 'bf_login_attempts' — wrong key, brute-force cache was never cleared on logout
 }
 
 // ══════════════════════════════════════════
@@ -1817,6 +1839,7 @@ const adminNav=[
   {section:'Главное'},
   {id:'dashboard',icon:'🏠',label:'Дашборд'},
   {id:'students', icon:'👥',label:'Ученики'},
+  {id:'teachers', icon:'👨‍🏫',label:'Преподаватели'},
   {section:'Контент'},
   {id:'content-admin',icon:'📚',label:'Материалы'},
   {id:'tests-admin',  icon:'📋',label:'Тесты'},
@@ -1832,10 +1855,31 @@ const adminNav=[
   {id:'attend-pay-admin', icon:'📅', label:'Посещение и оплата'},
   {id:'schedule-admin',   icon:'🗓', label:'Расписание'},
   {id:'finance-admin',    icon:'💰', label:'Финансы'},
+  {id:'salary-admin',     icon:'💵', label:'Зарплата преподавателей'},
   {id:'reports-admin',    icon:'📊', label:'Отчёты по ученикам'},
   {id:'notif-settings-admin', icon:'🔔', label:'Интеграции уведомлений'},
   {section:'Занятие'},
   {id:'admin-lesson', icon:'🎥', label:'Онлайн-занятие'},
+];
+const teacherNav=[
+  {section:'Главное'},
+  {id:'teacher-dashboard',icon:'🏠',label:'Дашборд'},
+  {section:'Контент'},
+  {id:'teacher-content',   icon:'📚',label:'Материалы'},
+  {id:'teacher-tests',     icon:'📋',label:'Тесты'},
+  {id:'teacher-hw',        icon:'✏️', label:'Домашние задания'},
+  {id:'teacher-trial',     icon:'🎯', label:'Пробник'},
+  {id:'teacher-taskbank',  icon:'🎲',label:'База заданий'},
+  {id:'teacher-flashcards',icon:'🃏',label:'Флешкарты'},
+  {id:'teacher-grades',    icon:'🏅', label:'Оценки учеников'},
+  {section:'Управление'},
+  {id:'teacher-chat',      icon:'💬', label:'Чат с учениками'},
+  {id:'teacher-schedule',  icon:'🗓', label:'Расписание'},
+  {id:'teacher-attend',    icon:'📅', label:'Посещение и оплата'},
+  {id:'teacher-reports',   icon:'📊', label:'Отчёты'},
+  {id:'teacher-notif',     icon:'🔔', label:'Уведомления'},
+  {section:'Занятие'},
+  {id:'teacher-lesson',    icon:'🎥', label:'Онлайн-занятие'},
 ];
 const studentNav=[
   {section:'Учёба'},
@@ -1862,7 +1906,7 @@ const parentNav=[
   {id:'parent-settings',  icon:'⚙️',  label:'Настройки'},
 ];
 function buildNav(){
-  const nav = currentUser.role==='admin'?adminNav:currentUser.role==='parent'?parentNav:studentNav;
+  const nav = currentUser.role==='admin'?adminNav:currentUser.role==='teacher'?teacherNav:currentUser.role==='parent'?parentNav:studentNav;
   const el  = document.getElementById('sidebar-nav');
   const lessonOn = getFeatureToggle('online_lesson');
   el.innerHTML='';
@@ -1876,18 +1920,18 @@ function buildNav(){
         sectionItems.push(nav[j]);
       }
       const allHidden = sectionItems.length > 0 && sectionItems.every(item =>
-        !lessonOn && (item.id==='admin-lesson' || item.id==='student-lesson')
+        !lessonOn && (item.id==='admin-lesson' || item.id==='student-lesson' || item.id==='teacher-lesson')
       );
       skipSection = allHidden;
       if(!allHidden) el.innerHTML+=`<div class="nav-section">${n.section}</div>`;
       return;
     }
     // Hide lesson pages if feature is disabled
-    if(!lessonOn && (n.id==='admin-lesson' || n.id==='student-lesson')) return;
+    if(!lessonOn && (n.id==='admin-lesson' || n.id==='student-lesson' || n.id==='teacher-lesson')) return;
     el.innerHTML+=`<div class="nav-item" id="nav-${n.id}" onclick="navigateTo('${n.id}')"><span class="icon">${n.icon}</span>${n.label}</div>`;
   });
   document.getElementById('sidebar-name').textContent=currentUser.name;
-  document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Преподаватель':currentUser.role==='parent'?'Родитель':'Ученик';
+  document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Администратор':currentUser.role==='teacher'?'Преподаватель':currentUser.role==='parent'?'Родитель':'Ученик';
   setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); updateMistakesBadge(); }, 50);
   buildMobileTaskbar();
 }
@@ -1904,6 +1948,7 @@ function buildMobileTaskbar(){
   const lessonOn = getFeatureToggle('online_lesson');
   let nav;
   if(currentUser.role==='admin')        nav = adminNav;
+  else if(currentUser.role==='teacher') nav = teacherNav;
   else if(currentUser.role==='student') nav = studentNav;
   else                                   nav = parentNav;
   // Filter: skip section headers, skip lesson if disabled
@@ -1925,9 +1970,31 @@ function updateMobileTaskbar(activeId){
 }
 
 function navigateTo(page){
-  // Защита маршрутов — ученик не может зайти на страницы администратора
+  // Map teacher page IDs to their admin equivalents for DOM activation
+  const TEACHER_PAGE_MAP = {
+    'teacher-content':   'content-admin',
+    'teacher-tests':     'tests-admin',
+    'teacher-hw':        'hw-admin',
+    'teacher-trial':     'trial-admin',
+    'teacher-taskbank':  'taskbank-admin',
+    'teacher-flashcards':'flashcards-admin',
+    'teacher-grades':    'grades-admin',
+    'teacher-chat':      'chat-admin',
+    'teacher-schedule':  'schedule-admin',
+    'teacher-attend':    'attend-pay-admin',
+    'teacher-reports':   'reports-admin',
+    'teacher-notif':     'notif-settings-admin',
+    'teacher-lesson':    'admin-lesson',
+  };
+  const domPage = TEACHER_PAGE_MAP[page] || page;
+  // Защита маршрутов — ученик/родитель не может зайти на страницы администратора
   if(ADMIN_PAGES.includes(page) && currentUser && currentUser.role !== 'admin'){
     showNotif('⛔ Нет доступа к этой странице');
+    return;
+  }
+  // Teacher pages — only teacher or admin
+  if(TEACHER_PAGES.includes(page) && currentUser && currentUser.role !== 'teacher' && currentUser.role !== 'admin'){
+    showNotif('⛔ Нет доступа');
     return;
   }
   // Admin cannot navigate to student-only pages
@@ -1935,7 +2002,7 @@ function navigateTo(page){
     'student-hw','student-trial','student-chat','student-grades','student-mistakes','student-taskbank',
     'student-payment','student-schedule','student-repeat','student-lesson',
     'student-notif-settings','student-goals','student-challenges','student-library','student-works','student-progress','student-settings'];
-  if(STUDENT_ONLY_PAGES.includes(page) && currentUser && currentUser.role === 'admin'){
+  if(STUDENT_ONLY_PAGES.includes(page) && currentUser && (currentUser.role === 'admin' || currentUser.role === 'teacher')){
     return;
   }
   // Parent role: block all pages except parent-dashboard and parent-settings
@@ -1950,7 +2017,7 @@ function navigateTo(page){
   }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  const el=document.getElementById('page-'+page);
+  const el=document.getElementById('page-'+domPage);
   if(el) el.classList.add('active');
   const nav=document.getElementById('nav-'+page);
   if(nav) nav.classList.add('active');
@@ -2008,6 +2075,29 @@ function renderPage(p){
   else if(p==='parent-settings') renderParentSettings();
   else if(p==='student-lesson') renderLesson('student');
   else if(p==='admin-lesson'){ const _ld=getLessonData(); if(_ld&&!_lessonActive){ _lessonActive=true; _lessonStart=_ld.startedAt||Date.now(); _lessonCode=_ld.code; } renderLesson('admin'); }
+  // ── TEACHER PAGES — reuse admin page elements ──
+  else if(p==='teachers') renderTeachersAdmin();
+  else if(p==='salary-admin') renderSalaryAdmin();
+  else if(p==='teacher-dashboard') renderTeacherDashboard();
+  else if(p==='teacher-content'){ buildStudentSelector('content-student-selector', ()=>renderContentAdmin()); renderContentAdmin(); }
+  else if(p==='teacher-tests'){ renderTestsAdmin(); renderOpenAnswers(); }
+  else if(p==='teacher-hw'){ renderHWAdmin(); renderHWOpenAnswers(); }
+  else if(p==='teacher-trial') renderTrialAdmin();
+  else if(p==='teacher-taskbank') renderTaskBankAdmin();
+  else if(p==='teacher-flashcards') renderFlashcardsAdmin();
+  else if(p==='teacher-grades') renderGradesAdmin();
+  else if(p==='teacher-chat') renderChatAdmin();
+  else if(p==='teacher-schedule') renderScheduleAdmin();
+  else if(p==='teacher-attend'){
+    if(currentUser && currentUser.role==='teacher'){
+      renderAtpPage(); // renderAtpTab handles teacher role → renderTeacherAttendSummary
+    } else {
+      buildStudentSelector('atp-student-selector', ()=>renderAtpPage()); renderAtpPage();
+    }
+  }
+  else if(p==='teacher-reports') renderReportsAdmin();
+  else if(p==='teacher-notif') renderNotifSettingsAdmin();
+  else if(p==='teacher-lesson'){ const _ld=getLessonData(); if(_ld&&!_lessonActive){ _lessonActive=true; _lessonStart=_ld.startedAt||Date.now(); _lessonCode=_ld.code; } renderLesson('admin'); }
 }
 
 function getStudents(){ return (load('users')||[]).filter(u=>u.role==='student'); }
@@ -2143,7 +2233,7 @@ function renderStudents(){
   tb.innerHTML=students.map(s=>{
     const enrolled=(s.enrolledCourses||[]).map(id=>courseMap.get(id)).filter(Boolean);
     const coursesBadges = enrolled.length
-      ? enrolled.map(c=>`<span class="badge badge-green" style="font-size:0.68rem;margin-right:2px">${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'} ${esc(c.title)}</span>`).join('')
+      ? enrolled.map(c=>`<span class="badge badge-green" style="font-size:0.68rem;margin-right:2px">${subjectIcon(c.subject)} ${esc(c.title)}</span>`).join('')
       : s.subject
         ? `<span class="badge badge-blue" style="font-size:0.68rem">${esc(s.subject)}</span>`
         : '<span style="color:var(--text3);font-size:0.8rem">Не назначен</span>';
@@ -2494,7 +2584,7 @@ function openModal(id, extra){
         el.innerHTML = courses.map(c=>`
           <label class="chip-label">
             <input type="checkbox" value="${c.id}" onchange="this.closest('label').style.borderColor=this.checked?'var(--green-mid)':'var(--green-pale)'">
-            <span>${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'} ${esc(c.title)}</span>
+            <span>${subjectIcon(c.subject)} ${esc(c.title)}</span>
           </label>`).join('');
       }
     }
@@ -2532,7 +2622,27 @@ function openModal(id, extra){
       <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1.5px solid var(--green-pale);background:var(--white);cursor:pointer;font-size:0.82rem;font-weight:600;white-space:nowrap;flex-shrink:0;min-width:0;max-width:100%">
         <input type="checkbox" value="${s.id}" checked style="accent-color:var(--green-deep);flex-shrink:0;width:15px;height:15px"> <span style="white-space:nowrap">${esc(s.name)}</span>
       </label>`).join('');
+    // Populate teacher select
+    const teacherSel = document.getElementById('att-teacher');
+    if (teacherSel) {
+      const teachers = getTeachers();
+      teacherSel.innerHTML = '<option value="">— Не указан —</option>' +
+        teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+      if (currentUser && currentUser.role === 'teacher') teacherSel.value = currentUser.id;
+    }
     setTimeout(prefillAttendanceFromSlot, 50);
+  }
+  if(id==='modal-add-course'){
+    ['nc-title','nc-subject','nc-price','nc-desc'].forEach(f=>{
+      const el=document.getElementById(f); if(el) el.value='';
+    });
+    const dl = document.getElementById('nc-subject-datalist');
+    if(dl){
+      const existing = [...new Set((load('courses')||[]).map(c=>c.subject).filter(Boolean))];
+      const defaults = ['Биология','Химия','Математика','Физика','Русский язык','История','Английский язык','Информатика','География','Обществознание'];
+      const all = [...new Set([...defaults, ...existing])];
+      dl.innerHTML = all.map(s=>`<option value="${esc(s)}">`).join('');
+    }
   }
   const _openEl = document.getElementById(id);
   if(_openEl){
@@ -3806,7 +3916,7 @@ function openEditStudent(id){
       el.innerHTML = courses.map(c=>`
         <label class="chip-label" style="border-color:${enrolled.includes(c.id)?'var(--green-mid)':'var(--green-pale)'}">
           <input type="checkbox" value="${c.id}" ${enrolled.includes(c.id)?'checked':''} onchange="this.closest('label').style.borderColor=this.checked?'var(--green-mid)':'var(--green-pale)'">
-          <span>${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'} ${esc(c.title)}</span>
+          <span>${subjectIcon(c.subject)} ${esc(c.title)}</span>
         </label>`).join('');
     }
   }
@@ -4691,7 +4801,7 @@ function renderScheduleAdmin(){
   const users=load('users')||[];
   document.getElementById('courses-admin-list').innerHTML=courses.map(c=>`
     <div class="content-item">
-      <div class="content-icon">${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'}</div>
+      <div class="content-icon">${subjectIcon(c.subject)}</div>
       <div class="content-info">
         <div class="content-name">${esc(c.title)}</div>
         <div class="content-meta">${c.subject} · ${{individual:'Индивидуальный',group:'Групповой',pair:'Парный'}[c.format]} · ${c.price}₽</div>
@@ -4728,6 +4838,21 @@ function renderScheduleAdmin(){
       </div>
     </div>`;
   }).join('') || '<div class="empty-state"><p>Нет заявок</p></div>';
+}
+function subjectIcon(s){
+  if(!s) return '📚';
+  const sl=s.toLowerCase();
+  if(sl.includes('биолог')) return '🌿';
+  if(sl.includes('хим')) return '⚗️';
+  if(sl.includes('матем') || sl.includes('алгебр') || sl.includes('геометр')) return '📐';
+  if(sl.includes('физ')) return '⚡';
+  if(sl.includes('русск') || sl.includes('литер')) return '📖';
+  if(sl.includes('истор')) return '🏛️';
+  if(sl.includes('англ') || sl.includes('немецк') || sl.includes('франц') || sl.includes('иностр')) return '🌍';
+  if(sl.includes('информ')) return '💻';
+  if(sl.includes('геогр')) return '🗺️';
+  if(sl.includes('общест')) return '⚖️';
+  return '📚';
 }
 function saveCourse(){
   const title=document.getElementById('nc-title').value;
@@ -6712,7 +6837,7 @@ function buildProfileHTML(u, isAdmin){
   const enrolled=(u.enrolledCourses||[]).map(id=>courses.find(c=>c.id===id)).filter(Boolean);
   const coursesBadgesHtml = enrolled.length
     ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">`+
-        enrolled.map(c=>`<span class="badge badge-green">${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'} ${esc(c.title)}</span>`).join('')+
+        enrolled.map(c=>`<span class="badge badge-green">${subjectIcon(c.subject)} ${esc(c.title)}</span>`).join('')+
       `</div>`
     : (u.subject ? `<span class="badge badge-blue" style="margin-top:8px;display:inline-block">${esc(u.subject)}</span>` : '');
   return `
@@ -6989,7 +7114,7 @@ function _renderStudentCourseProgress(sid) {
     const pct       = Math.round(done / total * 100);
 
     const colorClass = pct >= 80 ? '#27ae60' : pct >= 40 ? 'var(--gold)' : 'var(--green-mid)';
-    const icon = course.subject === 'Биология' ? '🌿' : course.subject === 'Химия' ? '⚗️' : '🧬';
+    const icon = subjectIcon(course.subject);
 
     return `
     <div style="background:var(--card);border-radius:var(--radius);padding:16px 20px;box-shadow:var(--shadow);border:1px solid var(--green-xpale);margin-bottom:12px">
@@ -7078,7 +7203,7 @@ async function sendParentTelegramNotif(pid, type, text){
   const parent = users.find(u=>u.id===pid);
   const student = parent ? users.find(u=>u.id===parent.linkedStudentId) : null;
   const name = student ? student.name : 'Ученик';
-  const msg = `👨‍👩‍👧 *BioХим* — ${name}\n\n${text}`;
+  const msg = `👨‍👩‍👧 *Осмос* — ${name}\n\n${text}`;
   try{
     await tgApiCall('sendMessage', { chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' });
   } catch(e){ }
@@ -8956,12 +9081,12 @@ function buildStudentICS(sid) {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//BioХим//Репетитор//RU',
+    'PRODID:-//Осмос//Репетитор//RU',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    `X-WR-CALNAME:BioХим — ${_icsEsc(sName)}`,
+    `X-WR-CALNAME:Осмос — ${_icsEsc(sName)}`,
     'X-WR-TIMEZONE:Europe/Moscow',
-    'X-WR-CALDESC:Расписание занятий BioХим',
+    'X-WR-CALDESC:Расписание занятий Осмос',
   ];
 
   // ── 1. Recurring weekly events from schedule slots
@@ -9069,10 +9194,10 @@ function buildAdminICS() {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//BioХим//Репетитор//RU',
+    'PRODID:-//Осмос//Репетитор//RU',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:BioХим — Расписание (все)',
+    'X-WR-CALNAME:Осмос — Расписание (все)',
     'X-WR-TIMEZONE:Europe/Moscow',
   ];
 
@@ -9330,7 +9455,7 @@ function renderStudentSchedule(){
   myCourses.map(c=>`
     <div class="course-card">
       <div class="course-header ${c.subject==='Биология'?'course-bio':c.subject==='Химия'?'course-chem':'course-combined'}">
-        ${c.subject==='Биология'?'🌿':c.subject==='Химия'?'⚗️':'🧬'}
+        ${subjectIcon(c.subject)}
       </div>
       <div class="course-body">
         <div class="course-name">${esc(c.title)}</div>
@@ -10542,12 +10667,13 @@ function _loadingDone(){
         if(resetBtn) resetBtn.style.display = user.role==='admin' ? 'block' : 'none';
         // hide chat badge for parent
         if(user.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
+        initDarkTheme(); // FIX: was missing — dark theme wasn't restored on auto-login
         buildNav();
         subscribeRealtime();
         // Загружаем пользовательские данные из Firebase в кэш + одноразовая миграция из localStorage
         await runLocalStorageMigration(user);
         await preloadUserData(user);
-        const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
+        const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='teacher' ? 'teacher-dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
         const lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
         navigateTo(lastPage);
       } else {
@@ -11726,10 +11852,10 @@ function addNotif(studentId, {type, text, nav}){
   // Web Push (встроено сюда чтобы избежать рекурсии через _origAddNotif)
   if (typeof wpIsEnabled === 'function' && wpIsEnabled(studentId)) {
     if (document.visibilityState === 'hidden') {
-      wpShowDirect('BioХим', text, nav);
+      wpShowDirect('Осмос', text, nav);
     }
     if (currentUser && currentUser.role === 'admin') {
-      wpSendToStudent(studentId, 'BioХим', text, nav);
+      wpSendToStudent(studentId, 'Осмос', text, nav);
     }
   }
 }
@@ -11743,7 +11869,7 @@ async function sendTelegramNotif(sid, type, text){
 
   const student = getStudents().find(s=>s.id===sid);
   const name = student ? student.name : 'Ученик';
-  const msg = `📚 *BioХим* — ${name}\n\n${text}`;
+  const msg = `📚 *Осмос* — ${name}\n\n${text}`;
 
   try{
     await tgApiCall('sendMessage', { chat_id: settings.tgChatId, text: msg, parse_mode:'Markdown' });
@@ -12025,6 +12151,10 @@ function renderAtpPage(){
 }
 
 function renderAtpTab(){
+  if(currentUser && currentUser.role === 'teacher'){
+    renderTeacherAttendSummary();
+    return;
+  }
   if(_atpTab==='attendance') renderAtpAttendance();
   else if(_atpTab==='wallet') renderAtpWallet();
   else if(_atpTab==='payments') renderPaymentAdmin();
@@ -12271,9 +12401,12 @@ function saveAttendance(){
   const group = document.getElementById('att-group').value.trim();
   const cost  = +(document.getElementById('att-cost').value)||0;
   const slotId = document.getElementById('att-slot-id')?.value || null;
+  const teacherEl = document.getElementById('att-teacher');
+  const teacherId = teacherEl ? (teacherEl.value || null) : null;
   if(!date){ showNotif('Укажите дату'); return; }
   const checks = document.querySelectorAll('#att-student-checks input[type=checkbox]:checked');
   if(!checks.length){ showNotif('Выберите хотя бы одного ученика'); return; }
+  const studentIds = [...checks].map(cb => cb.value);
   const lessonId = 'les_'+Date.now();
   const att = load('attendance')||[];
   let _attIdCounter = 0;
@@ -12281,6 +12414,8 @@ function saveAttendance(){
     att.push({
       id:'att_'+Date.now()+'_'+(++_attIdCounter)+'_'+cb.value,
       lessonId, studentId:cb.value,
+      studentIds, // save all students in lesson for salary calc
+      teacherId: teacherId || null,
       date, time, topic, group,
       costPerStudent: cost,
       slotId: slotId || null,
@@ -13299,7 +13434,7 @@ async function wpSubscribe() {
     renderNotifSettingsStudent();
 
     // Показываем тест через SW напрямую
-    setTimeout(() => wpShowDirect('BioХим', '🔔 Web Push подключён! Уведомления придут даже при закрытом сайте.', ''), 600);
+    setTimeout(() => wpShowDirect('Осмос', '🔔 Web Push подключён! Уведомления придут даже при закрытом сайте.', ''), 600);
 
   } catch (err) {
     showNotif('❌ Ошибка подписки: ' + err.message);
@@ -13326,7 +13461,7 @@ async function wpShowDirect(title, body, nav) {
   if (!('serviceWorker' in navigator)) return;
   try {
     const reg = await navigator.serviceWorker.ready;
-    await reg.showNotification(title || 'BioХим', {
+    await reg.showNotification(title || 'Осмос', {
       body,
       icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232d6a4f'/%3E%3Ctext x='90' y='130' text-anchor='middle' font-family='Georgia,serif' font-size='96' font-weight='700' fill='white'%3EB%3C/text%3E%3C/svg%3E",
       tag: nav || 'biohim',
@@ -13350,7 +13485,7 @@ async function wpSendToStudent(sid, title, body, nav) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subscription,
-        payload: JSON.stringify({ title: title || 'BioХим', body, nav: nav || '' })
+        payload: JSON.stringify({ title: title || 'Осмос', body, nav: nav || '' })
       })
     });
   } catch (e) { }
@@ -13370,7 +13505,7 @@ function wpB64uToUint8(b64u) {
 async function testWebPush() {
   const sid = currentUser?.id;
   if (!wpIsEnabled(sid)) { showNotif('Web Push не включён'); return; }
-  await wpShowDirect('BioХим — тест', '🔔 Web Push работает! Уведомления приходят. ✅', '');
+  await wpShowDirect('Осмос — тест', '🔔 Web Push работает! Уведомления приходят. ✅', '');
   showNotif('✅ Тестовое уведомление отправлено');
 }
 
@@ -14300,4 +14435,513 @@ function saveStudentGoals() {
   _saveGoals(sid, goals);
   showNotif('✅ Цель сохранена!');
   renderStudentGoals();
+}
+
+// ═══════════════════════════════════════════════
+// TEACHER MANAGEMENT (Admin)
+// ═══════════════════════════════════════════════
+
+function getTeachers() {
+  return (load('users') || []).filter(u => u.role === 'teacher');
+}
+
+function renderTeachersAdmin() {
+  const pageEl = document.getElementById('page-teachers');
+  if (!pageEl) return;
+  const teachers = getTeachers();
+  pageEl.innerHTML = `
+    <div class="page-title">👨‍🏫 Преподаватели</div>
+    <div class="page-sub">Управление преподавателями и их доступом</div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>Список преподавателей</div>
+      <div class="inline-actions" style="margin-top:0;margin-bottom:16px">
+        <button class="btn btn-green" onclick="openAddTeacherModal()">＋ Добавить преподавателя</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Имя</th><th>Логин</th><th>Телефон / Email</th><th>Предмет</th><th>Ставка (₽/ч)</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="teachers-table">${_renderTeachersRows(teachers)}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function _renderTeachersRows(teachers) {
+  if (!teachers.length) return '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Нет преподавателей</td></tr>';
+  return teachers.map(t => `
+    <tr>
+      <td><b>${esc(t.name)}</b></td>
+      <td><code style="font-size:0.82rem">${esc(t.login)}</code></td>
+      <td>
+        ${t.phone ? `<div style="font-size:0.82rem">📞 ${esc(t.phone)}</div>` : ''}
+        ${t.email ? `<div style="font-size:0.78rem;color:var(--text3)">${esc(t.email)}</div>` : ''}
+      </td>
+      <td>${t.subject ? `<span class="badge badge-green">${esc(t.subject)}</span>` : '—'}</td>
+      <td><b style="color:var(--green-deep)">${t.hourlyRate ? t.hourlyRate + ' ₽' : '—'}</b></td>
+      <td><span class="badge ${t.active !== false ? 'badge-green' : 'badge-red'}">${t.active !== false ? 'Активен' : 'Неактивен'}</span></td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="openEditTeacherModal('${t.id}')">✏️ Изменить</button>
+        <button class="btn btn-red btn-sm" onclick="deleteTeacher('${t.id}')">🗑</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openAddTeacherModal() {
+  // Create modal dynamically
+  let m = document.getElementById('modal-add-teacher');
+  if (!m) {
+    m = document.createElement('div');
+    m.className = 'drawer-bg';
+    m.id = 'modal-add-teacher';
+    m.onclick = function(e) { if (e.target === this) closeModal('modal-add-teacher'); };
+    m.innerHTML = `
+      <div class="drawer">
+        <div class="drawer-header">
+          <div class="drawer-title">➕ Новый преподаватель</div>
+          <button class="drawer-close" onclick="closeModal('modal-add-teacher')">✕</button>
+        </div>
+        <div class="drawer-body">
+          <div class="drawer-section">👤 Персональные данные</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="margin:0"><label>Полное имя</label><input id="nt-name" placeholder="Иван Иванов"></div>
+            <div class="form-group" style="margin:0"><label>Предмет</label><input id="nt-subject" placeholder="Биология, Химия..."></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div class="form-group" style="margin:0"><label>Телефон</label><input id="nt-phone" placeholder="+7 900 000-00-00"></div>
+            <div class="form-group" style="margin:0"><label>Email</label><input id="nt-email" type="email" placeholder="teacher@mail.ru"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div class="form-group" style="margin:0"><label>Ставка (₽/час)</label><input id="nt-rate" type="number" min="0" placeholder="1500"></div>
+            <div class="form-group" style="margin:0"><label>Формат оплаты</label>
+              <select id="nt-paymode">
+                <option value="hourly">За час</option>
+                <option value="lesson">За занятие</option>
+                <option value="fixed">Фиксированная</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:12px"><label>Заметки</label><textarea id="nt-notes" rows="2" placeholder="Необязательно..."></textarea></div>
+          <div class="drawer-section">🔐 Доступ к платформе</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="margin:0"><label>Логин</label><input id="nt-login" placeholder="teacher_ivan"></div>
+            <div class="form-group" style="margin:0"><label>Пароль</label><input id="nt-pass" type="password" placeholder="••••••"></div>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn btn-green" onclick="addTeacher()">✅ Сохранить преподавателя</button>
+          <button class="btn btn-outline" onclick="closeModal('modal-add-teacher')">Отмена</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+  }
+  openModal('modal-add-teacher');
+}
+
+async function addTeacher() {
+  const name = document.getElementById('nt-name').value.trim();
+  const login = document.getElementById('nt-login').value.trim();
+  const pass = document.getElementById('nt-pass').value;
+  if (!name || !login || !pass) { showNotif('Заполните имя, логин и пароль'); return; }
+  if (!/^[a-zA-Z0-9_]{2,32}$/.test(login)) { showNotif('Логин: только буквы, цифры, _ (2–32 символа)'); return; }
+  const users = load('users') || [];
+  if (users.find(u => u.login === login)) { showNotif('Логин уже занят'); return; }
+  const passwordHash = await hashPassword(pass);
+  const teacher = {
+    id: 't_' + Date.now(),
+    login, passwordHash, name, role: 'teacher',
+    subject: document.getElementById('nt-subject').value.trim(),
+    phone: document.getElementById('nt-phone').value.trim(),
+    email: document.getElementById('nt-email').value.trim(),
+    hourlyRate: parseFloat(document.getElementById('nt-rate').value) || 0,
+    payMode: document.getElementById('nt-paymode').value,
+    notes: document.getElementById('nt-notes').value.trim(),
+    active: true,
+  };
+  users.push(teacher);
+  save('users', users);
+  closeModal('modal-add-teacher');
+  renderTeachersAdmin();
+  showNotif(`✅ Преподаватель ${name} добавлен`);
+}
+
+function openEditTeacherModal(tid) {
+  const users = load('users') || [];
+  const t = users.find(u => u.id === tid);
+  if (!t) return;
+  let m = document.getElementById('modal-edit-teacher');
+  if (!m) {
+    m = document.createElement('div');
+    m.className = 'drawer-bg';
+    m.id = 'modal-edit-teacher';
+    m.onclick = function(e) { if (e.target === this) closeModal('modal-edit-teacher'); };
+    m.innerHTML = `
+      <div class="drawer">
+        <div class="drawer-header">
+          <div class="drawer-title">✏️ Редактировать преподавателя</div>
+          <button class="drawer-close" onclick="closeModal('modal-edit-teacher')">✕</button>
+        </div>
+        <div class="drawer-body">
+          <input type="hidden" id="et-tid">
+          <div class="drawer-section">👤 Персональные данные</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="margin:0"><label>Полное имя</label><input id="et-tname" placeholder="Иван Иванов"></div>
+            <div class="form-group" style="margin:0"><label>Предмет</label><input id="et-tsubject" placeholder="Биология, Химия..."></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div class="form-group" style="margin:0"><label>Телефон</label><input id="et-tphone"></div>
+            <div class="form-group" style="margin:0"><label>Email</label><input id="et-temail" type="email"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div class="form-group" style="margin:0"><label>Ставка (₽/час)</label><input id="et-trate" type="number" min="0"></div>
+            <div class="form-group" style="margin:0"><label>Формат оплаты</label>
+              <select id="et-tpaymode">
+                <option value="hourly">За час</option>
+                <option value="lesson">За занятие</option>
+                <option value="fixed">Фиксированная</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:12px"><label>Заметки</label><textarea id="et-tnotes" rows="2"></textarea></div>
+          <div class="drawer-section">🔐 Доступ</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="margin:0"><label>Логин</label><input id="et-tlogin" readonly style="opacity:0.6;cursor:not-allowed"></div>
+            <div class="form-group" style="margin:0"><label>Новый пароль <span style="font-weight:400;color:var(--text3)">(пусто = не менять)</span></label><input id="et-tpass" type="password" placeholder="••••••"></div>
+          </div>
+          <div class="form-group" style="margin-top:12px"><label>Статус</label>
+            <select id="et-tactive"><option value="true">Активен</option><option value="false">Неактивен</option></select>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn btn-green" onclick="saveEditTeacher()">💾 Сохранить</button>
+          <button class="btn btn-outline" onclick="closeModal('modal-edit-teacher')">Отмена</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('et-tid').value = t.id;
+  document.getElementById('et-tname').value = t.name || '';
+  document.getElementById('et-tsubject').value = t.subject || '';
+  document.getElementById('et-tphone').value = t.phone || '';
+  document.getElementById('et-temail').value = t.email || '';
+  document.getElementById('et-trate').value = t.hourlyRate || '';
+  document.getElementById('et-tpaymode').value = t.payMode || 'hourly';
+  document.getElementById('et-tnotes').value = t.notes || '';
+  document.getElementById('et-tlogin').value = t.login || '';
+  document.getElementById('et-tactive').value = String(t.active !== false);
+  openModal('modal-edit-teacher');
+}
+
+async function saveEditTeacher() {
+  const tid = document.getElementById('et-tid').value;
+  const users = load('users') || [];
+  const idx = users.findIndex(u => u.id === tid);
+  if (idx < 0) return;
+  const t = users[idx];
+  t.name = document.getElementById('et-tname').value.trim();
+  t.subject = document.getElementById('et-tsubject').value.trim();
+  t.phone = document.getElementById('et-tphone').value.trim();
+  t.email = document.getElementById('et-temail').value.trim();
+  t.hourlyRate = parseFloat(document.getElementById('et-trate').value) || 0;
+  t.payMode = document.getElementById('et-tpaymode').value;
+  t.notes = document.getElementById('et-tnotes').value.trim();
+  t.active = document.getElementById('et-tactive').value === 'true';
+  const newPass = document.getElementById('et-tpass').value;
+  if (newPass) t.passwordHash = await hashPassword(newPass);
+  save('users', users);
+  closeModal('modal-edit-teacher');
+  renderTeachersAdmin();
+  showNotif('✅ Данные преподавателя обновлены');
+}
+
+function deleteTeacher(tid) {
+  if (!confirm('Удалить преподавателя?')) return;
+  save('users', (load('users') || []).filter(u => u.id !== tid));
+  renderTeachersAdmin();
+  showNotif('🗑 Преподаватель удалён');
+}
+
+// ═══════════════════════════════════════════════
+// TEACHER DASHBOARD
+// ═══════════════════════════════════════════════
+
+function renderTeacherDashboard() {
+  const pageEl = document.getElementById('page-teacher-dashboard');
+  if (!pageEl) return;
+  const students = getStudents();
+  const att = load('attendance') || [];
+  const now = new Date();
+  const curM = now.getMonth();
+  const curY = now.getFullYear();
+  const thisMonthAtt = att.filter(a => {
+    const d = new Date(a.date);
+    return d.getMonth() === curM && d.getFullYear() === curY;
+  });
+  pageEl.innerHTML = `
+    <div class="page-title">Панель преподавателя</div>
+    <div class="page-sub">Добро пожаловать, ${esc(currentUser.name)}!</div>
+    <div class="welcome-banner">
+      <div>
+        <div class="welcome-title">Здравствуйте, ${esc(currentUser.name)}! 👋</div>
+        <div class="welcome-sub">Управляйте учениками, материалами и занятиями</div>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-bottom:20px">
+      <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num">${students.length}</div><div class="stat-label">Учеников</div></div>
+      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-num">${thisMonthAtt.length}</div><div class="stat-label">Занятий в этом месяце</div></div>
+      <div class="stat-card"><div class="stat-icon">📚</div><div class="stat-num">${(load('content')||[]).filter(c=>c.type==='theory').length}</div><div class="stat-label">Материалов</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📅 Последние занятия</div>
+      <div>${att.slice(-5).reverse().map(a=>`
+        <div class="att-row att-present" style="margin-bottom:8px">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:0.9rem">${esc(a.topic||'Занятие')}</div>
+            <div style="font-size:0.78rem;color:var(--text3)">${a.date} ${a.time||''} · ${(a.studentIds||[a.studentId]).map(sid=>{const s=students.find(x=>x.id===sid);return s?esc(s.name):'?';}).join(', ')}</div>
+          </div>
+          ${a.costPerStudent?`<span class="att-cost-badge">💰 ${a.costPerStudent}₽/уч.</span>`:''}
+        </div>`).join('') || '<div class="empty-state"><p>Нет занятий</p></div>'}
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// SALARY ADMIN — расчёт зарплаты преподавателей
+// ═══════════════════════════════════════════════
+
+function renderSalaryAdmin() {
+  let pageEl = document.getElementById('page-salary-admin');
+  if (!pageEl) return;
+  const teachers = getTeachers();
+  const att = load('attendance') || [];
+  const now = new Date();
+  const curY = now.getFullYear();
+  const curM = now.getMonth(); // 0-based
+
+  // Month selector
+  const months = [];
+  for (let y = curY; y >= curY - 1; y--) {
+    for (let m = 11; m >= 0; m--) {
+      if (y === curY && m > curM) continue;
+      months.push({ y, m });
+      if (months.length >= 12) break;
+    }
+    if (months.length >= 12) break;
+  }
+  const selM = parseInt(pageEl.dataset.selM ?? curM);
+  const selY = parseInt(pageEl.dataset.selY ?? curY);
+
+  const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  // Filter attendance for selected month
+  const monthAtt = att.filter(a => {
+    const d = new Date(a.date);
+    return d.getFullYear() === selY && d.getMonth() === selM;
+  });
+
+  // Build salary rows — lessons done by each teacher
+  // Attendance records can have teacherId or we treat all admin-created records
+  // For simplicity: any lesson in attendance = 1 lesson. If teacher assigned, credit them.
+  function teacherLessons(tid) {
+    return monthAtt.filter(a => a.teacherId === tid || (!a.teacherId && currentUser && currentUser.id === tid));
+  }
+  function calcSalary(t, lessons) {
+    const count = lessons.length;
+    const totalCost = lessons.reduce((s, a) => s + (parseFloat(a.costPerStudent || 0) * (a.studentIds ? a.studentIds.length : 1)), 0);
+    let salary = 0;
+    if (t.payMode === 'lesson') salary = count * (t.hourlyRate || 0);
+    else if (t.payMode === 'fixed') salary = t.hourlyRate || 0;
+    else salary = count * (t.hourlyRate || 0); // hourly = per lesson for simplicity
+    return { count, totalCost, salary };
+  }
+
+  const rows = teachers.map(t => {
+    const lessons = teacherLessons(t.id);
+    const { count, totalCost, salary } = calcSalary(t, lessons);
+    const paid = ((load('salary_payments') || []).find(sp => sp.teacherId === t.id && sp.month === `${selY}-${String(selM+1).padStart(2,'0')}`) || {}).paid;
+    return { t, lessons, count, totalCost, salary, paid };
+  });
+
+  const totalSalary = rows.reduce((s, r) => s + r.salary, 0);
+  const totalLessons = rows.reduce((s, r) => s + r.count, 0);
+
+  pageEl.innerHTML = `
+    <div class="page-title">💵 Зарплата преподавателей</div>
+    <div class="page-sub">Расчёт по проведённым занятиям</div>
+
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+      <label style="font-weight:700;color:var(--text2)">Период:</label>
+      <select id="salary-month-sel" onchange="changeSalaryMonth(this.value)" style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.92rem;background:var(--bg)">
+        ${months.map(({y,m})=>`<option value="${y}-${m}" ${y===selY&&m===selM?'selected':''}>${MONTH_NAMES[m]} ${y}</option>`).join('')}
+      </select>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+      <div class="stat-card"><div class="stat-icon">👨‍🏫</div><div class="stat-num">${teachers.length}</div><div class="stat-label">Преподавателей</div></div>
+      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-num">${totalLessons}</div><div class="stat-label">Уроков проведено</div></div>
+      <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num">${totalSalary.toLocaleString('ru')} ₽</div><div class="stat-label">К выплате</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>Расчёт зарплаты — ${MONTH_NAMES[selM]} ${selY}</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Преподаватель</th><th>Ставка</th><th>Уроков</th><th>Доход с занятий</th><th>Зарплата</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(r => `
+              <tr>
+                <td>
+                  <b>${esc(r.t.name)}</b>
+                  ${r.t.subject?`<div style="font-size:0.74rem;color:var(--text3)">${esc(r.t.subject)}</div>`:''}
+                </td>
+                <td>
+                  <span style="font-weight:600">${r.t.hourlyRate||0} ₽</span>
+                  <div style="font-size:0.72rem;color:var(--text3)">${r.t.payMode==='lesson'?'за занятие':r.t.payMode==='fixed'?'фикс.':'за урок'}</div>
+                </td>
+                <td style="text-align:center;font-weight:700;font-size:1.05rem">${r.count}</td>
+                <td style="color:var(--green-deep);font-weight:600">${r.totalCost.toLocaleString('ru')} ₽</td>
+                <td style="font-weight:800;font-size:1.1rem;color:var(--accent)">${r.salary.toLocaleString('ru')} ₽</td>
+                <td>
+                  ${r.paid
+                    ? '<span class="badge badge-green">✅ Выплачено</span>'
+                    : '<span class="badge badge-red">❌ Не выплачено</span>'}
+                </td>
+                <td>
+                  <button class="btn btn-${r.paid?'outline':'green'} btn-sm" onclick="toggleSalaryPaid('${r.t.id}','${selY}-${String(selM+1).padStart(2,'0')}',${!r.paid})">
+                    ${r.paid ? '↩ Отменить' : '✅ Выплатить'}
+                  </button>
+                  <button class="btn btn-outline btn-sm" onclick="showSalaryDetail('${r.t.id}','${selY}','${selM}')">📋 Детали</button>
+                </td>
+              </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Нет преподавателей</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Salary Detail Modal placeholder -->
+    <div id="salary-detail-popup" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(27,67,50,0.4);align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--white);border-radius:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;padding:32px;box-shadow:0 16px 60px rgba(27,67,50,0.22);position:relative">
+        <button onclick="document.getElementById('salary-detail-popup').style.display='none'" style="position:absolute;top:14px;right:16px;font-size:1.3rem;background:none;border:none;cursor:pointer;color:var(--text3)">✕</button>
+        <div id="salary-detail-body"></div>
+      </div>
+    </div>`;
+}
+
+window.changeSalaryMonth = function(val) {
+  const [y, m] = val.split('-').map(Number);
+  const pageEl = document.getElementById('page-salary-admin');
+  if (pageEl) { pageEl.dataset.selM = m; pageEl.dataset.selY = y; }
+  renderSalaryAdmin();
+};
+
+window.toggleSalaryPaid = function(tid, monthKey, paid) {
+  const sp = load('salary_payments') || [];
+  const idx = sp.findIndex(x => x.teacherId === tid && x.month === monthKey);
+  if (idx >= 0) sp[idx].paid = paid;
+  else sp.push({ teacherId: tid, month: monthKey, paid, paidAt: Date.now() });
+  save('salary_payments', sp);
+  renderSalaryAdmin();
+  showNotif(paid ? '✅ Зарплата отмечена как выплаченная' : '↩ Статус сброшен');
+};
+
+window.showSalaryDetail = function(tid, y, m) {
+  const teacher = (load('users') || []).find(u => u.id === tid);
+  if (!teacher) return;
+  const att = load('attendance') || [];
+  const lessons = att.filter(a => {
+    const d = new Date(a.date);
+    return d.getFullYear() === parseInt(y) && d.getMonth() === parseInt(m) && a.teacherId === tid;
+  });
+  const students = getStudents();
+  const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const body = document.getElementById('salary-detail-body');
+  body.innerHTML = `
+    <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--accent);margin-bottom:4px">📋 Детали — ${esc(teacher.name)}</div>
+    <div style="font-size:0.82rem;color:var(--text3);margin-bottom:16px">${MONTH_NAMES[parseInt(m)]} ${y} · ${lessons.length} занятий</div>
+    ${lessons.length ? lessons.map((a,i) => {
+      const sNames = (a.studentIds||[a.studentId]).map(sid=>{const s=students.find(x=>x.id===sid);return s?esc(s.name):'?';}).join(', ');
+      const cost = parseFloat(a.costPerStudent||0) * (a.studentIds?a.studentIds.length:1);
+      return `<div class="att-row att-present" style="margin-bottom:8px">
+        <div style="width:24px;text-align:center;color:var(--text3);font-size:0.8rem">${i+1}</div>
+        <div style="flex:1">
+          <div style="font-weight:600">${esc(a.topic||'Занятие')}</div>
+          <div style="font-size:0.78rem;color:var(--text3)">${a.date} ${a.time||''}</div>
+          <div style="font-size:0.78rem;color:var(--text3)">👥 ${sNames}</div>
+        </div>
+        <div style="text-align:right">
+          ${cost?`<div style="font-weight:700;color:var(--green-deep)">${cost}₽</div>`:''}
+          ${a.costPerStudent?`<div style="font-size:0.72rem;color:var(--text3)">${a.costPerStudent}₽/уч.</div>`:''}
+        </div>
+      </div>`;
+    }).join('') : '<div class="empty-state"><p>Нет занятий за этот период</p></div>'}
+    <div style="margin-top:16px;padding:14px;background:var(--green-xpale);border-radius:12px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:700">Итого к выплате:</span>
+      <span style="font-size:1.3rem;font-weight:900;color:var(--green-deep)">${(lessons.length*(teacher.hourlyRate||0)).toLocaleString('ru')} ₽</span>
+    </div>`;
+  document.getElementById('salary-detail-popup').style.display = 'flex';
+};
+
+
+// ═══════════════════════════════════════════════
+// TEACHER — ATTEND PAGE (итоговые уроки + оплата)
+// ═══════════════════════════════════════════════
+// renderTeacherAttendSummary is called from renderAtpTab when role=teacher
+
+function renderTeacherAttendSummary() {
+  const tid = currentUser.id;
+  const att = (load('attendance') || []).filter(a => a.teacherId === tid);
+  const students = getStudents();
+  const now = new Date();
+  const curM = now.getMonth();
+  const curY = now.getFullYear();
+  const thisMonth = att.filter(a => { const d=new Date(a.date); return d.getMonth()===curM&&d.getFullYear()===curY; });
+  const totalLessons = att.length;
+  const totalThisMonth = thisMonth.length;
+  const totalEarned = thisMonth.reduce((s,a)=>s+(parseFloat(a.costPerStudent||0)*(a.studentIds?a.studentIds.length:1)),0);
+
+  // Unique lessons
+  const seen = new Set();
+  const uniqueLessons = att.filter(a => {
+    if (seen.has(a.lessonId)) return false;
+    seen.add(a.lessonId); return true;
+  }).sort((a,b) => b.date.localeCompare(a.date));
+
+  // Find salary payments for this teacher
+  const salaryPmts = load('salary_payments') || [];
+
+  // Try rendering into the attend-pay page wrapper
+  const pageWrap = document.getElementById('page-attend-pay-admin');
+  const container = pageWrap || document.getElementById('atp-tab-attendance');
+  if (!container) return;
+
+  const html = `
+    ${pageWrap ? '<div class="page-title">📅 Мои занятия и оплата</div><div class="page-sub">Проведённые уроки и статус выплат</div>' : ''}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px">
+      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-num">${totalLessons}</div><div class="stat-label">Всего занятий</div></div>
+      <div class="stat-card"><div class="stat-icon">🗓</div><div class="stat-num">${totalThisMonth}</div><div class="stat-label">В этом месяце</div></div>
+      <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num">${totalEarned.toLocaleString('ru')} ₽</div><div class="stat-label">Доход за месяц</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📋 Проведённые уроки</div>
+      <div style="margin-bottom:12px">
+        <button class="btn btn-green btn-sm" onclick="openModal('modal-add-attendance')">＋ Добавить занятие</button>
+      </div>
+      ${uniqueLessons.length ? uniqueLessons.map(a => {
+        const sNames = (a.studentIds||[a.studentId]).map(sid=>{const s=students.find(x=>x.id===sid);return s?esc(s.name):'?';}).join(', ');
+        const lessonCost = parseFloat(a.costPerStudent||0) * (a.studentIds?a.studentIds.length:1);
+        const monthKey = `${new Date(a.date).getFullYear()}-${String(new Date(a.date).getMonth()+1).padStart(2,'0')}`;
+        const sp = salaryPmts.find(x=>x.teacherId===tid && x.month===monthKey);
+        return `<div class="att-row att-present" style="margin-bottom:8px">
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:0.92rem">${esc(a.topic||'Занятие')}</div>
+            <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">${a.date} ${a.time||''}</div>
+            <div style="font-size:0.78rem;color:var(--text2);margin-top:2px">👥 ${sNames}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            ${lessonCost?`<div style="font-weight:700;color:var(--green-deep)">${lessonCost} ₽</div>`:''}
+            ${sp&&sp.paid?'<span class="salary-paid-badge" style="margin-top:4px;display:inline-block">✅ Оплачено</span>':'<span class="salary-unpaid-badge" style="margin-top:4px;display:inline-block">❌ Не выплачено</span>'}
+          </div>
+        </div>`;
+      }).join('') : '<div class="empty-state"><div class="big">📅</div><p>Нет занятий</p></div>'}
+    </div>`;
+  container.innerHTML = html;
 }
