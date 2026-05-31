@@ -2246,6 +2246,7 @@ function renderStudents(){
   const courseMap = new Map(courses.map(c => [c.id, c]));
 
   const tb=document.getElementById('students-table');
+  const teachers=getTeachers();
   tb.innerHTML=students.map(s=>{
     const enrolled=(s.enrolledCourses||[]).map(id=>courseMap.get(id)).filter(Boolean);
     const coursesBadges = enrolled.length
@@ -2253,6 +2254,7 @@ function renderStudents(){
       : s.subject
         ? `<span class="badge badge-blue" style="font-size:0.68rem">${esc(s.subject)}</span>`
         : '<span style="color:var(--text3);font-size:0.8rem">Не назначен</span>';
+    const teacher = s.teacherId ? teachers.find(t=>t.id===s.teacherId) : null;
     return `
     <tr>
       <td>
@@ -2266,6 +2268,12 @@ function renderStudents(){
       <td style="max-width:180px">
         <div style="display:flex;flex-wrap:wrap;gap:3px">${coursesBadges}</div>
         ${s.format?`<div style="font-size:0.74rem;color:var(--text3);margin-top:2px">${s.format}</div>`:''}
+      </td>
+      <td>
+        ${teacher
+          ? `<span class="badge badge-blue" style="cursor:pointer" onclick="openAssignTeacherToStudent('${s.id}')" title="Изменить">👨‍🏫 ${esc(teacher.name)}</span>`
+          : `<button class="btn btn-outline btn-sm" style="font-size:0.75rem;padding:4px 10px" onclick="openAssignTeacherToStudent('${s.id}')">＋ Назначить</button>`
+        }
       </td>
       <td>
         <span class="badge ${s.active?'badge-green':'badge-red'}">${s.active?'Активен':'Неактивен'}</span>
@@ -2284,8 +2292,53 @@ function renderStudents(){
         <button class="btn btn-red btn-sm" onclick="deleteStudent('${s.id}')">🗑</button>
         ${s.parentLogin?`<span style="font-size:0.72rem;color:var(--green-mid);display:block;margin-top:4px">👨‍👩‍👧 ${esc(s.parentLogin)}</span>`:`<button class="btn btn-outline btn-sm" style="margin-top:4px;font-size:0.72rem;padding:4px 10px" onclick="openEditStudent('${s.id}')">＋ Родитель</button>`}
       </td>
-    </tr>`}).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Нет учеников</td></tr>`;
+    </tr>`}).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--text3)">Нет учеников</td></tr>`;
   renderGroups();
+}
+
+// ── ASSIGN TEACHER TO STUDENT ──
+function openAssignTeacherToStudent(sid){
+  const s = getStudents().find(x=>x.id===sid);
+  if(!s) return;
+  const teachers = getTeachers();
+  let m = document.getElementById('modal-assign-teacher-student');
+  if(!m){
+    m = document.createElement('div');
+    m.className = 'modal-bg';
+    m.id = 'modal-assign-teacher-student';
+    m.onclick = function(e){ if(e.target===this) closeModal('modal-assign-teacher-student'); };
+    m.innerHTML = `<div class="modal" style="max-width:440px">
+      <div class="modal-title">👨‍🏫 Привязать преподавателя к ученику</div>
+      <span class="modal-close" onclick="closeModal('modal-assign-teacher-student')">✕</span>
+      <input type="hidden" id="ats-sid">
+      <div style="font-size:0.85rem;color:var(--text3);margin-bottom:14px" id="ats-student-name"></div>
+      <div class="form-group"><label>Преподаватель</label>
+        <select id="ats-teacher" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)"></select>
+      </div>
+      <button class="btn btn-green" onclick="saveAssignTeacherToStudent()">💾 Сохранить</button>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('ats-sid').value = sid;
+  document.getElementById('ats-student-name').textContent = `Ученик: ${s.name}`;
+  document.getElementById('ats-teacher').innerHTML =
+    '<option value="">— Не назначен —</option>' +
+    teachers.map(t=>`<option value="${t.id}" ${s.teacherId===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
+  openModal('modal-assign-teacher-student');
+}
+
+function saveAssignTeacherToStudent(){
+  const sid = document.getElementById('ats-sid').value;
+  const teacherId = document.getElementById('ats-teacher').value;
+  const users = load('users')||[];
+  const idx = users.findIndex(u=>u.id===sid);
+  if(idx<0) return;
+  users[idx].teacherId = teacherId;
+  save('users', users);
+  closeModal('modal-assign-teacher-student');
+  renderStudents();
+  const t = getTeachers().find(x=>x.id===teacherId);
+  showNotif(t ? `✅ Преподаватель ${t.name} привязан к ученику` : '✅ Привязка сброшена');
 }
 function getPaymentStatusBadge(sid){
   const payments=(load('payments')||[]).filter(p=>p.studentId===sid);
@@ -11580,6 +11633,8 @@ function getGroups(){ return load('groups') || []; }
 function renderGroups(){
   const groups = getGroups();
   const students = getStudents();
+  const teachers = getTeachers();
+  const courses = load('courses') || [];
   const el = document.getElementById('groups-list');
   if(!el) return;
   if(!groups.length){
@@ -11590,14 +11645,19 @@ function renderGroups(){
     const members = (g.memberIds||[]).map(id => students.find(s=>s.id===id)).filter(Boolean);
     const icon = g.type === 'pair' ? '🤝' : '👥';
     const label = g.type === 'pair' ? 'Пара' : 'Группа';
+    const teacher = g.teacherId ? teachers.find(t=>t.id===g.teacherId) : null;
+    const course  = g.courseId  ? courses.find(c=>c.id===g.courseId)   : null;
     return `<div class="content-item" style="flex-direction:column;align-items:stretch">
       <div style="display:flex;align-items:center;gap:12px">
         <div class="content-icon">${icon}</div>
         <div class="content-info" style="flex:1">
           <div class="content-name">${esc(g.name)}</div>
           <div class="content-meta">${label} · ${members.length} уч.: ${members.map(m=>m.name).join(', ')||'нет участников'}</div>
+          ${teacher ? `<div style="font-size:0.78rem;margin-top:3px;color:var(--green-deep)">👨‍🏫 ${esc(teacher.name)}</div>` : ''}
+          ${course  ? `<div style="font-size:0.78rem;margin-top:1px;color:var(--text3)">📚 ${esc(course.title)}</div>` : ''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-outline btn-sm" onclick="openAssignTeacherToGroup('${g.id}')" title="Привязать преподавателя">👨‍🏫</button>
           <button class="btn btn-outline btn-sm" onclick="openSendGroupModal('${g.id}')" title="Отправить материал группе">📤 Отправить</button>
           <button class="btn btn-outline btn-sm" onclick="openEditGroup('${g.id}')">✏️</button>
           <button class="btn btn-red btn-sm" onclick="deleteGroup('${g.id}')">🗑</button>
@@ -11615,6 +11675,18 @@ function openModal_createGroup(){
       <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px"><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
     </label>`).join('');
   document.getElementById('ng-name').value = '';
+  // populate teacher select
+  const tSel = document.getElementById('ng-teacher');
+  if(tSel){
+    tSel.innerHTML = '<option value="">— Не назначен —</option>' +
+      getTeachers().map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  }
+  // populate course select
+  const cSel = document.getElementById('ng-course');
+  if(cSel){
+    cSel.innerHTML = '<option value="">— Без курса —</option>' +
+      (load('courses')||[]).map(c=>`<option value="${c.id}">${esc(c.title)}</option>`).join('');
+  }
   openModal('modal-create-group');
 }
 
@@ -11624,8 +11696,10 @@ function saveGroup(){
   if(!name){ showNotif('Введите название группы'); return; }
   const memberIds = [...document.querySelectorAll('#ng-students-list input:checked')].map(cb=>cb.value);
   if(memberIds.length < 1){ showNotif('Добавьте хотя бы одного участника'); return; }
+  const teacherId = (document.getElementById('ng-teacher')||{}).value || '';
+  const courseId  = (document.getElementById('ng-course')||{}).value || '';
   const groups = getGroups();
-  groups.push({ id: 'g'+Date.now(), name, type, memberIds });
+  groups.push({ id: 'g'+Date.now(), name, type, memberIds, teacherId, courseId });
   save('groups', groups);
   closeModal('modal-create-group');
   renderGroups();
@@ -11644,6 +11718,18 @@ function openEditGroup(gid){
     <label class="chip-label">
       <input type="checkbox" value="${s.id}" style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px" ${(g.memberIds||[]).includes(s.id)?'checked':''}><span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
     </label>`).join('');
+  // populate teacher select
+  const tSel = document.getElementById('eg-teacher');
+  if(tSel){
+    tSel.innerHTML = '<option value="">— Не назначен —</option>' +
+      getTeachers().map(t=>`<option value="${t.id}" ${g.teacherId===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
+  }
+  // populate course select
+  const cSel = document.getElementById('eg-course');
+  if(cSel){
+    cSel.innerHTML = '<option value="">— Без курса —</option>' +
+      (load('courses')||[]).map(c=>`<option value="${c.id}" ${g.courseId===c.id?'selected':''}>${esc(c.title)}</option>`).join('');
+  }
   openModal('modal-edit-group');
 }
 
@@ -11652,7 +11738,9 @@ function saveEditGroup(){
   const type = document.getElementById('eg-type').value;
   if(!name){ showNotif('Введите название'); return; }
   const memberIds = [...document.querySelectorAll('#eg-students-list input:checked')].map(cb=>cb.value);
-  const groups = getGroups().map(g => g.id===_editGroupId ? {...g, name, type, memberIds} : g);
+  const teacherId = (document.getElementById('eg-teacher')||{}).value || '';
+  const courseId  = (document.getElementById('eg-course')||{}).value || '';
+  const groups = getGroups().map(g => g.id===_editGroupId ? {...g, name, type, memberIds, teacherId, courseId} : g);
   save('groups', groups);
   closeModal('modal-edit-group');
   renderGroups();
@@ -11664,6 +11752,54 @@ function deleteGroup(gid){
   save('groups', getGroups().filter(g=>g.id!==gid));
   renderGroups();
   showNotif('🗑 Группа удалена');
+}
+
+// ── QUICK ASSIGN TEACHER TO GROUP ──
+function openAssignTeacherToGroup(gid){
+  const g = getGroups().find(x=>x.id===gid);
+  if(!g) return;
+  const teachers = getTeachers();
+  const courses = load('courses')||[];
+  let m = document.getElementById('modal-assign-teacher-group');
+  if(!m){
+    m = document.createElement('div');
+    m.className = 'modal-bg';
+    m.id = 'modal-assign-teacher-group';
+    m.onclick = function(e){ if(e.target===this) closeModal('modal-assign-teacher-group'); };
+    m.innerHTML = `<div class="modal" style="max-width:440px">
+      <div class="modal-title">👨‍🏫 Привязать преподавателя</div>
+      <span class="modal-close" onclick="closeModal('modal-assign-teacher-group')">✕</span>
+      <input type="hidden" id="atg-gid">
+      <div class="form-group"><label>Преподаватель</label>
+        <select id="atg-teacher" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)"></select>
+      </div>
+      <div class="form-group"><label>Курс <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="atg-course" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)"></select>
+      </div>
+      <button class="btn btn-green" onclick="saveAssignTeacherToGroup()">💾 Сохранить</button>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('atg-gid').value = gid;
+  document.getElementById('atg-teacher').innerHTML =
+    '<option value="">— Не назначен —</option>' +
+    teachers.map(t=>`<option value="${t.id}" ${g.teacherId===t.id?'selected':''}>${esc(t.name)}</option>`).join('');
+  document.getElementById('atg-course').innerHTML =
+    '<option value="">— Без курса —</option>' +
+    courses.map(c=>`<option value="${c.id}" ${g.courseId===c.id?'selected':''}>${esc(c.title)}</option>`).join('');
+  openModal('modal-assign-teacher-group');
+}
+
+function saveAssignTeacherToGroup(){
+  const gid = document.getElementById('atg-gid').value;
+  const teacherId = document.getElementById('atg-teacher').value;
+  const courseId  = document.getElementById('atg-course').value;
+  const groups = getGroups().map(g => g.id===gid ? {...g, teacherId, courseId} : g);
+  save('groups', groups);
+  closeModal('modal-assign-teacher-group');
+  renderGroups();
+  const t = getTeachers().find(x=>x.id===teacherId);
+  showNotif(t ? `✅ Преподаватель ${t.name} привязан к группе` : '✅ Привязка обновлена');
 }
 
 // ── SEND TO GROUP ──
@@ -14467,6 +14603,18 @@ function renderTeachersAdmin() {
   const pageEl = document.getElementById('page-teachers');
   if (!pageEl) return;
   const teachers = getTeachers();
+  const students = getStudents();
+  const groups = getGroups();
+  const courses = load('courses')||[];
+
+  // Build teacher → students/groups/courses summary
+  const teacherSummary = tid => {
+    const myStudents = students.filter(s=>s.teacherId===tid);
+    const myGroups   = groups.filter(g=>g.teacherId===tid);
+    const myCourses  = courses.filter(c=>c.teacherId===tid);
+    return { myStudents, myGroups, myCourses };
+  };
+
   pageEl.innerHTML = `
     <div class="page-title">👨‍🏫 Преподаватели</div>
     <div class="page-sub">Управление преподавателями и их доступом</div>
@@ -14477,16 +14625,22 @@ function renderTeachersAdmin() {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Имя</th><th>Логин</th><th>Телефон / Email</th><th>Предмет</th><th>Ставка (₽/ч)</th><th>Статус</th><th>Действия</th></tr></thead>
-          <tbody id="teachers-table">${_renderTeachersRows(teachers)}</tbody>
+          <thead><tr><th>Имя</th><th>Логин</th><th>Телефон / Email</th><th>Предмет</th><th>Ставка (₽/ч)</th><th>Привязки</th><th>Статус</th><th>Действия</th></tr></thead>
+          <tbody id="teachers-table">${_renderTeachersRows(teachers, teacherSummary)}</tbody>
         </table>
       </div>
     </div>`;
 }
 
-function _renderTeachersRows(teachers) {
-  if (!teachers.length) return '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Нет преподавателей</td></tr>';
-  return teachers.map(t => `
+function _renderTeachersRows(teachers, teacherSummary) {
+  if (!teachers.length) return '<tr><td colspan="8" style="text-align:center;color:var(--text3)">Нет преподавателей</td></tr>';
+  return teachers.map(t => {
+    const sum = teacherSummary ? teacherSummary(t.id) : {myStudents:[],myGroups:[],myCourses:[]};
+    const bindParts = [];
+    if(sum.myStudents.length) bindParts.push(`<span class="badge badge-blue" style="font-size:0.7rem">${sum.myStudents.length} уч.</span>`);
+    if(sum.myGroups.length)   bindParts.push(`<span class="badge badge-green" style="font-size:0.7rem">${sum.myGroups.length} гр.</span>`);
+    if(sum.myCourses.length)  bindParts.push(`<span class="badge badge-gold" style="font-size:0.7rem">${sum.myCourses.length} курс.</span>`);
+    return `
     <tr>
       <td><b>${esc(t.name)}</b></td>
       <td><code style="font-size:0.82rem">${esc(t.login)}</code></td>
@@ -14496,12 +14650,19 @@ function _renderTeachersRows(teachers) {
       </td>
       <td>${t.subject ? `<span class="badge badge-green">${esc(t.subject)}</span>` : '—'}</td>
       <td><b style="color:var(--green-deep)">${t.hourlyRate ? t.hourlyRate + ' ₽' : '—'}</b></td>
+      <td>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+          ${bindParts.length ? bindParts.join('') : '<span style="color:var(--text3);font-size:0.78rem">Нет</span>'}
+          <button class="btn btn-outline btn-sm" style="font-size:0.72rem;padding:3px 8px" onclick="openAssignToTeacher('${t.id}')">＋ Назначить</button>
+        </div>
+      </td>
       <td><span class="badge ${t.active !== false ? 'badge-green' : 'badge-red'}">${t.active !== false ? 'Активен' : 'Неактивен'}</span></td>
       <td>
         <button class="btn btn-outline btn-sm" onclick="openEditTeacherModal('${t.id}')">✏️ Изменить</button>
         <button class="btn btn-red btn-sm" onclick="deleteTeacher('${t.id}')">🗑</button>
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function openAddTeacherModal() {
@@ -14679,6 +14840,100 @@ function deleteTeacher(tid) {
   save('users', (load('users') || []).filter(u => u.id !== tid));
   renderTeachersAdmin();
   showNotif('🗑 Преподаватель удалён');
+}
+
+// ══════════════════════════════════════════
+// ASSIGN STUDENTS / GROUPS / COURSES TO TEACHER
+// ══════════════════════════════════════════
+function openAssignToTeacher(tid){
+  const t = getTeachers().find(x=>x.id===tid);
+  if(!t) return;
+  const students = getStudents();
+  const groups = getGroups();
+  const courses = load('courses')||[];
+  let m = document.getElementById('modal-assign-to-teacher');
+  if(!m){
+    m = document.createElement('div');
+    m.className = 'drawer-bg';
+    m.id = 'modal-assign-to-teacher';
+    m.onclick = function(e){ if(e.target===this) closeModal('modal-assign-to-teacher'); };
+    m.innerHTML = `<div class="drawer">
+      <div class="drawer-header">
+        <div class="drawer-title" id="att-title">👨‍🏫 Назначить ученикам</div>
+        <button class="drawer-close" onclick="closeModal('modal-assign-to-teacher')">✕</button>
+      </div>
+      <div class="drawer-body">
+        <input type="hidden" id="att-tid">
+        <div class="drawer-section">👤 Ученики</div>
+        <div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Отметьте учеников — им будет назначен этот преподаватель</div>
+        <div id="att-students-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+        <div class="drawer-section">👥 Группы и пары</div>
+        <div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Отметьте группы — им будет назначен этот преподаватель</div>
+        <div id="att-groups-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+        <div class="drawer-section">📚 Курсы</div>
+        <div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Отметьте курсы — им будет назначен этот преподаватель</div>
+        <div id="att-courses-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn btn-green" onclick="saveAssignToTeacher()">💾 Сохранить привязки</button>
+        <button class="btn btn-outline" onclick="closeModal('modal-assign-to-teacher')">Отмена</button>
+      </div>
+    </div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('att-tid').value = tid;
+  document.getElementById('att-title').textContent = `👨‍🏫 Привязки: ${t.name}`;
+  document.getElementById('att-students-list').innerHTML = students.map(s=>`
+    <label class="chip-label">
+      <input type="checkbox" value="${s.id}" ${s.teacherId===tid?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px">
+      <span style="overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
+    </label>`).join('') || '<span style="color:var(--text3);font-size:0.82rem">Нет учеников</span>';
+  document.getElementById('att-groups-list').innerHTML = groups.map(g=>`
+    <label class="chip-label">
+      <input type="checkbox" value="${g.id}" ${g.teacherId===tid?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px">
+      <span style="overflow:hidden;text-overflow:ellipsis">${g.type==='pair'?'🤝':'👥'} ${esc(g.name)}</span>
+    </label>`).join('') || '<span style="color:var(--text3);font-size:0.82rem">Нет групп</span>';
+  document.getElementById('att-courses-list').innerHTML = courses.map(c=>`
+    <label class="chip-label">
+      <input type="checkbox" value="${c.id}" ${c.teacherId===tid?'checked':''} style="accent-color:var(--green-deep);flex-shrink:0;width:14px;height:14px">
+      <span style="overflow:hidden;text-overflow:ellipsis">📚 ${esc(c.title)}</span>
+    </label>`).join('') || '<span style="color:var(--text3);font-size:0.82rem">Нет курсов</span>';
+  requestAnimationFrame(()=>openModal('modal-assign-to-teacher'));
+}
+
+function saveAssignToTeacher(){
+  const tid = document.getElementById('att-tid').value;
+  // Update students
+  const selectedStudents = new Set([...document.querySelectorAll('#att-students-list input:checked')].map(cb=>cb.value));
+  const users = load('users')||[];
+  users.forEach(u=>{
+    if(u.role!=='student') return;
+    if(selectedStudents.has(u.id)){
+      u.teacherId = tid;
+    } else if(u.teacherId === tid){
+      u.teacherId = ''; // unlink if unchecked
+    }
+  });
+  save('users', users);
+  // Update groups
+  const selectedGroups = new Set([...document.querySelectorAll('#att-groups-list input:checked')].map(cb=>cb.value));
+  const groups = getGroups().map(g=>{
+    if(selectedGroups.has(g.id)) return {...g, teacherId: tid};
+    if(g.teacherId===tid) return {...g, teacherId: ''};
+    return g;
+  });
+  save('groups', groups);
+  // Update courses
+  const selectedCourses = new Set([...document.querySelectorAll('#att-courses-list input:checked')].map(cb=>cb.value));
+  const courses = (load('courses')||[]).map(c=>{
+    if(selectedCourses.has(c.id)) return {...c, teacherId: tid};
+    if(c.teacherId===tid) return {...c, teacherId: ''};
+    return c;
+  });
+  save('courses', courses);
+  closeModal('modal-assign-to-teacher');
+  renderTeachersAdmin();
+  showNotif('✅ Привязки сохранены');
 }
 
 // ═══════════════════════════════════════════════
