@@ -14532,9 +14532,10 @@ function openAddTeacherModal() {
             <div class="form-group" style="margin:0"><label>Ставка (₽/час)</label><input id="nt-rate" type="number" min="0" placeholder="1500"></div>
             <div class="form-group" style="margin:0"><label>Формат оплаты</label>
               <select id="nt-paymode">
-                <option value="hourly">За час</option>
+                <option value="hourly">За урок (фикс.)</option>
                 <option value="lesson">За занятие</option>
-                <option value="fixed">Фиксированная</option>
+                <option value="group_per_student">За студента × кол-во</option>
+                <option value="fixed">Фиксированная/мес</option>
               </select>
             </div>
           </div>
@@ -14614,9 +14615,10 @@ function openEditTeacherModal(tid) {
             <div class="form-group" style="margin:0"><label>Ставка (₽/час)</label><input id="et-trate" type="number" min="0"></div>
             <div class="form-group" style="margin:0"><label>Формат оплаты</label>
               <select id="et-tpaymode">
-                <option value="hourly">За час</option>
+                <option value="hourly">За урок (фикс.)</option>
                 <option value="lesson">За занятие</option>
-                <option value="fixed">Фиксированная</option>
+                <option value="group_per_student">За студента × кол-во</option>
+                <option value="fixed">Фиксированная/мес</option>
               </select>
             </div>
           </div>
@@ -14727,6 +14729,19 @@ function renderTeacherDashboard() {
 // SALARY ADMIN — расчёт зарплаты преподавателей
 // ═══════════════════════════════════════════════
 
+// ── helpers ──
+const MONTH_NAMES_SAL = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+/** Возвращает ставку для конкретного занятия: либо переопределённую, либо базовую преподавателя */
+function _lessonRate(a, teacher) {
+  if (a.salaryOverride != null) return parseFloat(a.salaryOverride);
+  // базовая ставка зависит от количества учеников и payMode
+  const cnt = (a.studentIds || [a.studentId]).filter(Boolean).length;
+  const base = parseFloat(teacher.hourlyRate || 0);
+  if (teacher.payMode === 'group_per_student') return base * cnt;
+  return base; // за занятие / за урок / фикс
+}
+
 function renderSalaryAdmin() {
   let pageEl = document.getElementById('page-salary-admin');
   if (!pageEl) return;
@@ -14734,9 +14749,9 @@ function renderSalaryAdmin() {
   const att = load('attendance') || [];
   const now = new Date();
   const curY = now.getFullYear();
-  const curM = now.getMonth(); // 0-based
+  const curM = now.getMonth();
 
-  // Month selector
+  // Month selector — 12 last months
   const months = [];
   for (let y = curY; y >= curY - 1; y--) {
     for (let m = 11; m >= 0; m--) {
@@ -14749,48 +14764,45 @@ function renderSalaryAdmin() {
   const selM = parseInt(pageEl.dataset.selM ?? curM);
   const selY = parseInt(pageEl.dataset.selY ?? curY);
 
-  const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-
-  // Filter attendance for selected month
-  const monthAtt = att.filter(a => {
-    const d = new Date(a.date);
-    return d.getFullYear() === selY && d.getMonth() === selM;
-  });
-
-  // Build salary rows — lessons done by each teacher
-  // Attendance records can have teacherId or we treat all admin-created records
-  // For simplicity: any lesson in attendance = 1 lesson. If teacher assigned, credit them.
-  function teacherLessons(tid) {
-    return monthAtt.filter(a => a.teacherId === tid || (!a.teacherId && currentUser && currentUser.id === tid));
+  // Уникальные занятия (по lessonId) для выбранного месяца
+  function teacherUniqLessons(tid) {
+    const seen = new Set();
+    return att.filter(a => {
+      const d = new Date(a.date);
+      if (d.getFullYear() !== selY || d.getMonth() !== selM) return false;
+      if (a.teacherId !== tid) return false;
+      if (seen.has(a.lessonId)) return false;
+      seen.add(a.lessonId); return true;
+    });
   }
-  function calcSalary(t, lessons) {
-    const count = lessons.length;
-    const totalCost = lessons.reduce((s, a) => s + (parseFloat(a.costPerStudent || 0) * (a.studentIds ? a.studentIds.length : 1)), 0);
-    let salary = 0;
-    if (t.payMode === 'lesson') salary = count * (t.hourlyRate || 0);
-    else if (t.payMode === 'fixed') salary = t.hourlyRate || 0;
-    else salary = count * (t.hourlyRate || 0); // hourly = per lesson for simplicity
-    return { count, totalCost, salary };
+
+  function calcSalaryForLessons(t, lessons) {
+    let total = 0;
+    lessons.forEach(a => { total += _lessonRate(a, t); });
+    return total;
   }
 
   const rows = teachers.map(t => {
-    const lessons = teacherLessons(t.id);
-    const { count, totalCost, salary } = calcSalary(t, lessons);
-    const paid = ((load('salary_payments') || []).find(sp => sp.teacherId === t.id && sp.month === `${selY}-${String(selM+1).padStart(2,'0')}`) || {}).paid;
-    return { t, lessons, count, totalCost, salary, paid };
+    const lessons = teacherUniqLessons(t.id);
+    const salary  = calcSalaryForLessons(t, lessons);
+    const monthKey = `${selY}-${String(selM+1).padStart(2,'0')}`;
+    const paid = ((load('salary_payments') || []).find(sp => sp.teacherId === t.id && sp.month === monthKey) || {}).paid;
+    return { t, lessons, salary, paid, monthKey };
   });
 
-  const totalSalary = rows.reduce((s, r) => s + r.salary, 0);
-  const totalLessons = rows.reduce((s, r) => s + r.count, 0);
+  const totalSalary  = rows.reduce((s,r) => s + r.salary, 0);
+  const totalLessons = rows.reduce((s,r) => s + r.lessons.length, 0);
 
   pageEl.innerHTML = `
     <div class="page-title">💵 Зарплата преподавателей</div>
-    <div class="page-sub">Расчёт по проведённым занятиям</div>
+    <div class="page-sub">Подробный расчёт по занятиям · редактирование ставок</div>
 
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px">
       <label style="font-weight:700;color:var(--text2)">Период:</label>
-      <select id="salary-month-sel" onchange="changeSalaryMonth(this.value)" style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.92rem;background:var(--bg)">
-        ${months.map(({y,m})=>`<option value="${y}-${m}" ${y===selY&&m===selM?'selected':''}>${MONTH_NAMES[m]} ${y}</option>`).join('')}
+      <select id="salary-month-sel" onchange="changeSalaryMonth(this.value)"
+        style="padding:8px 14px;border-radius:10px;border:1.5px solid var(--green-pale);
+               font-family:Nunito,sans-serif;font-size:0.92rem;background:var(--bg)">
+        ${months.map(({y,m})=>`<option value="${y}-${m}" ${y===selY&&m===selM?'selected':''}>${MONTH_NAMES_SAL[m]} ${y}</option>`).join('')}
       </select>
     </div>
 
@@ -14801,10 +14813,13 @@ function renderSalaryAdmin() {
     </div>
 
     <div class="card">
-      <div class="card-title"><span class="dot"></span>Расчёт зарплаты — ${MONTH_NAMES[selM]} ${selY}</div>
+      <div class="card-title"><span class="dot"></span>Расчёт зарплаты — ${MONTH_NAMES_SAL[selM]} ${selY}</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Преподаватель</th><th>Ставка</th><th>Уроков</th><th>Доход с занятий</th><th>Зарплата</th><th>Статус</th><th>Действия</th></tr></thead>
+          <thead><tr>
+            <th>Преподаватель</th><th>Базовая ставка</th><th>Уроков</th>
+            <th>Зарплата</th><th>Статус</th><th>Действия</th>
+          </tr></thead>
           <tbody>
             ${rows.length ? rows.map(r => `
               <tr>
@@ -14814,32 +14829,40 @@ function renderSalaryAdmin() {
                 </td>
                 <td>
                   <span style="font-weight:600">${r.t.hourlyRate||0} ₽</span>
-                  <div style="font-size:0.72rem;color:var(--text3)">${r.t.payMode==='lesson'?'за занятие':r.t.payMode==='fixed'?'фикс.':'за урок'}</div>
+                  <div style="font-size:0.72rem;color:var(--text3)">${
+                    r.t.payMode==='lesson'?'за занятие':
+                    r.t.payMode==='fixed'?'фикс.':
+                    r.t.payMode==='group_per_student'?'за студента×кол-во':
+                    'за урок'}</div>
                 </td>
-                <td style="text-align:center;font-weight:700;font-size:1.05rem">${r.count}</td>
-                <td style="color:var(--green-deep);font-weight:600">${r.totalCost.toLocaleString('ru')} ₽</td>
+                <td style="text-align:center;font-weight:700;font-size:1.05rem">${r.lessons.length}</td>
                 <td style="font-weight:800;font-size:1.1rem;color:var(--accent)">${r.salary.toLocaleString('ru')} ₽</td>
-                <td>
-                  ${r.paid
-                    ? '<span class="badge badge-green">✅ Выплачено</span>'
-                    : '<span class="badge badge-red">❌ Не выплачено</span>'}
-                </td>
-                <td>
-                  <button class="btn btn-${r.paid?'outline':'green'} btn-sm" onclick="toggleSalaryPaid('${r.t.id}','${selY}-${String(selM+1).padStart(2,'0')}',${!r.paid})">
+                <td>${r.paid
+                  ? '<span class="badge badge-green">✅ Выплачено</span>'
+                  : '<span class="badge badge-red">❌ Не выплачено</span>'}</td>
+                <td style="white-space:nowrap">
+                  <button class="btn btn-outline btn-sm" onclick="showSalaryDetail('${r.t.id}','${selY}','${selM}')">📋 Подробно</button>
+                  <button class="btn btn-${r.paid?'outline':'green'} btn-sm"
+                    onclick="toggleSalaryPaid('${r.t.id}','${r.monthKey}',${!r.paid})">
                     ${r.paid ? '↩ Отменить' : '✅ Выплатить'}
                   </button>
-                  <button class="btn btn-outline btn-sm" onclick="showSalaryDetail('${r.t.id}','${selY}','${selM}')">📋 Детали</button>
                 </td>
-              </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Нет преподавателей</td></tr>'}
+              </tr>`).join('')
+              : '<tr><td colspan="6" style="text-align:center;color:var(--text3)">Нет преподавателей</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- Salary Detail Modal placeholder -->
-    <div id="salary-detail-popup" style="display:none;position:fixed;inset:0;z-index:600;background:rgba(27,67,50,0.4);align-items:center;justify-content:center;padding:20px">
-      <div style="background:var(--white);border-radius:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;padding:32px;box-shadow:0 16px 60px rgba(27,67,50,0.22);position:relative">
-        <button onclick="document.getElementById('salary-detail-popup').style.display='none'" style="position:absolute;top:14px;right:16px;font-size:1.3rem;background:none;border:none;cursor:pointer;color:var(--text3)">✕</button>
+    <!-- Salary Detail Drawer -->
+    <div id="salary-detail-popup"
+      style="display:none;position:fixed;inset:0;z-index:600;background:rgba(27,67,50,0.45);
+             align-items:flex-start;justify-content:flex-end;overflow:hidden"
+      onclick="if(event.target===this)closeSalaryDetail()">
+      <div id="salary-detail-drawer"
+        style="background:var(--white);width:min(680px,100vw);height:100vh;overflow-y:auto;
+               padding:32px 28px;box-shadow:-8px 0 40px rgba(27,67,50,0.18);
+               display:flex;flex-direction:column;gap:0">
         <div id="salary-detail-body"></div>
       </div>
     </div>`;
@@ -14852,6 +14875,11 @@ window.changeSalaryMonth = function(val) {
   renderSalaryAdmin();
 };
 
+window.closeSalaryDetail = function() {
+  const p = document.getElementById('salary-detail-popup');
+  if (p) p.style.display = 'none';
+};
+
 window.toggleSalaryPaid = function(tid, monthKey, paid) {
   const sp = load('salary_payments') || [];
   const idx = sp.findIndex(x => x.teacherId === tid && x.month === monthKey);
@@ -14862,43 +14890,229 @@ window.toggleSalaryPaid = function(tid, monthKey, paid) {
   showNotif(paid ? '✅ Зарплата отмечена как выплаченная' : '↩ Статус сброшен');
 };
 
+/** Сохранить переопределённую ставку для одного занятия */
+window.saveLessonRateOverride = function(lessonId, val) {
+  const att = load('attendance') || [];
+  const rate = val === '' ? null : parseFloat(val);
+  let changed = false;
+  att.forEach(a => {
+    if (a.lessonId === lessonId) { a.salaryOverride = rate; changed = true; }
+  });
+  if (changed) {
+    save('attendance', att);
+    // обновим итог в деталях без закрытия
+    const tid = att.find(a => a.lessonId === lessonId)?.teacherId;
+    if (tid) _refreshSalaryDetailTotals(tid);
+    showNotif('💾 Ставка сохранена');
+  }
+};
+
+/** Быстрое обновление итоговой строки в открытом детальном попапе */
+function _refreshSalaryDetailTotals(tid) {
+  const teacher = (load('users')||[]).find(u=>u.id===tid);
+  if (!teacher) return;
+  const att = load('attendance')||[];
+  // пересчитаем все видимые занятия
+  const rows = document.querySelectorAll('#salary-detail-body [data-lesson-id]');
+  let total = 0;
+  rows.forEach(row => {
+    const lid = row.dataset.lessonId;
+    const rec = att.find(a => a.lessonId === lid && a.teacherId === tid);
+    if (rec) {
+      const rate = _lessonRate(rec, teacher);
+      total += rate;
+      const rateEl = row.querySelector('.lesson-rate-display');
+      if (rateEl) rateEl.textContent = rate.toLocaleString('ru') + ' ₽';
+    }
+  });
+  const totEl = document.getElementById('salary-detail-total');
+  if (totEl) totEl.textContent = total.toLocaleString('ru') + ' ₽';
+}
+
 window.showSalaryDetail = function(tid, y, m) {
-  const teacher = (load('users') || []).find(u => u.id === tid);
+  const teacher = (load('users')||[]).find(u=>u.id===tid);
   if (!teacher) return;
   const att = load('attendance') || [];
+  const students = getStudents();
+
+  // Уникальные занятия этого преподавателя за месяц
+  const seen = new Set();
   const lessons = att.filter(a => {
     const d = new Date(a.date);
-    return d.getFullYear() === parseInt(y) && d.getMonth() === parseInt(m) && a.teacherId === tid;
-  });
-  const students = getStudents();
-  const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    if (d.getFullYear() !== parseInt(y) || d.getMonth() !== parseInt(m)) return false;
+    if (a.teacherId !== tid) return false;
+    if (seen.has(a.lessonId)) return false;
+    seen.add(a.lessonId); return true;
+  }).sort((a,b) => a.date.localeCompare(b.date));
+
+  const totalSalary = lessons.reduce((s,a) => s + _lessonRate(a, teacher), 0);
+  const monthKey = `${y}-${String(parseInt(m)+1).padStart(2,'0')}`;
+  const paid = ((load('salary_payments')||[]).find(sp=>sp.teacherId===tid&&sp.month===monthKey)||{}).paid;
+
+  // Режимы оплаты
+  const payModeOpts = [
+    {v:'hourly',     l:'За урок (фиксированно)'},
+    {v:'lesson',     l:'За занятие'},
+    {v:'group_per_student', l:'За студента × кол-во'},
+    {v:'fixed',      l:'Фиксированная ставка/мес'},
+  ];
+
   const body = document.getElementById('salary-detail-body');
   body.innerHTML = `
-    <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--accent);margin-bottom:4px">📋 Детали — ${esc(teacher.name)}</div>
-    <div style="font-size:0.82rem;color:var(--text3);margin-bottom:16px">${MONTH_NAMES[parseInt(m)]} ${y} · ${lessons.length} занятий</div>
-    ${lessons.length ? lessons.map((a,i) => {
-      const sNames = (a.studentIds||[a.studentId]).map(sid=>{const s=students.find(x=>x.id===sid);return s?esc(s.name):'?';}).join(', ');
-      const cost = parseFloat(a.costPerStudent||0) * (a.studentIds?a.studentIds.length:1);
-      return `<div class="att-row att-present" style="margin-bottom:8px">
-        <div style="width:24px;text-align:center;color:var(--text3);font-size:0.8rem">${i+1}</div>
-        <div style="flex:1">
-          <div style="font-weight:600">${esc(a.topic||'Занятие')}</div>
-          <div style="font-size:0.78rem;color:var(--text3)">${a.date} ${a.time||''}</div>
-          <div style="font-size:0.78rem;color:var(--text3)">👥 ${sNames}</div>
+    <!-- Header -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--accent);font-weight:700">
+          📋 ${esc(teacher.name)}
         </div>
-        <div style="text-align:right">
-          ${cost?`<div style="font-weight:700;color:var(--green-deep)">${cost}₽</div>`:''}
-          ${a.costPerStudent?`<div style="font-size:0.72rem;color:var(--text3)">${a.costPerStudent}₽/уч.</div>`:''}
+        <div style="font-size:0.82rem;color:var(--text3);margin-top:3px">
+          ${MONTH_NAMES_SAL[parseInt(m)]} ${y} · ${lessons.length} занятий
+        </div>
+      </div>
+      <button onclick="closeSalaryDetail()"
+        style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text3);padding:4px">✕</button>
+    </div>
+
+    <!-- Базовые настройки преподавателя -->
+    <div class="card" style="margin-bottom:16px;padding:16px 18px">
+      <div style="font-weight:700;color:var(--text2);margin-bottom:10px;font-size:0.9rem">⚙️ Базовые настройки ставки</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">Базовая ставка (₽)</label>
+          <input id="sd-base-rate" type="number" min="0" value="${teacher.hourlyRate||0}"
+            style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);
+                   font-family:Nunito,sans-serif;font-size:0.92rem">
+        </div>
+        <div>
+          <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">Режим оплаты</label>
+          <select id="sd-pay-mode"
+            style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);
+                   font-family:Nunito,sans-serif;font-size:0.85rem">
+            ${payModeOpts.map(o=>`<option value="${o.v}" ${teacher.payMode===o.v?'selected':''}>${o.l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <button onclick="saveTeacherBaseRate('${tid}')"
+        style="margin-top:10px;padding:7px 18px;border-radius:8px;border:none;
+               background:var(--green-deep);color:#fff;font-family:Nunito,sans-serif;
+               font-size:0.85rem;font-weight:700;cursor:pointer">
+        💾 Сохранить базовую ставку
+      </button>
+    </div>
+
+    <!-- Список занятий -->
+    <div style="font-weight:700;color:var(--text2);font-size:0.9rem;margin-bottom:10px">
+      📅 Занятия за период
+    </div>
+    ${lessons.length ? lessons.map((a, i) => {
+      const sIds = (a.studentIds||[a.studentId]).filter(Boolean);
+      const sNames = sIds.map(sid=>{const s=students.find(x=>x.id===sid);return s?esc(s.name):'?';});
+      const lessonType = sIds.length === 1 ? 'Индивидуальное' : sIds.length === 2 ? 'Пара' : `Группа (${sIds.length})`;
+      const lessonTypeIcon = sIds.length === 1 ? '👤' : sIds.length === 2 ? '👥' : '👨‍👩‍👦';
+      const overrideVal = a.salaryOverride != null ? a.salaryOverride : '';
+      const curRate = _lessonRate(a, teacher);
+
+      return `<div class="card" data-lesson-id="${a.lessonId}"
+        style="margin-bottom:10px;padding:14px 16px;border-left:3px solid var(--green-pale)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <!-- Left: info -->
+          <div style="flex:1;min-width:180px">
+            <div style="font-weight:700;font-size:0.9rem;color:var(--accent)">
+              ${lessonTypeIcon} ${esc(a.topic||'Занятие')}
+              <span style="font-size:0.72rem;font-weight:600;color:var(--text3);margin-left:6px">${lessonType}</span>
+            </div>
+            <div style="font-size:0.78rem;color:var(--text3);margin-top:3px">📅 ${a.date}${a.time?' · '+a.time:''}</div>
+            <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+              ${sNames.map(n=>`<span style="background:var(--green-xpale);border-radius:20px;padding:2px 10px;
+                font-size:0.72rem;font-weight:600;color:var(--green-deep)">${n}</span>`).join('')}
+            </div>
+            ${a.group?`<div style="font-size:0.74rem;color:var(--text3);margin-top:4px">Группа: ${esc(a.group)}</div>`:''}
+          </div>
+
+          <!-- Right: rate editor -->
+          <div style="flex-shrink:0;min-width:190px;background:var(--bg2);border-radius:10px;padding:10px 12px">
+            <div style="font-size:0.72rem;color:var(--text3);margin-bottom:4px;font-weight:700">СТАВКА ЗА ЗАНЯТИЕ</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <span class="lesson-rate-display"
+                style="font-size:1.1rem;font-weight:900;color:var(--green-deep)">${curRate.toLocaleString('ru')} ₽</span>
+              ${a.salaryOverride!=null?'<span style="font-size:0.68rem;color:var(--gold);font-weight:700">✎ изменено</span>':''}
+            </div>
+            <div style="font-size:0.72rem;color:var(--text3);margin-bottom:6px">
+              Переопределить для этого занятия:
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="number" min="0"
+                id="lesson-rate-${a.lessonId}"
+                value="${overrideVal}"
+                placeholder="Базовая"
+                style="width:90px;padding:5px 8px;border-radius:6px;
+                       border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem">
+              <button onclick="saveLessonRateOverride('${a.lessonId}',document.getElementById('lesson-rate-${a.lessonId}').value)"
+                style="padding:5px 12px;border-radius:6px;border:none;background:var(--green-mid);
+                       color:#fff;font-family:Nunito,sans-serif;font-size:0.8rem;font-weight:700;cursor:pointer">
+                💾
+              </button>
+              ${a.salaryOverride!=null?`<button onclick="clearLessonRateOverride('${a.lessonId}')"
+                style="padding:5px 10px;border-radius:6px;border:1.5px solid var(--green-pale);
+                       background:none;font-family:Nunito,sans-serif;font-size:0.78rem;cursor:pointer;color:var(--text3)"
+                title="Сбросить к базовой">↩</button>`:''}
+            </div>
+          </div>
         </div>
       </div>`;
-    }).join('') : '<div class="empty-state"><p>Нет занятий за этот период</p></div>'}
-    <div style="margin-top:16px;padding:14px;background:var(--green-xpale);border-radius:12px;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:700">Итого к выплате:</span>
-      <span style="font-size:1.3rem;font-weight:900;color:var(--green-deep)">${(lessons.length*(teacher.hourlyRate||0)).toLocaleString('ru')} ₽</span>
+    }).join('') : `<div class="empty-state"><p>Нет занятий за этот период</p></div>`}
+
+    <!-- Итог -->
+    <div style="position:sticky;bottom:0;background:var(--white);padding:16px 0 4px;margin-top:8px;
+                border-top:2px solid var(--green-pale)">
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  background:var(--green-xpale);border-radius:12px;padding:14px 18px">
+        <div>
+          <div style="font-weight:700;font-size:0.95rem">Итого к выплате:</div>
+          <div style="font-size:0.78rem;color:var(--text3);margin-top:2px">${lessons.length} занятий</div>
+        </div>
+        <span id="salary-detail-total"
+          style="font-size:1.5rem;font-weight:900;color:var(--green-deep)">${totalSalary.toLocaleString('ru')} ₽</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+        <button class="btn btn-${paid?'outline':'green'}"
+          onclick="toggleSalaryPaid('${tid}','${monthKey}',${!paid});showNotif('${paid?'↩ Сброшено':'✅ Выплачено'}')">
+          ${paid ? '↩ Отменить выплату' : '✅ Отметить как выплаченное'}
+        </button>
+        <button class="btn btn-outline" onclick="closeSalaryDetail()">Закрыть</button>
+      </div>
     </div>`;
+
   document.getElementById('salary-detail-popup').style.display = 'flex';
 };
 
+/** Сбросить переопределение ставки занятия */
+window.clearLessonRateOverride = function(lessonId) {
+  const att = load('attendance') || [];
+  const tid = att.find(a => a.lessonId === lessonId)?.teacherId;
+  att.forEach(a => { if (a.lessonId === lessonId) a.salaryOverride = null; });
+  save('attendance', att);
+  if (tid) _refreshSalaryDetailTotals(tid);
+  // Сбросим инпут и уберём кнопку — перерисуем секцию
+  const input = document.getElementById('lesson-rate-' + lessonId);
+  if (input) { input.value = ''; }
+  showNotif('↩ Ставка сброшена к базовой');
+};
+
+/** Сохранить базовую ставку преподавателя прямо из детального попапа */
+window.saveTeacherBaseRate = function(tid) {
+  const users = load('users') || [];
+  const idx = users.findIndex(u => u.id === tid);
+  if (idx < 0) return;
+  const newRate = parseFloat(document.getElementById('sd-base-rate').value) || 0;
+  const newMode = document.getElementById('sd-pay-mode').value;
+  users[idx].hourlyRate = newRate;
+  users[idx].payMode = newMode;
+  save('users', users);
+  showNotif('✅ Базовая ставка обновлена');
+  // Пересчитаем итог
+  _refreshSalaryDetailTotals(tid);
+};
 
 // ═══════════════════════════════════════════════
 // TEACHER — ATTEND PAGE (итоговые уроки + оплата)
