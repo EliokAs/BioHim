@@ -4645,6 +4645,8 @@ function removeEditHWQ(i){ _editHWQuestions.splice(i,1); _setDirty(true); render
 // ═══════════════════════════════════════
 
 async function extractTextFromDocx(file) {
+  // Ленивая загрузка mammoth (~220 КБ) — только при импорте .docx
+  await LazyLibs.mammoth();
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -10371,6 +10373,16 @@ function drawProgressChart(data) {
   const canvas = document.getElementById('progress-chart');
   if (!canvas || !data || data.length < 2) return;
 
+  // Ленивая загрузка Chart.js — грузится только при первом открытии графика
+  LazyLibs.chartjs().then(() => _drawProgressChartImpl(data)).catch(err => {
+    console.warn('[drawProgressChart] Chart.js не загружен:', err);
+  });
+}
+
+function _drawProgressChartImpl(data) {
+  const canvas = document.getElementById('progress-chart');
+  if (!canvas) return;
+
   // Уничтожаем предыдущий экземпляр (переключение учеников)
   if (_progressChartInstance) { _progressChartInstance.destroy(); _progressChartInstance = null; }
 
@@ -10579,12 +10591,13 @@ function downloadReportPDF(sid) {
 ${reportEl.innerHTML}
 </body></html>`;
 
-  // Пробуем jsPDF + html2canvas (если загружены), иначе — печать
-  if (typeof window.jspdf !== 'undefined' && typeof html2canvas !== 'undefined') {
-    _exportPdfViaJsPDF(fullHtml, student);
-  } else {
-    _exportPdfViaPrint(fullHtml, student);
-  }
+  // Ленивая загрузка jsPDF + html2canvas (~560 КБ), затем экспорт
+  LazyLibs.pdf()
+    .then(() => _exportPdfViaJsPDF(fullHtml, student))
+    .catch(err => {
+      console.warn('[exportPDF] Не удалось загрузить PDF-библиотеки:', err);
+      _exportPdfViaPrint(fullHtml, student);
+    });
 }
 
 function _exportPdfViaPrint(html, student) {
@@ -13925,8 +13938,9 @@ function renderStudentAnalytics() {
   window._anChemTopics = chemTopics;
   window._anCurrentSubj = 'bio';
 
-  // ── Render topic chart ──
-  _renderAnalyticsTopicChart('bio');
+  // ── Render charts — ленивая загрузка Chart.js ──
+  LazyLibs.chartjs().then(() => {
+    _renderAnalyticsTopicChart('bio');
 
   // ── Trial dynamics chart ──
   const trialChartEl = document.getElementById('an-trial-chart');
@@ -14006,6 +14020,7 @@ function renderStudentAnalytics() {
       }
     });
   }
+  }).catch(err => console.warn('[analytics] Chart.js не загружен:', err));
 }
 
 function analyticsTabSwitch(subj) {
@@ -14021,7 +14036,8 @@ function analyticsTabSwitch(subj) {
     btnChem.style.background = green; btnChem.style.color = white;
     btnBio.style.background = trans; btnBio.style.color = gray;
   }
-  _renderAnalyticsTopicChart(subj);
+  LazyLibs.chartjs().then(() => _renderAnalyticsTopicChart(subj))
+    .catch(err => console.warn('[analyticsTabSwitch] Chart.js не загружен:', err));
 }
 
 function _renderAnalyticsTopicChart(subj) {
