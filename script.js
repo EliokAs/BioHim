@@ -1289,13 +1289,13 @@ function renderComponent(fn) {
 
 async function preloadCache(){
   // Дождёмся загрузки Firebase SDK (важно для Safari / медленной сети)
-  try { await _waitForFirebase(8000); } catch(e) {
+  try { await _waitForFirebase(5000); } catch(e) {
     console.error('[Firebase] SDK не загрузился:', e.message);
     COLLECTIONS.forEach(k => { if(!(k in _cache)) _cache[k] = null; });
     _preloadWarning = e.message;
     return;
   }
-  const TIMEOUT_MS = 10000;
+  const TIMEOUT_MS = 5000;
   const timeout = new Promise((_, rej) =>
     setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
   );
@@ -1959,6 +1959,12 @@ function buildNav(){
   });
   document.getElementById('sidebar-name').textContent=currentUser.name;
   document.getElementById('sidebar-role').textContent=currentUser.role==='admin'?'Администратор':currentUser.role==='teacher'?'Преподаватель':currentUser.role==='parent'?'Родитель':'Ученик';
+  // Скрываем кнопки добавления ученика/курса для не-администраторов
+  const _isAdmin = currentUser.role === 'admin';
+  ['btn-add-student','btn-add-course'].forEach(id => {
+    const btn = document.getElementById(id);
+    if(btn) btn.style.display = _isAdmin ? '' : 'none';
+  });
   setTimeout(()=>{ updateChatBadge(); updateAdminBadge(); updateMistakesBadge(); }, 50);
   buildMobileTaskbar();
 }
@@ -2307,6 +2313,7 @@ function getPaymentStatusBadge(sid){
   return `<span class="badge ${cls}">${lbl}</span>`;
 }
 async function addStudent(){
+  if(!currentUser || currentUser.role !== 'admin'){ showNotif('⛔ Добавлять учеников может только администратор'); return; }
   const name=document.getElementById('ns-name').value.trim();
   const login=document.getElementById('ns-login').value.trim();
   const pass=document.getElementById('ns-pass').value;
@@ -4882,6 +4889,7 @@ function subjectIcon(s){
   return '📚';
 }
 function saveCourse(){
+  if(!currentUser || currentUser.role !== 'admin'){ showNotif('⛔ Создавать курсы может только администратор'); return; }
   const title=document.getElementById('nc-title').value;
   const subject=document.getElementById('nc-subject').value;
   const format=document.getElementById('nc-format').value;
@@ -14561,7 +14569,8 @@ function openAddTeacherModal() {
       </div>`;
     document.body.appendChild(m);
   }
-  openModal('modal-add-teacher');
+  // rAF ensures the element is painted before .open is added so CSS transition fires
+  requestAnimationFrame(() => openModal('modal-add-teacher'));
 }
 
 async function addTeacher() {
