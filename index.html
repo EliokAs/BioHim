@@ -9,12 +9,10 @@
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 <!-- CSP: Firebase long-polling requires script-src + connect-src for firebasedatabase.app -->
-<!-- ⚠️ 'unsafe-inline' в script-src необходим пока скрипты встроены в HTML.
-     Для production замените на nonce-based CSP: добавьте nonce="..." к каждому <script>
-     и укажите 'nonce-YOURVALUE' вместо 'unsafe-inline'. -->
+<!-- ✅ unsafe-inline удалён: все inline-скрипты вынесены в init.js -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline'
+  script-src 'self'
     https://cdn.jsdelivr.net
     https://cdnjs.cloudflare.com
     https://www.gstatic.com
@@ -1050,14 +1048,14 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <div class="notif" id="notif"></div>
 
 <!-- LOGIN SCREEN -->
-<div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">Осмос</div>
+<div id="login-screen" role="main">
+  <div class="login-card" role="form" aria-labelledby="login-heading">
+    <div class="login-logo" id="login-heading">Осмос</div>
     <div class="login-sub">Платформа репетитора</div>
-    <input type="text" id="login-username" placeholder="Логин" autocomplete="username" />
-    <input type="password" id="login-password" placeholder="Пароль" autocomplete="current-password" />
+    <input type="text" id="login-username" placeholder="Логин" autocomplete="username" aria-label="Логин" />
+    <input type="password" id="login-password" placeholder="Пароль" autocomplete="current-password" aria-label="Пароль" />
     <button class="btn-main" onclick="doLogin()">Войти</button>
-    <div id="login-err" class="login-err"></div>
+    <div id="login-err" class="login-err" role="alert" aria-live="assertive"></div>
     <div class="login-hint" style="margin-top:20px">
       <!-- Подсказки по умолчанию удалены из соображений безопасности -->
       <b>Родитель:</b> создайте через «✏️ Изменить» ученика
@@ -1067,29 +1065,30 @@ body.dark-theme .drawer-footer { background: var(--card); }
 
 <!-- APP SHELL -->
 <div id="app">
-  <div class="sidebar">
-    <div class="sidebar-logo">Осмос<div class="sidebar-role" id="sidebar-role">загрузка...</div></div>
-    <nav class="sidebar-nav" id="sidebar-nav"></nav>
+  <div class="sidebar" role="navigation" aria-label="Основная навигация">
+    <div class="sidebar-logo" aria-hidden="true">Осмос<div class="sidebar-role" id="sidebar-role">загрузка...</div></div>
+    <nav class="sidebar-nav" id="sidebar-nav" aria-label="Разделы платформы"></nav>
     <div class="sidebar-footer">
       <div class="sidebar-user"><b id="sidebar-name">—</b>Личный кабинет</div>
-      <button class="btn-logout" id="btn-dark-theme" onclick="toggleDarkTheme()" style="margin-bottom:8px">🌙 Тёмная тема</button>
-      <button class="btn-logout" onclick="doLogout()">🚪 Выйти</button>
-      <button class="btn-logout" id="btn-reset-data" style="margin-top:8px;display:none;background:rgba(192,57,43,0.18);border-color:rgba(192,57,43,0.4);color:#ff9e9e" onclick="resetAllData()">🗑 Сбросить все данные</button>
+      <button class="btn-logout" id="btn-dark-theme" onclick="toggleDarkTheme()" style="margin-bottom:8px" aria-label="Переключить тему оформления">🌙 Тёмная тема</button>
+      <button class="btn-logout" onclick="doLogout()" aria-label="Выйти из аккаунта">🚪 Выйти</button>
+      <button class="btn-logout" id="btn-reset-data" style="margin-top:8px;display:none;background:rgba(192,57,43,0.18);border-color:rgba(192,57,43,0.4);color:#ff9e9e" onclick="resetAllData()" aria-label="Сбросить все данные платформы">🗑 Сбросить все данные</button>
     </div>
   </div>
 
   <!-- МОБИЛЬНЫЙ ТАСКБАР -->
   <div id="mobile-taskbar"></div>
 
-  <div class="main">
+  <div class="main" id="main-content" role="main">
     <!-- ГЛОБАЛЬНЫЙ ПОИСК -->
-    <div class="global-search-bar">
-      <input type="text" id="global-search-input" placeholder="🔍 Поиск по платформе: материалы, тесты, ДЗ, пробники..."
+    <div class="global-search-bar" role="search" aria-label="Поиск по платформе">
+      <input type="search" id="global-search-input" placeholder="🔍 Поиск по платформе: материалы, тесты, ДЗ, пробники..."
+             aria-label="Поиск по платформе"
              onkeypress="if(event.key==='Enter') performGlobalSearch(this.value)"
              oninput="onSearchInput(this.value)"
              onkeydown="if(event.key==='Escape') clearSearch()">
-      <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" title="Очистить поиск">✕</button>
-      <button class="btn btn-green btn-sm" onclick="performGlobalSearch(document.getElementById('global-search-input').value)">
+      <button class="search-clear-btn" id="search-clear-btn" onclick="clearSearch()" aria-label="Очистить поиск">✕</button>
+      <button class="btn btn-green btn-sm" onclick="performGlobalSearch(document.getElementById('global-search-input').value)" aria-label="Выполнить поиск">
         Найти
       </button>
     </div>
@@ -2021,11 +2020,11 @@ body.dark-theme .drawer-footer { background: var(--card); }
 
 <!-- ─────────────── MODALS ─────────────── -->
 
-<div class="drawer-bg" id="modal-add-student" onclick="if(event.target===this)closeModal('modal-add-student')">
+<div class="drawer-bg" id="modal-add-student" onclick="if(event.target===this)closeModal('modal-add-student')" role="dialog" aria-modal="true" aria-labelledby="modal-add-student-title">
   <div class="drawer">
     <div class="drawer-header">
-      <div class="drawer-title">➕ Новый ученик</div>
-      <button class="drawer-close" onclick="closeModal('modal-add-student')">✕</button>
+      <div class="drawer-title" id="modal-add-student-title">➕ Новый ученик</div>
+      <button class="drawer-close" onclick="closeModal('modal-add-student')" aria-label="Закрыть">✕</button>
     </div>
     <div class="drawer-body">
       <div class="drawer-section">👤 Персональные данные</div>
@@ -2086,11 +2085,11 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<div class="drawer-bg" id="modal-add-theory" onclick="if(event.target===this)closeModal('modal-add-theory')">
+<div class="drawer-bg" id="modal-add-theory" onclick="if(event.target===this)closeModal('modal-add-theory')" role="dialog" aria-modal="true" aria-labelledby="modal-add-theory-title">
   <div class="drawer drawer-wide">
     <div class="drawer-header">
-      <div class="drawer-title">📖 Новый урок</div>
-      <button class="drawer-close" onclick="closeModal('modal-add-theory')">✕</button>
+      <div class="drawer-title" id="modal-add-theory-title">📖 Новый урок</div>
+      <button class="drawer-close" onclick="closeModal('modal-add-theory')" aria-label="Закрыть">✕</button>
     </div>
     <div class="drawer-body">
       <div class="form-group" style="margin-bottom:14px"><label>Название урока</label><input id="nth-title" placeholder="Тема: Строение клетки" style="font-size:1rem"></div>
@@ -3280,15 +3279,10 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<!-- Firebase SDK (compat) -->
-<!-- Chart.js — используется для графика прогресса -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-<!-- jsPDF + html2canvas — для корректного PDF-экспорта -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <!-- Firebase SDK встроен локально (не зависит от CDN) -->
 <script src="firebase-bundle.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<!-- Chart.js, jsPDF, html2canvas, mammoth — загружаются лениво через lazylibs.js -->
+<script src="lazylibs.js"></script>
 <script src="script.js"></script>
 <script src="timer.js"></script>
 <script src="weekly-report.js"></script>
@@ -3297,47 +3291,10 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <script src="challenges.js"></script>
 <script src="trial-proctor.js"></script>
 
-<script>
-// ── Hide search bar on scroll down, show on scroll up ──
-(function(){
-  let lastY = 0;
-  window.addEventListener('scroll', function(){
-    const bar = document.querySelector('.global-search-bar');
-    if(!bar) return;
-    const y = window.scrollY;
-    if(y > lastY && y > 60){
-      bar.classList.add('hidden');
-    } else {
-      bar.classList.remove('hidden');
-    }
-    lastY = y;
-  }, {passive: true});
-})();
-</script>
-
-<script>
-// ── PWA: регистрация Service Worker ──
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => {
-        // Уведомляем если есть обновление
-        reg.addEventListener('updatefound', () => {
-          const newSW = reg.installing;
-          newSW.addEventListener('statechange', () => {
-            if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-              // Показываем тост через существующую функцию showNotif если доступна
-              if (typeof showNotif === 'function') {
-                showNotif('🔄 Доступно обновление приложения. Обновите страницу.');
-              }
-            }
-          });
-        });
-      })
-      .catch(err => console.warn('SW registration failed:', err));
-  });
-}
-</script>
+<!-- Инициализация: scroll-hide поиска + регистрация Service Worker -->
+<script src="init.js"></script>
+<!-- Доступность: focus-trap, Escape, ARIA live-регион, keyboard nav -->
+<script src="accessibility.js"></script>
 <!-- Flashcard modals — вынесены на уровень body, вне .page с анимацией fadeIn,
      чтобы position:fixed работал относительно viewport, а не анимирующегося предка -->
 <div id="fc-modals-portal"></div>
