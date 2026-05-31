@@ -1239,7 +1239,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Имя</th><th>Логин</th><th>Курсы</th><th>Статус</th><th>Оплата</th><th>Действия</th></tr></thead>
+            <thead><tr><th>Имя</th><th>Логин</th><th>Курсы</th><th>Преподаватель</th><th>Статус</th><th>Оплата</th><th>Действия</th></tr></thead>
             <tbody id="students-table"></tbody>
           </table>
         </div>
@@ -3143,6 +3143,16 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <option value="pair">Пара (2)</option>
         </select>
       </div>
+      <div class="form-group"><label>👨‍🏫 Преподаватель <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="ng-teacher" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)">
+          <option value="">— Не назначен —</option>
+        </select>
+      </div>
+      <div class="form-group"><label>📚 Курс <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="ng-course" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)">
+          <option value="">— Без курса —</option>
+        </select>
+      </div>
       <div class="form-group"><label>Участники</label>
         <div id="ng-students-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
       </div>
@@ -3168,6 +3178,16 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <select id="eg-type">
           <option value="group">Группа (3+)</option>
           <option value="pair">Пара (2)</option>
+        </select>
+      </div>
+      <div class="form-group"><label>👨‍🏫 Преподаватель <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="eg-teacher" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)">
+          <option value="">— Не назначен —</option>
+        </select>
+      </div>
+      <div class="form-group"><label>📚 Курс <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
+        <select id="eg-course" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)">
+          <option value="">— Без курса —</option>
         </select>
       </div>
       <div class="form-group"><label>Участники</label>
