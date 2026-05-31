@@ -1177,23 +1177,6 @@ const _fbConfig = {
 // Firebase SDK (compat version — работает без сборщика)
 let _fbApp, _fbDB;
 
-/** Ждём появления глобального firebase (на случай медленной сети в Safari) */
-function _waitForFirebase(timeoutMs){
-  timeoutMs = timeoutMs || 12000;
-  return new Promise(function(resolve, reject){
-    if(typeof firebase !== 'undefined'){ resolve(); return; }
-    var step = 50, elapsed = 0;
-    var timer = setInterval(function(){
-      elapsed += step;
-      if(typeof firebase !== 'undefined'){
-        clearInterval(timer); resolve();
-      } else if(elapsed >= timeoutMs){
-        clearInterval(timer);
-        reject(new Error('Файл Firebase SDK не загрузился — проверьте интернет-соединение'));
-      }
-    }, step);
-  });
-}
 
 function _fbInit(){
   if(_fbDB) return _fbDB;
@@ -1288,11 +1271,11 @@ function renderComponent(fn) {
 }
 
 async function preloadCache(){
-  // Дождёмся загрузки Firebase SDK (важно для Safari / медленной сети)
-  try { await _waitForFirebase(5000); } catch(e) {
-    console.error('[Firebase] SDK не загрузился:', e.message);
+  // Проверяем доступность Firebase SDK (теперь встроен локально)
+  if(typeof firebase === 'undefined'){
+    console.error('[Firebase] SDK не загружен — проверьте наличие firebase-bundle.js');
     COLLECTIONS.forEach(k => { if(!(k in _cache)) _cache[k] = null; });
-    _preloadWarning = e.message;
+    _preloadWarning = 'Firebase SDK не загружен. Проверьте файл firebase-bundle.js';
     return;
   }
   const TIMEOUT_MS = 5000;
