@@ -371,25 +371,92 @@ window.renderStudentHW = function () {
 const _origRenderTestsAdmin = window.renderTestsAdmin;
 window.renderTestsAdmin = function () {
   if (!_isTeacher()) { return _origRenderTestsAdmin(); }
-  // Teacher: вызываем оригинал — он уже видит только своих студентов
-  // через переопределённый getStudents(). Дополнительно фильтруем тесты по courseId.
-  _origRenderTestsAdmin();
-  // Добавляем инфо-бар о курсах
+  // Teacher: временно подменяем load('users') чтобы оригинал видел только своих студентов
+  const _origLoad = window.load;
+  const myStudentIds = new Set(getTeacherStudentIds());
+  const myCourseIds = new Set(getTeacherCourseIds());
+  window.load = function(k) {
+    const data = _origLoad(k);
+    if (k === 'users' && Array.isArray(data)) {
+      return data.filter(u => u.role !== 'student' || myStudentIds.has(u.id));
+    }
+    if (k === 'tests' && Array.isArray(data)) {
+      // Показываем тесты только для своих студентов и только привязанные к своему курсу (или без курса)
+      return data.filter(t => {
+        if (!t.studentId) return false;
+        if (!myStudentIds.has(t.studentId)) return false;
+        if (t.courseId && !myCourseIds.has(t.courseId)) return false;
+        return true;
+      });
+    }
+    return data;
+  };
+  try {
+    _origRenderTestsAdmin();
+  } finally {
+    window.load = _origLoad;
+  }
   _injectTeacherCourseInfoBar('tests-course-info-bar', 'tests-admin');
 };
 
 const _origRenderHWAdmin = window.renderHWAdmin;
 window.renderHWAdmin = function () {
   if (!_isTeacher()) { return _origRenderHWAdmin(); }
-  _origRenderHWAdmin();
+  const _origLoad = window.load;
+  const myStudentIds = new Set(getTeacherStudentIds());
+  const myCourseIds = new Set(getTeacherCourseIds());
+  window.load = function(k) {
+    const data = _origLoad(k);
+    if (k === 'users' && Array.isArray(data)) {
+      return data.filter(u => u.role !== 'student' || myStudentIds.has(u.id));
+    }
+    if (k === 'hw' && Array.isArray(data)) {
+      return data.filter(h => {
+        if (!h.studentId) return false;
+        if (!myStudentIds.has(h.studentId)) return false;
+        if (h.courseId && !myCourseIds.has(h.courseId)) return false;
+        return true;
+      });
+    }
+    return data;
+  };
+  try {
+    _origRenderHWAdmin();
+  } finally {
+    window.load = _origLoad;
+  }
   _injectTeacherCourseInfoBar('hw-course-info-bar', 'hw-admin');
 };
 
 const _origRenderContentAdmin = window.renderContentAdmin;
 window.renderContentAdmin = function () {
-  _origRenderContentAdmin();
   if (_isTeacher()) {
+    const _origLoad = window.load;
+    const myStudentIds = new Set(getTeacherStudentIds());
+    const myCourseIds = new Set(getTeacherCourseIds());
+    window.load = function(k) {
+      const data = _origLoad(k);
+      if (k === 'users' && Array.isArray(data)) {
+        return data.filter(u => u.role !== 'student' || myStudentIds.has(u.id));
+      }
+      if (k === 'content' && Array.isArray(data)) {
+        return data.filter(c => {
+          if (!c.studentId) return false;
+          if (!myStudentIds.has(c.studentId)) return false;
+          if (c.courseId && !myCourseIds.has(c.courseId)) return false;
+          return true;
+        });
+      }
+      return data;
+    };
+    try {
+      _origRenderContentAdmin();
+    } finally {
+      window.load = _origLoad;
+    }
     _injectTeacherCourseInfoBar('content-course-info-bar', 'content-admin');
+  } else {
+    _origRenderContentAdmin();
   }
 };
 
