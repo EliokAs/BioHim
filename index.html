@@ -12,7 +12,7 @@
 <!-- ✅ unsafe-inline удалён: все inline-скрипты вынесены в init.js -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' 'unsafe-inline'
+  script-src 'self'
     https://cdn.jsdelivr.net
     https://cdnjs.cloudflare.com
     https://www.gstatic.com
@@ -3284,6 +3284,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <!-- Chart.js, jsPDF, html2canvas, mammoth — загружаются лениво через lazylibs.js -->
 <script src="lazylibs.js"></script>
 <script src="script.js"></script>
+<script src="course-binding.js"></script>
 <script src="timer.js"></script>
 <script src="weekly-report.js"></script>
 <script src="flashcards.js"></script>
