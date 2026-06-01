@@ -61,13 +61,32 @@ function getStudentCourses(studentId) {
  * студентов (если ещё не добавлен).
  */
 function _injectCourseSelect(beforeId, selectId) {
-  if (document.getElementById(selectId)) return; // уже есть
+  // Если select уже есть — удаляем и перестраиваем (курсы могли измениться)
+  const existing = document.getElementById(selectId);
+  if (existing) existing.closest('.form-group') && existing.closest('.form-group').remove();
   const target = document.getElementById(beforeId);
   if (!target) return;
-  const courses = load('courses') || [];
+
+  // Для учителя — только его курсы; для админа — все курсы
+  let courses = load('courses') || [];
+  if (_isTeacher() && currentUser) {
+    courses = courses.filter(c => c.teacherId === currentUser.id);
+  }
+
   const wrap = document.createElement('div');
   wrap.className = 'form-group';
   wrap.style.marginBottom = '10px';
+
+  // Если у учителя нет курсов — показываем предупреждение
+  if (_isTeacher() && courses.length === 0) {
+    wrap.innerHTML = `
+      <div style="background:#fef3cd;border-radius:10px;padding:10px 14px;font-size:0.82rem;color:#856404;border:1px solid #fce98a">
+        ⚠️ У вас нет назначенных курсов. Обратитесь к администратору.
+      </div>`;
+    target.parentNode.insertBefore(wrap, target);
+    return;
+  }
+
   wrap.innerHTML = `
     <label style="font-size:0.82rem;color:var(--text3);display:block;margin-bottom:4px">📚 Привязать к курсу <span style="font-weight:400;color:var(--text3)">(необязательно)</span></label>
     <select id="${selectId}"
@@ -533,6 +552,19 @@ window.save = function (key, data) {
 };
 
 // ──────────────────────────────────────────────
+// 6б. СОХРАНЕНИЕ courseId ДЛЯ ПРОБНИКА
+// ──────────────────────────────────────────────
+const _origSaveTrial = window.saveTrial;
+if (typeof window.saveTrial === 'function') {
+  window.saveTrial = function () {
+    _pendingCourseId = (document.getElementById('ntr-course-select') || {}).value || null;
+    _pendingCourseTimestamp = Date.now();
+    _origSaveTrial();
+    _pendingCourseId = null;
+  };
+}
+
+// ──────────────────────────────────────────────
 // 7. ИНЪЕКЦИЯ select «Курс» В МОДАЛКИ
 //    Вызываем при открытии модалок
 // ──────────────────────────────────────────────
@@ -558,6 +590,12 @@ window.openModal = function (id, extra) {
     setTimeout(() => {
       _injectCourseSelect('modal-hw-students', 'nhw-course-select');
       _preselectTeacherCourse('nhw-course-select');
+    }, 30);
+  }
+  if (id === 'modal-create-trial') {
+    setTimeout(() => {
+      _injectCourseSelect('modal-trial-students', 'ntr-course-select');
+      _preselectTeacherCourse('ntr-course-select');
     }, 30);
   }
 };
