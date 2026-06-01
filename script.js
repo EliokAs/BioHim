@@ -1885,6 +1885,7 @@ const teacherNav=[
   {section:'Управление'},
   {id:'teacher-chat',      icon:'💬', label:'Чат с учениками'},
   {id:'teacher-schedule',  icon:'🗓', label:'Расписание'},
+  {id:'teacher-groups',    icon:'👥', label:'Мои группы'},
   {id:'teacher-attend',    icon:'📅', label:'Посещение и оплата'},
   {id:'teacher-reports',   icon:'📊', label:'Отчёты'},
   {id:'teacher-notif',     icon:'🔔', label:'Уведомления'},
@@ -1997,6 +1998,7 @@ function navigateTo(page){
     'teacher-grades':    'grades-admin',
     'teacher-chat':      'chat-admin',
     'teacher-schedule':  'schedule-admin',
+    'teacher-groups':    'teacher-groups',
     'teacher-attend':    'attend-pay-admin',
     'teacher-reports':   'reports-admin',
     'teacher-notif':     'notif-settings-admin',
@@ -2113,6 +2115,7 @@ function renderPage(p){
   }
   else if(p==='teacher-reports') renderReportsAdmin();
   else if(p==='teacher-notif') renderNotifSettingsAdmin();
+  else if(p==='teacher-groups') renderTeacherGroups();
   else if(p==='teacher-lesson'){ const _ld=getLessonData(); if(_ld&&!_lessonActive){ _lessonActive=true; _lessonStart=_ld.startedAt||Date.now(); _lessonCode=_ld.code; } renderLesson('admin'); }
 }
 
@@ -11844,16 +11847,44 @@ function setSendGroupType(btn, type){
 
 function loadSendGroupItems(type){
   const sel = document.getElementById('sg-item-select');
+  const isTeacher = currentUser && currentUser.role === 'teacher';
+  const tid = currentUser && currentUser.id;
+
+  // Для учителя — получаем id всех его студентов (из его групп и курсов)
+  let teacherStudentIds = null;
+  if (isTeacher && tid) {
+    const myGroups = getGroups().filter(g => g.teacherId === tid);
+    const myMemberIds = new Set(myGroups.flatMap(g => g.memberIds || []));
+    // Также студенты из его курсов
+    const myCourseIds = new Set((load('courses')||[]).filter(c=>c.teacherId===tid).map(c=>c.id));
+    getStudents().forEach(s => {
+      if ((s.courseIds||[]).some(cid=>myCourseIds.has(cid))) myMemberIds.add(s.id);
+    });
+    teacherStudentIds = myMemberIds;
+  }
+
   let items = [];
-  if(type==='content') items = (load('content')||[]).filter(c=>c.type==='theory');
-  else if(type==='test') items = load('tests')||[];
-  else if(type==='hw') items = load('hw')||[];
+  if(type==='content') {
+    items = (load('content')||[]).filter(c=>c.type==='theory');
+    if(isTeacher && teacherStudentIds) items = items.filter(c=>!c.studentId || teacherStudentIds.has(c.studentId));
+  }
+  else if(type==='test') {
+    items = load('tests')||[];
+    if(isTeacher && teacherStudentIds) items = items.filter(t=>!t.studentId || teacherStudentIds.has(t.studentId));
+  }
+  else if(type==='hw') {
+    items = load('hw')||[];
+    if(isTeacher && teacherStudentIds) items = items.filter(h=>!h.studentId || teacherStudentIds.has(h.studentId));
+  }
   else if(type==='trial'){
-    // use first occurrence per title to avoid duplicates
     const seen = new Set();
     items = (load('trials')||[]).filter(t=>{ if(seen.has(t.title)) return false; seen.add(t.title); return true; });
+    if(isTeacher && teacherStudentIds) items = items.filter(t=>!t.studentId || teacherStudentIds.has(t.studentId));
   }
-  else if(type==='slot') items = load('slots')||[];
+  else if(type==='slot') {
+    items = load('slots')||[];
+    if(isTeacher && teacherStudentIds) items = items.filter(s=>!s.teacherId || s.teacherId===tid);
+  }
 
   // De-duplicate by title for content/test/hw
   if(['content','test','hw'].includes(type)){
@@ -14955,6 +14986,50 @@ function saveAssignToTeacher(){
 // ═══════════════════════════════════════════════
 // TEACHER DASHBOARD
 // ═══════════════════════════════════════════════
+
+
+// ══════════════════════════════════════════
+// TEACHER GROUPS — группы, к которым привязан преподаватель
+// ══════════════════════════════════════════
+function renderTeacherGroups() {
+  const el = document.getElementById('teacher-groups-list');
+  if (!el) return;
+  const tid = currentUser && currentUser.id;
+  if (!tid) return;
+
+  const allGroups  = getGroups();
+  const groups     = allGroups.filter(g => g.teacherId === tid);
+  const students   = getStudents();
+  const courses    = load('courses') || [];
+
+  if (!groups.length) {
+    el.innerHTML = '<div class="empty-state"><div class="big">👥</div><p>Вам пока не назначено ни одной группы.<br>Обратитесь к администратору.</p></div>';
+    return;
+  }
+
+  el.innerHTML = groups.map(g => {
+    const members = (g.memberIds || []).map(id => students.find(s => s.id === id)).filter(Boolean);
+    const course  = g.courseId ? courses.find(c => c.id === g.courseId) : null;
+    const icon    = g.type === 'pair' ? '🤝' : '👥';
+    const label   = g.type === 'pair' ? 'Пара' : 'Группа';
+    return `<div class="content-item" style="flex-direction:column;align-items:stretch;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="content-icon">${icon}</div>
+        <div class="content-info" style="flex:1">
+          <div class="content-name">${esc(g.name)}</div>
+          <div class="content-meta">${label} · ${members.length} уч.: ${members.map(m => esc(m.name)).join(', ') || 'нет участников'}</div>
+          ${course ? `<div style="font-size:0.78rem;margin-top:2px;color:var(--text3)">📚 ${esc(course.title)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-green btn-sm" onclick="openSendGroupModal('${g.id}')">📤 Отправить</button>
+        </div>
+      </div>
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px">
+        ${members.map(m => `<span style="background:var(--green-xpale);color:var(--green-deep);border-radius:20px;padding:3px 12px;font-size:0.82rem;font-weight:600">${esc(m.name)}</span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
 
 function renderTeacherDashboard() {
   const pageEl = document.getElementById('page-teacher-dashboard');
