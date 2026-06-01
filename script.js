@@ -1702,7 +1702,7 @@ async function initData(){
   } catch(e){ }
 
   if(!(load('users')||[]).length){
-    const adminHash = await hashPassword('admin123');
+    const adminHash = await hashPassword('1234');
     const stuHash   = await hashPassword('1234');
     save('users',[
       {id:'admin', login:'admin', passwordHash: adminHash, name:'Преподаватель', role:'admin', mustChangePassword: true},
