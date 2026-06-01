@@ -719,3 +719,42 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 console.log('[course-binding] ✅ Курсовая привязка загружена');
+// ──────────────────────────────────────────────
+// ГРУППЫ ДЛЯ УЧИТЕЛЯ
+// Перехват openSendGroupModal: учитель может
+// открыть только для своих групп
+// ──────────────────────────────────────────────
+
+const _origOpenSendGroupModal = window.openSendGroupModal;
+window.openSendGroupModal = function (gid) {
+  if (_isTeacher() && currentUser) {
+    const g = (load('groups') || []).find(x => x.id === gid);
+    if (!g || g.teacherId !== currentUser.id) {
+      showNotif('⛔ Это не ваша группа');
+      return;
+    }
+  }
+  _origOpenSendGroupModal(gid);
+};
+
+// После рендера групп страницы учителя — фильтруем по teacherId
+const _origRenderTeacherGroups = window.renderTeacherGroups;
+if (typeof window.renderTeacherGroups === 'function') {
+  // функция определена в script.js, она уже сама фильтрует — ничего не делаем
+}
+
+// Перехватываем renderGroups (страница admin) — для учителя прячем кнопки редактирования
+const _origRenderGroups = window.renderGroups;
+window.renderGroups = function () {
+  _origRenderGroups();
+  if (!_isTeacher()) return;
+  // Скрываем кнопки редактирования/удаления группы для учителя
+  const el = document.getElementById('groups-list');
+  if (!el) return;
+  el.querySelectorAll('.btn-red, .btn-outline').forEach(btn => {
+    const onc = btn.getAttribute('onclick') || '';
+    if (onc.includes('openEditGroup') || onc.includes('deleteGroup') || onc.includes('openAssignTeacherToGroup')) {
+      btn.style.display = 'none';
+    }
+  });
+};
