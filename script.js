@@ -2956,7 +2956,7 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
           if(ne) ne.focus();
         },10);
       }
-      if(e.key==='Backspace'&&(el.innerText||el.textContent)===''e.key==='Backspace'&&el.innerText===''&&arr.length>1e.key==='Backspace'&&el.innerText===''&&arr.length>1arr.length>1){
+      if(e.key==='Backspace'&&(el.innerText||el.textContent)===''&&arr.length>1){
         e.preventDefault();
         arr.splice(idx,1);
         nbRenderCanvas(arr,stateVar,canvasId);
@@ -14998,7 +14998,6 @@ function openAddTeacherModal() {
   // rAF ensures the element is painted before .open is added so CSS transition fires
   requestAnimationFrame(() => openModal('modal-add-teacher'));
 }
-
 async function addTeacher() {
   const name = document.getElementById('nt-name').value.trim();
   const login = document.getElementById('nt-login').value.trim();
