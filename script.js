@@ -2447,12 +2447,48 @@ function theoryAccordionHTML(c, isAdmin, viewed){
         : '<span class="accordion-badge" style="background:#eff6ff;color:#1565c0">🔵 Новое</span>')
     : '';
 
+  // Linked test block (shown both for admin and student)
+  const linkedTestId = c.linkedTestId || null;
+  const linkedTestObj = linkedTestId ? (load('tests')||[]).find(t=>t.id===linkedTestId) : null;
+
+  let linkedTestBlock = '';
+  if (!isAdmin) {
+    // Student view: show linked test if exists
+    if (linkedTestObj) {
+      const sid = currentUser && currentUser.id;
+      // Find the student's copy of the test (by title + studentId, or direct linkedTestId)
+      const myTest = (load('tests')||[]).find(t => t.studentId === sid && (t.id === linkedTestId || t.linkedFromId === linkedTestId));
+      if (myTest) {
+        const pct = myTest.autoTotal ? Math.round((myTest.autoScore||0)/myTest.autoTotal*100) : 0;
+        const statusBadge = myTest.submitted
+          ? `<span style="background:#e8f8f0;color:#27ae60;padding:2px 8px;border-radius:8px;font-size:0.75rem;font-weight:700">✅ Сдан · ${myTest.autoScore||0}/${myTest.autoTotal||0} б. · ${pct}%</span>`
+          : `<span style="background:#fff8e1;color:#b8860b;padding:2px 8px;border-radius:8px;font-size:0.75rem;font-weight:700">⏳ Не сдан</span>`;
+        linkedTestBlock = `<div style="margin-top:18px;padding:14px 16px;background:var(--bg2);border-radius:12px;border:1.5px solid var(--green-pale)">
+          <div style="font-weight:700;font-size:0.88rem;color:var(--accent);margin-bottom:8px">📝 Тест к уроку</div>
+          <div style="font-size:0.9rem;font-weight:600;color:var(--text);margin-bottom:6px">${esc(myTest.title)}</div>
+          <div style="margin-bottom:10px">${statusBadge}</div>
+          ${!myTest.submitted ? `<button class="btn btn-green btn-sm" onclick="event.stopPropagation();navigateTo('student-tests')">📝 Пройти тест</button>` : `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();navigateTo('student-tests')">👁 Посмотреть результат</button>`}
+        </div>`;
+      } else {
+        // Test exists in library but not yet assigned to this student — show info
+        linkedTestBlock = `<div style="margin-top:18px;padding:14px 16px;background:var(--bg2);border-radius:12px;border:1.5px solid var(--green-pale)">
+          <div style="font-weight:700;font-size:0.88rem;color:var(--accent);margin-bottom:6px">📝 Тест к уроку</div>
+          <div style="font-size:0.85rem;color:var(--text3)">${esc(linkedTestObj.title)}</div>
+          <div style="font-size:0.78rem;color:var(--text3);margin-top:4px">Тест ещё не назначен вам преподавателем</div>
+        </div>`;
+      }
+    }
+  }
+
   const adminActions = isAdmin ? `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--green-xpale)">
-      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openAssignStudents('content','${c.id}')">👤 Добавить ученика</button>
-      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditAvail('content','${c.id}')" title="Доступность">⏰ Доступность</button>
-      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditContent('${c.id}')">✏️ Редактировать</button>
-      <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteContent('${c.id}')">🗑 Удалить</button>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--green-xpale)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${linkedTestObj||true?'10px':'0'}">
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openAssignStudents('content','${c.id}')">👤 Добавить ученика</button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditAvail('content','${c.id}')" title="Доступность">⏰ Доступность</button>
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditContent('${c.id}')">✏️ Редактировать</button>
+        <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteContent('${c.id}')">🗑 Удалить</button>
+      </div>
+      ${_linkedTestAdminBlock(c)}
     </div>` : '';
   const _availBadgeHtml = isAdmin ? availBadge(c) : '';
   const _availLockHtml  = (!isAdmin && availStatus(c)) ? availLockBanner(c) : '';
@@ -2555,6 +2591,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       <div style="padding-top:16px">
         ${videoBlock}${textBlock}${imgsBlock}${filesBlock}
         ${(!videoBlock&&!textBlock&&!imgsBlock&&!filesBlock)?'<div class="empty-state"><p>Содержимое не добавлено</p></div>':''}
+        ${linkedTestBlock}
         ${adminActions}
       </div>
     </div>
@@ -2788,6 +2825,15 @@ function closeModal(id, force){
   }
   if(id==='modal-add-theory'){
     _theoryFiles=[];
+    // Populate linked test selector
+    const sel = document.getElementById('nth-linked-test-id');
+    if (sel) {
+      const libTests = (load('tests')||[]).filter(t=>t.isLibrary);
+      sel.innerHTML = '<option value="">— Без теста —</option>' +
+        libTests.map(t=>`<option value="${escAttr(t.id)}">${esc(t.title)} (${(t.questions||[]).length} вопр.)</option>`).join('');
+    }
+    const hint = document.getElementById('nth-linked-test-hint');
+    if (hint) hint.textContent = '';
   }
 }
 function getVideoEmbedUrl(url){
@@ -3053,11 +3099,12 @@ function addTheory(){
   if(!title){ showNotif('Введите заголовок урока'); return; }
   const openAt=document.getElementById('nth-open-at')?.value||'';
   const closeAt=document.getElementById('nth-close-at')?.value||'';
+  const linkedTestId = document.getElementById('nth-linked-test-id')?.value || null;
   const sids=getCheckedModalStudents('modal-theory-students');
   const legacy=nbToLegacy(_nbBlocksNew);
   const content=load('content')||[];
   const newItems=[];
-  const base={type:'theory',title,...legacy,attachmentUrl:'',date:new Date().toLocaleDateString('ru'),openAt,closeAt};
+  const base={type:'theory',title,...legacy,attachmentUrl:'',date:new Date().toLocaleDateString('ru'),openAt,closeAt,linkedTestId};
   if(sids.length){
     sids.forEach(sid=>{ const item={...base,id:'ct_'+Date.now()+'_'+sid,studentId:sid}; content.push(item); newItems.push(item); });
   } else {
@@ -3093,6 +3140,109 @@ function deleteContent(id){
   requireAdmin('deleteContent');
   save('content',(load('content')||[]).filter(c=>c.id!==id));
   renderContentAdmin();
+}
+
+// ─── LINKED TEST TO CONTENT ───
+
+/**
+ * Returns the admin HTML block for managing a test linked to a content item.
+ */
+function _linkedTestAdminBlock(c) {
+  const tests = load('tests') || [];
+  const libTests = tests.filter(t => t.isLibrary);
+  const linkedId = c.linkedTestId || '';
+  const linked = linkedId ? tests.find(t => t.id === linkedId) : null;
+
+  const selectOpts = libTests.map(t =>
+    `<option value="${escAttr(t.id)}" ${t.id === linkedId ? 'selected' : ''}>${esc(t.title)}</option>`
+  ).join('');
+
+  if (linked) {
+    return `<div style="background:linear-gradient(135deg,var(--green-xpale),var(--bg2));border-radius:10px;padding:12px 14px;border:1.5px solid var(--green-pale)">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:3px">📝 Прикреплённый тест</div>
+          <div style="font-weight:700;font-size:0.88rem;color:var(--accent)">${esc(linked.title)}</div>
+          <div style="font-size:0.75rem;color:var(--text3);margin-top:2px">${(linked.questions||[]).length} вопр. · ${linked.maxPts||linked.autoTotal||0} б.</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditTest('${escAttr(linked.id)}')">✏️ Редактировать тест</button>
+          <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openLinkTestToContent('${escAttr(c.id)}')">🔄 Сменить</button>
+          <button class="btn btn-red btn-sm" onclick="event.stopPropagation();unlinkTestFromContent('${escAttr(c.id)}')">✕ Открепить</button>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    return `<div style="background:var(--bg2);border-radius:10px;padding:10px 14px;border:1.5px dashed var(--green-pale);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div style="font-size:0.83rem;color:var(--text3)">📝 Тест к уроку не прикреплён</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openLinkTestToContent('${escAttr(c.id)}')">🔗 Прикрепить тест</button>
+        <button class="btn btn-green btn-sm" onclick="event.stopPropagation();openCreateTestForContent('${escAttr(c.id)}')">＋ Создать тест</button>
+      </div>
+    </div>`;
+  }
+}
+
+/** Open the link-test-to-content mini modal */
+function openLinkTestToContent(contentId) {
+  const c = (load('content')||[]).find(x=>x.id===contentId);
+  if (!c) return;
+  const tests = (load('tests')||[]).filter(t=>t.isLibrary);
+  const linkedId = c.linkedTestId || '';
+  const el = document.getElementById('modal-link-test-content');
+  if (!el) return;
+  document.getElementById('ltc-content-id').value = contentId;
+  document.getElementById('ltc-content-title').textContent = c.title || 'Урок';
+  const sel = document.getElementById('ltc-test-select');
+  sel.innerHTML = '<option value="">— Выберите тест из библиотеки —</option>' +
+    tests.map(t => `<option value="${escAttr(t.id)}" ${t.id===linkedId?'selected':''}>${esc(t.title)} (${(t.questions||[]).length} вопр.)</option>`).join('');
+  openModalEl(el);
+}
+
+/** Save the linked test selection */
+window.saveLinkTestToContent = function() {
+  const contentId = document.getElementById('ltc-content-id').value;
+  const testId = document.getElementById('ltc-test-select').value;
+  const content = load('content') || [];
+  const idx = content.findIndex(c=>c.id===contentId);
+  if (idx < 0) return;
+  content[idx].linkedTestId = testId || null;
+  save('content', content);
+  closeModal('modal-link-test-content');
+  renderContentAdmin();
+  showNotif(testId ? '✅ Тест прикреплён к уроку' : '✅ Тест откреплён');
+};
+
+/** Unlink test from content item */
+window.unlinkTestFromContent = function(contentId) {
+  const content = load('content') || [];
+  const idx = content.findIndex(c=>c.id===contentId);
+  if (idx < 0) return;
+  content[idx].linkedTestId = null;
+  save('content', content);
+  renderContentAdmin();
+  showNotif('✅ Тест откреплён от урока');
+};
+
+/**
+ * Open the test creation modal pre-configured to link back to a content item.
+ * After saveTest(), if _testForContentId is set, auto-link the new test.
+ */
+let _testForContentId = null;
+function openCreateTestForContent(contentId) {
+  _testForContentId = contentId;
+  // Reset test builder
+  _tempQuestions = [];
+  _testMaxPtsManual = false;
+  const titleEl = document.getElementById('nt-title');
+  if (titleEl) {
+    const c = (load('content')||[]).find(x=>x.id===contentId);
+    titleEl.value = c ? 'Тест к уроку: ' + c.title : '';
+  }
+  ['nt-open-at','nt-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  renderTestBuilder();
+  openModalEl('modal-create-test');
+  showNotif('💡 После сохранения тест автоматически прикрепится к уроку');
 }
 
 // ─── TESTS ADMIN ───
@@ -3594,6 +3744,34 @@ function saveTest(){
   const ntGradeMode=document.getElementById('nt-grade-mode'); if(ntGradeMode) ntGradeMode.value='best';
   const hint=document.getElementById('nt-total-pts'); if(hint) hint.textContent='';
   closeModal('modal-create-test');
+  // Auto-link to content item if triggered from content
+  if (_testForContentId) {
+    const newTest = tests[tests.length - 1];
+    if (newTest) {
+      const content = load('content') || [];
+      const idx = content.findIndex(c => c.id === _testForContentId);
+      if (idx >= 0) {
+        content[idx].linkedTestId = newTest.id;
+        save('content', content);
+        renderContentAdmin();
+      }
+    }
+    _testForContentId = null;
+  }
+  // Return to add-theory modal if opened from there
+  if (window._nth_returnToAddTheory) {
+    window._nth_returnToAddTheory = false;
+    const newTest = tests[tests.length - 1];
+    setTimeout(() => {
+      if (typeof openModalEl === 'function') openModalEl(document.getElementById('modal-add-theory'));
+      if (newTest) {
+        if (typeof nth_populateTestSelect === 'function') nth_populateTestSelect();
+        const sel = document.getElementById('nth-linked-test-id');
+        if (sel) { sel.value = newTest.id; }
+        if (typeof nth_updateLinkedTestHint === 'function') nth_updateLinkedTestHint();
+      }
+    }, 100);
+  }
   if(sids.length) _selectedStudent=sids[0];
   renderTestsAdmin();
   showNotif(sids.length?`✅ Тест отправлен ${sids.length>1?sids.length+' ученикам':'1 ученику'}`:' Тест сохранён в библиотеку');
@@ -4421,8 +4599,38 @@ function openEditContent(id){
   // Load blocks: prefer saved blocks, fall back to legacy
   _nbBlocks = cont.blocks && cont.blocks.length ? JSON.parse(JSON.stringify(cont.blocks)) : nbFromLegacy(cont);
   nbRender();
+  // Populate linked test selector
+  _renderEditContentLinkedTest(cont.linkedTestId || null);
   openModalEl('modal-edit-content');
 }
+
+/** Render the linked test section inside edit modal */
+function _renderEditContentLinkedTest(linkedTestId) {
+  const el = document.getElementById('ec-linked-test-section');
+  if (!el) return;
+  const tests = (load('tests')||[]).filter(t=>t.isLibrary);
+  const linked = linkedTestId ? tests.find(t=>t.id===linkedTestId) : null;
+  el.innerHTML = `
+    <div class="drawer-section" style="margin-top:16px;margin-bottom:8px">📝 Тест к уроку</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="ec-linked-test-id" style="flex:1;min-width:180px;padding:9px 12px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;background:var(--bg)">
+        <option value="">— Без теста —</option>
+        ${tests.map(t=>`<option value="${escAttr(t.id)}" ${t.id===linkedTestId?'selected':''}>${esc(t.title)} (${(t.questions||[]).length} вопр.)</option>`).join('')}
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="openCreateTestForContentFromEdit()" title="Создать новый тест и прикрепить">＋ Новый тест</button>
+    </div>
+    ${linked?`<div style="margin-top:8px;font-size:0.78rem;color:var(--green-deep);font-weight:600">✅ Прикреплён: ${esc(linked.title)} · ${(linked.questions||[]).length} вопр. · ${linked.maxPts||linked.autoTotal||0} б.
+      <button class="btn btn-outline btn-sm" style="margin-left:8px;padding:3px 10px" onclick="openEditTest('${escAttr(linked.id)}')">✏️ Редактировать тест</button>
+    </div>`:''}
+  `;
+}
+
+/** Open test creator from within the edit-content modal */
+window.openCreateTestForContentFromEdit = function() {
+  const contentId = document.getElementById('ec-id').value;
+  closeModal('modal-edit-content');
+  openCreateTestForContent(contentId);
+};
 function saveEditContent(){
   const id=document.getElementById('ec-id').value;
   const title=document.getElementById('ec-title').value.trim();
@@ -4433,6 +4641,9 @@ function saveEditContent(){
   cont.title=title;
   const legacy = nbToLegacy(_nbBlocks);
   Object.assign(cont, legacy);
+  // Save linked test
+  const ltEl = document.getElementById('ec-linked-test-id');
+  if (ltEl) cont.linkedTestId = ltEl.value || null;
   save('content',content);
   closeModal('modal-edit-content');
   renderContentAdmin();
