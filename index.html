@@ -2220,6 +2220,14 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <div><label style="font-size:0.78rem;color:var(--text3);display:block;margin-bottom:4px">📅 Открыть с</label><input type="datetime-local" id="nth-open-at" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;box-sizing:border-box"></div>
         <div><label style="font-size:0.78rem;color:var(--text3);display:block;margin-bottom:4px">🔒 Закрыть после</label><input type="datetime-local" id="nth-close-at" style="width:100%;padding:8px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;box-sizing:border-box"></div>
       </div>
+      <div class="drawer-section" style="margin-top:16px;margin-bottom:8px">📝 Тест к уроку <span style="font-weight:400;color:var(--text3)">(необязательно)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="nth-linked-test-id" style="flex:1;min-width:180px;padding:9px 12px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;background:var(--bg)" onchange="nth_updateLinkedTestHint()">
+          <option value="">— Без теста —</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="nth_openCreateTest()" title="Создать новый тест и прикрепить">＋ Создать тест</button>
+      </div>
+      <div id="nth-linked-test-hint" style="font-size:0.78rem;color:var(--text3);margin-top:6px"></div>
     </div>
     <div class="drawer-footer">
       <button class="btn btn-green" onclick="addTheory()">💾 Сохранить урок</button>
@@ -2961,6 +2969,8 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <div class="nb-editor" id="nb-canvas"></div>
         <div style="font-size:0.75rem;color:var(--text3);margin-top:6px">💡 Наведите на блок — ⠿ перетащить, + вставить ниже · 📋 Вставьте скопированное изображение <strong>Ctrl+V</strong> прямо в редактор</div>
       </div>
+      <!-- Linked test section — populated by _renderEditContentLinkedTest() -->
+      <div id="ec-linked-test-section"></div>
     </div>
     <div class="drawer-footer">
       <button class="btn btn-green" onclick="saveEditContent()">💾 Сохранить</button>
@@ -3432,6 +3442,87 @@ body.dark-theme .drawer-footer { background: var(--card); }
 <script src="accessibility.js"></script>
 <!-- Flashcard modals — вынесены на уровень body, вне .page с анимацией fadeIn,
      чтобы position:fixed работал относительно viewport, а не анимирующегося предка -->
+<!-- LINK TEST TO CONTENT MODAL -->
+<div class="modal-bg" id="modal-link-test-content" onclick="if(event.target===this)closeModal('modal-link-test-content')">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title">🔗 Прикрепить тест к уроку</div>
+    <span class="modal-close" onclick="closeModal('modal-link-test-content')">✕</span>
+    <input type="hidden" id="ltc-content-id">
+    <div style="font-size:0.85rem;color:var(--text2);margin-bottom:14px">
+      Урок: <strong id="ltc-content-title"></strong>
+    </div>
+    <div class="form-group">
+      <label>Тест из библиотеки</label>
+      <select id="ltc-test-select" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.9rem;background:var(--bg)">
+        <option value="">— Без теста —</option>
+      </select>
+    </div>
+    <div style="font-size:0.78rem;color:var(--text3);margin-bottom:16px">
+      💡 Выберите тест из библиотеки или <button class="btn btn-outline btn-sm" style="padding:3px 10px" onclick="closeModal('modal-link-test-content');openCreateTestForContent(document.getElementById('ltc-content-id').value)">＋ создайте новый</button>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-green" onclick="saveLinkTestToContent()">💾 Сохранить</button>
+      <button class="btn btn-outline" onclick="closeModal('modal-link-test-content')">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Helpers for modal-add-theory linked test selector ──
+function nth_populateTestSelect() {
+  const sel = document.getElementById('nth-linked-test-id');
+  if (!sel) return;
+  const tests = (typeof load === 'function' ? load('tests') : []) || [];
+  const libTests = tests.filter(t => t.isLibrary);
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Без теста —</option>' +
+    libTests.map(t => `<option value="${t.id.replace(/"/g,'&quot;')}">${t.title.replace(/</g,'&lt;')} (${(t.questions||[]).length} вопр.)</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+function nth_updateLinkedTestHint() {
+  const sel = document.getElementById('nth-linked-test-id');
+  const hint = document.getElementById('nth-linked-test-hint');
+  if (!sel || !hint) return;
+  if (!sel.value) { hint.textContent = ''; return; }
+  const tests = (typeof load === 'function' ? load('tests') : []) || [];
+  const t = tests.find(x => x.id === sel.value);
+  hint.innerHTML = t
+    ? `✅ <strong>${t.title}</strong> · ${(t.questions||[]).length} вопр. · ${t.maxPts||t.autoTotal||0} б.`
+    : '';
+}
+
+function nth_openCreateTest() {
+  // We need to save the new lesson first (or just open test creator with a flag)
+  const title = (document.getElementById('nth-title')||{}).value || '';
+  // Store intent: after saving test, pre-select it in the add-theory modal
+  window._nth_pendingLink = true;
+  // Temporarily close add-theory and open test creator
+  if (typeof closeModal === 'function') closeModal('modal-add-theory');
+  window._nth_returnToAddTheory = true;
+  setTimeout(() => {
+    if (typeof renderTestBuilder === 'function') {
+      window._tempQuestions = [];
+      if (typeof renderTestBuilder === 'function') renderTestBuilder();
+      const el = document.getElementById('nt-title');
+      if (el && title) el.value = 'Тест к уроку: ' + title;
+      if (typeof openModalEl === 'function') openModalEl(document.getElementById('modal-create-test'));
+    }
+  }, 200);
+}
+
+// Override saveTest completion to handle nth_returnToAddTheory
+document.addEventListener('DOMContentLoaded', () => {
+  const modalAddTheory = document.getElementById('modal-add-theory');
+  if (modalAddTheory) {
+    const observer = new MutationObserver(() => {
+      nth_populateTestSelect();
+    });
+    observer.observe(modalAddTheory, { attributes: true, attributeFilter: ['class', 'style'] });
+  }
+});
+</script>
+
 <div id="fc-modals-portal"></div>
 
 </body>
