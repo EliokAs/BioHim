@@ -2941,8 +2941,10 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
     el.contentEditable='true';
     el.className=classMap[blk.type]||'nb-p';
     el.dataset.ph=phMap[blk.type]||'';
-    el.innerText=blk.content||'';
-    el.addEventListener('input',()=>{ arr[idx].content=el.innerText; });
+    el.innerHTML=blk.content||'';
+    const _nbUpdateEmpty1 = ()=>{ el.classList.toggle('is-empty', !el.textContent.trim() && !el.querySelector('img')); };
+    _nbUpdateEmpty1();
+    el.addEventListener('input',()=>{ arr[idx].content=el.innerHTML; _nbUpdateEmpty1(); });
     el.addEventListener('keydown',e=>{
       if(e.key==='Enter'&&!e.shiftKey&&blk.type!=='code'){
         e.preventDefault();
@@ -2954,7 +2956,7 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
           if(ne) ne.focus();
         },10);
       }
-      if(e.key==='Backspace'&&el.innerText===''&&arr.length>1){
+      if(e.key==='Backspace'&&(el.innerText||el.textContent)===''e.key==='Backspace'&&el.innerText===''&&arr.length>1e.key==='Backspace'&&el.innerText===''&&arr.length>1arr.length>1){
         e.preventDefault();
         arr.splice(idx,1);
         nbRenderCanvas(arr,stateVar,canvasId);
@@ -2986,6 +2988,49 @@ function nbHandleUploadFor(input, idx, stateVar, canvasId){
   };
   reader.readAsDataURL(file);
 }
+
+function nbInsertLink(){
+  const url = prompt('Введите URL ссылки:', 'https://');
+  if(!url) return;
+  const text = prompt('Текст ссылки (оставьте пустым для URL):', '') || url;
+  document.execCommand('insertHTML', false, `<a href="${url.replace(/"/g,'&quot;')}" target="_blank" rel="noopener">${text.replace(/</g,'&lt;')}</a>`);
+}
+
+// ── Copy/drag protection for student-facing content ──
+(function(){
+  const PROTECTED_IDS = ['view-article-body','take-test-body','trial-take-body','student-tests-list','s-list-theory-accordion','page-student-library','page-student-works'];
+  function preventCopyIn(e){
+    const target = e.target;
+    if(!target) return;
+    const closest = PROTECTED_IDS.find(id => target.closest && target.closest('#'+id));
+    if(closest){ e.preventDefault(); e.stopPropagation(); return false; }
+  }
+  function preventDragIn(e){
+    const target = e.target;
+    if(!target) return;
+    const closest = PROTECTED_IDS.find(id => target.closest && target.closest('#'+id));
+    if(closest){ e.preventDefault(); }
+  }
+  document.addEventListener('copy', preventCopyIn, true);
+  document.addEventListener('cut', preventCopyIn, true);
+  document.addEventListener('dragstart', preventDragIn, true);
+  document.addEventListener('contextmenu', function(e){
+    const target = e.target;
+    if(!target) return;
+    const inProtected = PROTECTED_IDS.some(id => target.closest && target.closest('#'+id));
+    if(inProtected){ e.preventDefault(); return false; }
+  }, true);
+  // Also block print screen via CSS is not possible; block keyboard shortcuts
+  document.addEventListener('keydown', function(e){
+    // Block Ctrl+C, Ctrl+A, Ctrl+X in protected areas
+    if((e.ctrlKey||e.metaKey) && ['c','a','x','p'].includes(e.key.toLowerCase())){
+      const target = e.target;
+      if(!target) return;
+      const inProtected = PROTECTED_IDS.some(id => target.closest && target.closest('#'+id));
+      if(inProtected){ e.preventDefault(); return false; }
+    }
+  }, true);
+})();
 
 function nbPreviewNew(){
   const body=document.getElementById('nb-preview-body');
@@ -4231,8 +4276,10 @@ function nbBlockEl(blk, idx){
     el.contentEditable = 'true';
     el.className = classMap[blk.type]||'nb-p';
     el.dataset.ph = phMap[blk.type]||'';
-    el.innerText = blk.content || '';
-    el.addEventListener('input', ()=>{ _nbBlocks[idx].content = el.innerText; });
+    el.innerHTML = blk.content || '';
+    const _nbUpdateEmpty2 = ()=>{ el.classList.toggle('is-empty', !el.textContent.trim() && !el.querySelector('img')); };
+    _nbUpdateEmpty2();
+    el.addEventListener('input', ()=>{ _nbBlocks[idx].content = el.innerHTML; _nbUpdateEmpty2(); });
     el.addEventListener('keydown', e=>{
       if(e.key==='Enter' && !e.shiftKey && blk.type!=='code'){
         e.preventDefault();
@@ -4244,7 +4291,7 @@ function nbBlockEl(blk, idx){
           if(newEl) newEl.focus();
         },10);
       }
-      if(e.key==='Backspace' && el.innerText==='' && _nbBlocks.length>1){
+      if(e.key==='Backspace' && (el.innerText||el.textContent)==='' && _nbBlocks.length>1){
         e.preventDefault();
         _nbBlocks.splice(idx,1);
         nbRender();
@@ -4296,13 +4343,23 @@ function nbHandleImageUpload(input, idx){
 
 // Render блоков для просмотра (ученик + предпросмотр)
 function nbRenderView(blocks){
+  // safeRich: allow formatting HTML from execCommand but strip dangerous tags
+  function safeRich(html){
+    if(!html) return '';
+    // Strip script/event handlers but keep formatting tags
+    return html
+      .replace(/<script[\s\S]*?<\/script>/gi,'')
+      .replace(/on\w+\s*=\s*["'][^"']*["']/gi,'')
+      .replace(/on\w+\s*=\s*[^\s>]+/gi,'')
+      .replace(/javascript\s*:/gi,'');
+  }
   return blocks.map(b=>{
-    if(b.type==='p') return `<p style="margin:0 0 10px;line-height:1.75;color:var(--text2)">${esc(b.content).replace(/\n/g,'<br>')}</p>`;
-    if(b.type==='h1') return `<h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--accent);margin:20px 0 10px">${esc(b.content)}</h2>`;
-    if(b.type==='h2') return `<h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--green-deep);margin:16px 0 8px">${esc(b.content)}</h3>`;
-    if(b.type==='h3') return `<h4 style="font-size:1rem;font-weight:700;color:var(--text);margin:12px 0 6px">${esc(b.content)}</h4>`;
-    if(b.type==='quote') return `<blockquote style="border-left:3px solid var(--green-mid);padding:8px 16px;background:var(--bg2);border-radius:0 8px 8px 0;font-style:italic;color:var(--text2);margin:12px 0">${esc(b.content)}</blockquote>`;
-    if(b.type==='callout') return `<div style="background:#fffbeb;border:1px solid #fce98a;border-radius:10px;padding:12px 16px;color:#856404;margin:12px 0">💡 ${esc(b.content)}</div>`;
+    if(b.type==='p') return `<p style="margin:0 0 10px;line-height:1.75;color:var(--text2)">${safeRich(b.content)}</p>`;
+    if(b.type==='h1') return `<h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--accent);margin:20px 0 10px">${safeRich(b.content)}</h2>`;
+    if(b.type==='h2') return `<h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--green-deep);margin:16px 0 8px">${safeRich(b.content)}</h3>`;
+    if(b.type==='h3') return `<h4 style="font-size:1rem;font-weight:700;color:var(--text);margin:12px 0 6px">${safeRich(b.content)}</h4>`;
+    if(b.type==='quote') return `<blockquote style="border-left:3px solid var(--green-mid);padding:8px 16px;background:var(--bg2);border-radius:0 8px 8px 0;font-style:italic;color:var(--text2);margin:12px 0">${safeRich(b.content)}</blockquote>`;
+    if(b.type==='callout') return `<div style="background:#fffbeb;border:1px solid #fce98a;border-radius:10px;padding:12px 16px;color:#856404;margin:12px 0">💡 ${safeRich(b.content)}</div>`;
     if(b.type==='code') return `<pre style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 18px;overflow-x:auto;font-size:0.85rem;margin:12px 0"><code>${esc(b.content)}</code></pre>`;
     if(b.type==='divider') return `<hr style="border:none;border-top:2px solid var(--green-xpale);margin:16px 0">`;
     if(b.type==='image'||b.type==='image-upload') return b.url ? `<figure style="margin:16px 0;text-align:center"><img src="${safeUrl(b.url)}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1)" alt="${esc(b.caption||'')}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${esc(b.caption||'')}</figcaption></figure>` : '';
