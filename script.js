@@ -2547,7 +2547,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       <div style="font-size:1.4rem">📖</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:0.97rem;color:var(--accent);margin-bottom:4px">${esc(c.title)}</div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}${watchBadge?'&nbsp;'+watchBadge:''}${viewedBadge?'&nbsp;'+viewedBadge:''}${_availBadgeHtml?'&nbsp;'+_availBadgeHtml:''}</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}${watchBadge?'&nbsp;'+watchBadge:''}${viewedBadge?'&nbsp;'+viewedBadge:''}${_availBadgeHtml?'&nbsp;'+_availBadgeHtml:''}${(!isAdmin&&c.quiz)?'&nbsp;<span class="accordion-badge" style="background:#f0e6ff;color:#7c3aed">📝 Тест</span>':''}</div>
       </div>
       <div class="accordion-arrow">▼</div>
     </div>
@@ -2555,6 +2555,19 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       <div style="padding-top:16px">
         ${videoBlock}${textBlock}${imgsBlock}${filesBlock}
         ${(!videoBlock&&!textBlock&&!imgsBlock&&!filesBlock)?'<div class="empty-state"><p>Содержимое не добавлено</p></div>':''}
+        ${!isAdmin && c.quiz ? `<div id="inline-quiz-body-${c.id}">
+          <div style="margin-top:16px;padding:14px 16px;background:linear-gradient(135deg,#f5f0ff,#ede9fe);border-radius:12px;border:1.5px solid #c4b5fd;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:800;color:#5b21b6;font-size:0.95rem;margin-bottom:3px">🧠 ${esc(c.quiz.title)}</div>
+              <div style="font-size:0.78rem;color:#7c3aed">${(c.quiz.questions||[]).length} вопросов · Проверь своё понимание материала</div>
+            </div>
+            <button class="btn btn-sm" style="background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;font-weight:700" onclick="startInlineQuiz('${c.id}')">▶ Начать тест</button>
+          </div>
+        </div>` : ''}
+        ${isAdmin && c.quiz ? `<div style="margin-top:16px;padding:10px 14px;background:#f5f0ff;border-radius:10px;border:1.5px solid #c4b5fd;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span style="font-size:0.84rem;font-weight:700;color:#5b21b6">📝 ${esc(c.quiz.title)} · ${(c.quiz.questions||[]).length} вопр.</span>
+          <span style="font-size:0.76rem;color:#7c3aed">Встроенный тест</span>
+        </div>` : ''}
         ${adminActions}
       </div>
     </div>
@@ -3012,7 +3025,9 @@ function addTheory(){
   const legacy=nbToLegacy(_nbBlocksNew);
   const content=load('content')||[];
   const newItems=[];
-  const base={type:'theory',title,...legacy,attachmentUrl:'',date:new Date().toLocaleDateString('ru'),openAt,closeAt};
+  let quiz=null;
+  try{const qd=document.getElementById('nth-quiz-data')?.value;if(qd)quiz=JSON.parse(qd);}catch(e){}
+  const base={type:'theory',title,...legacy,attachmentUrl:'',date:new Date().toLocaleDateString('ru'),openAt,closeAt,...(quiz?{quiz}:{})};
   if(sids.length){
     sids.forEach(sid=>{ const item={...base,id:'ct_'+Date.now()+'_'+sid,studentId:sid}; content.push(item); newItems.push(item); });
   } else {
@@ -3023,6 +3038,8 @@ function addTheory(){
   _nbBlocksNew=[];
   document.getElementById('nth-title').value='';
   ['nth-open-at','nth-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const nqd=document.getElementById('nth-quiz-data'); if(nqd) nqd.value='';
+  const nqp=document.getElementById('nth-quiz-preview'); if(nqp) nqp.style.display='none';
   closeModal('modal-add-theory');
   if(sids.length) _selectedStudent=sids[0];
   renderContentAdmin();
@@ -3048,6 +3065,269 @@ function deleteContent(id){
   requireAdmin('deleteContent');
   save('content',(load('content')||[]).filter(c=>c.id!==id));
   renderContentAdmin();
+}
+
+// ══════════════════════════════════════════════
+// INLINE QUIZ — встроенный тест в материале
+// ══════════════════════════════════════════════
+let _iqbContext = 'new'; // 'new' | 'edit'
+let _iqbQuestions = [];
+
+function openInlineQuizBuilder(ctx) {
+  _iqbContext = ctx;
+  // If already has quiz data, load it for editing
+  const dataInput = document.getElementById(ctx==='new' ? 'nth-quiz-data' : 'ec-quiz-data');
+  let existing = null;
+  try { existing = dataInput && dataInput.value ? JSON.parse(dataInput.value) : null; } catch(e){}
+  _iqbQuestions = existing && existing.questions ? JSON.parse(JSON.stringify(existing.questions)) : [];
+  document.getElementById('iqb-title').value = existing ? (existing.title||'') : '';
+  renderIqbQuestions();
+  openModal('modal-inline-quiz-builder');
+}
+
+function iqbAddQuestion(type) {
+  _iqbQuestions.push(initQuestion('iq'+Date.now(), type));
+  renderIqbQuestions();
+}
+
+function renderIqbQuestions() {
+  const el = document.getElementById('iqb-questions-list');
+  if (!el) return;
+  if (!_iqbQuestions.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text3);padding:24px;font-size:0.88rem">Добавьте хотя бы один вопрос</div>';
+    return;
+  }
+  el.innerHTML = _iqbQuestions.map((q, i) => renderIqbQuestionCard(q, i)).join('');
+}
+
+function renderIqbQuestionCard(q, i) {
+  const typeLabel = {auto:'⚡ Один ответ',multi:'☑️ Несколько',open:'📝 Открытый',fillin:'✏️ Вставить слово'}[q.type] || q.type;
+  const opts = (q.type==='auto'||q.type==='multi') ? `
+    <div style="margin-top:8px">
+      <div style="font-size:0.76rem;color:var(--text3);margin-bottom:5px">Варианты ответов (первый — правильный):</div>
+      ${(q.options||['']).map((o,oi)=>`
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">
+          <span style="font-size:0.7rem;color:${oi===0?'var(--green-mid)':'var(--text3)'};min-width:14px">${oi===0?'✓':'○'}</span>
+          <input value="${esc(o)}" placeholder="Вариант ${oi+1}" style="flex:1;padding:5px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem"
+            oninput="_iqbQuestions[${i}].options[${oi}]=this.value">
+          ${q.options.length>2?`<button onclick="_iqbQuestions[${i}].options.splice(${oi},1);renderIqbQuestions()" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:0.9rem">✕</button>`:''}
+        </div>`).join('')}
+      <button class="btn btn-outline btn-sm" onclick="_iqbQuestions[${i}].options.push('');renderIqbQuestions()">+ Вариант</button>
+    </div>` : '';
+  const correctInfo = (q.type==='auto'||q.type==='multi') ? `
+    <div style="margin-top:6px;font-size:0.74rem;color:var(--text3)">
+      ${q.type==='auto' ? 'Правильный — первый вариант. Перемешайте при необходимости вручную.' : 'Правильные — все отмеченные ✓ (первый и все вручную указанные).'}
+    </div>` : '';
+  const correctField = q.type==='auto' ? '' : q.type==='multi' ? `
+    <div style="margin-top:8px;font-size:0.76rem;color:var(--text3)">Правильные ответы (через запятую):</div>
+    <input value="${esc(q.correct||'')}" placeholder="Ответ 1, Ответ 2" style="width:100%;padding:5px 8px;margin-top:4px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;box-sizing:border-box"
+      oninput="_iqbQuestions[${i}].correct=this.value">` : `
+    <div style="margin-top:8px;font-size:0.76rem;color:var(--text3)">${q.type==='open'?'Ключевые слова для авто-проверки (необязательно):':'Правильный ответ:'}</div>
+    <input value="${esc(q.correct||'')}" placeholder="${q.type==='open'?'клетка, митохондрия…':'правильный ответ'}" style="width:100%;padding:5px 8px;margin-top:4px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;box-sizing:border-box"
+      oninput="_iqbQuestions[${i}].correct=this.value">`;
+  return `<div style="background:var(--white);border:1.5px solid var(--green-xpale);border-radius:12px;padding:14px;position:relative">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:0.74rem;font-weight:700;padding:2px 8px;border-radius:8px;background:var(--green-xpale);color:var(--green-deep)">${typeLabel}</span>
+      <span style="font-size:0.74rem;color:var(--text3)">Вопрос ${i+1}</span>
+      <div style="margin-left:auto;display:flex;gap:4px">
+        ${i>0?`<button onclick="_iqbSwap(${i},${i-1})" style="background:none;border:none;cursor:pointer;color:var(--text3)">▲</button>`:''}
+        ${i<_iqbQuestions.length-1?`<button onclick="_iqbSwap(${i},${i+1})" style="background:none;border:none;cursor:pointer;color:var(--text3)">▼</button>`:''}
+        <button onclick="_iqbQuestions.splice(${i},1);renderIqbQuestions()" style="background:none;border:none;cursor:pointer;color:#e74c3c;font-size:0.9rem">🗑</button>
+      </div>
+    </div>
+    <input value="${esc(q.text||'')}" placeholder="Текст вопроса…" style="width:100%;padding:7px 10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.87rem;box-sizing:border-box"
+      oninput="_iqbQuestions[${i}].text=this.value">
+    ${opts}
+    ${correctField}
+    <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:0.74rem;color:var(--text3)">Баллы:</span>
+      <input type="number" min="1" value="${q.points||1}" style="width:60px;padding:4px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem"
+        oninput="_iqbQuestions[${i}].points=+this.value||1">
+      <input value="${esc(q.hint||'')}" placeholder="💡 Подсказка (необязательно)" style="flex:1;padding:4px 8px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem"
+        oninput="_iqbQuestions[${i}].hint=this.value">
+    </div>
+  </div>`;
+}
+
+function _iqbSwap(i, j) {
+  [_iqbQuestions[i], _iqbQuestions[j]] = [_iqbQuestions[j], _iqbQuestions[i]];
+  renderIqbQuestions();
+}
+
+function saveInlineQuiz() {
+  const title = document.getElementById('iqb-title').value.trim();
+  if (!title) { showNotif('Введите название теста'); return; }
+  if (!_iqbQuestions.length) { showNotif('Добавьте хотя бы один вопрос'); return; }
+  // Fix auto-scored: for 'auto' type, correct = first option
+  _iqbQuestions.forEach(q => {
+    if (q.type==='auto' && (!q.correct) && q.options && q.options.length) {
+      q.correct = q.options[0];
+    }
+  });
+  const quizData = { title, questions: _iqbQuestions, source: 'inline' };
+  const dataInput = document.getElementById(_iqbContext==='new' ? 'nth-quiz-data' : 'ec-quiz-data');
+  const preview = document.getElementById(_iqbContext==='new' ? 'nth-quiz-preview' : 'ec-quiz-preview');
+  const label = document.getElementById(_iqbContext==='new' ? 'nth-quiz-label' : 'ec-quiz-label');
+  if (dataInput) dataInput.value = JSON.stringify(quizData);
+  if (label) label.textContent = `📝 ${title} · ${_iqbQuestions.length} вопр.`;
+  if (preview) preview.style.display = 'block';
+  closeModal('modal-inline-quiz-builder');
+  showNotif('✅ Тест сохранён — он появится в уроке');
+}
+
+function openLinkExistingTest(ctx) {
+  _iqbContext = ctx;
+  const tests = (load('tests')||[]).filter(t => t.isLibrary);
+  const el = document.getElementById('link-test-list');
+  if (!tests.length) {
+    el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:24px;font-size:0.88rem">Нет тестов в библиотеке. Сначала создайте тест без назначения ученику.</div>';
+  } else {
+    el.innerHTML = tests.map(t => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg2);border-radius:10px;border:1.5px solid var(--green-xpale)">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:0.9rem;color:var(--accent)">📝 ${esc(t.title)}</div>
+          <div style="font-size:0.76rem;color:var(--text3);margin-top:2px">${(t.questions||[]).length} вопросов · ${t.date||''}</div>
+        </div>
+        <button class="btn btn-green btn-sm" onclick="linkTestToContent('${t.id}')">Привязать</button>
+      </div>`).join('');
+  }
+  openModal('modal-link-test');
+}
+
+function linkTestToContent(testId) {
+  const tests = load('tests')||[];
+  const t = tests.find(t=>t.id===testId);
+  if (!t) return;
+  const quizData = { title: t.title, questions: JSON.parse(JSON.stringify(t.questions||[])), source: 'library', libraryId: testId };
+  const dataInput = document.getElementById(_iqbContext==='new' ? 'nth-quiz-data' : 'ec-quiz-data');
+  const preview = document.getElementById(_iqbContext==='new' ? 'nth-quiz-preview' : 'ec-quiz-preview');
+  const label = document.getElementById(_iqbContext==='new' ? 'nth-quiz-label' : 'ec-quiz-label');
+  if (dataInput) dataInput.value = JSON.stringify(quizData);
+  if (label) label.textContent = `📝 ${t.title} · ${(t.questions||[]).length} вопр. (из библиотеки)`;
+  if (preview) preview.style.display = 'block';
+  closeModal('modal-link-test');
+  showNotif('✅ Тест привязан к уроку');
+}
+
+function removeInlineQuiz(ctx) {
+  const dataInput = document.getElementById(ctx==='new' ? 'nth-quiz-data' : 'ec-quiz-data');
+  const preview = document.getElementById(ctx==='new' ? 'nth-quiz-preview' : 'ec-quiz-preview');
+  if (dataInput) dataInput.value = '';
+  if (preview) preview.style.display = 'none';
+}
+
+// ── Student inline quiz state ──
+let _inlineQuizAnswers = {};
+let _inlineQuizContentId = null;
+
+function startInlineQuiz(contentId) {
+  _inlineQuizContentId = contentId;
+  _inlineQuizAnswers = {};
+  renderInlineQuiz(contentId);
+}
+
+function renderInlineQuiz(contentId) {
+  const el = document.getElementById('inline-quiz-body-'+contentId);
+  if (!el) return;
+  const c = (load('content')||[]).find(c=>c.id===contentId);
+  if (!c || !c.quiz) return;
+  const q = c.quiz;
+  // Check if already completed
+  const result = c.inlineQuizResults && c.inlineQuizResults[currentUser && currentUser.id];
+  if (result) {
+    _renderInlineQuizResult(el, q, result, contentId);
+    return;
+  }
+  el.innerHTML = `
+    <div style="padding:16px;background:linear-gradient(135deg,#f0f9ff,#e8f5f0);border-radius:12px;border:1.5px solid var(--green-pale);margin-top:16px">
+      <div style="font-weight:800;font-size:1rem;color:var(--green-deep);margin-bottom:12px">🧠 ${esc(q.title)}</div>
+      <div id="iq-questions-${contentId}">
+        ${q.questions.map((qq,i)=>renderStudentQuestion(qq,i,'_inlineQuizAnswers','selectInlineOpt')).join('')}
+      </div>
+      <button class="btn btn-green" style="margin-top:8px" onclick="submitInlineQuiz('${contentId}')">📤 Проверить ответы</button>
+    </div>`;
+}
+
+function selectInlineOpt(qId, val, isMulti) {
+  if (isMulti) {
+    const cur = (_inlineQuizAnswers[qId]||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const idx = cur.indexOf(val);
+    if (idx>=0) cur.splice(idx,1); else cur.push(val);
+    _inlineQuizAnswers[qId] = cur.join(',');
+  } else {
+    _inlineQuizAnswers[qId] = val;
+  }
+  if (_inlineQuizContentId) {
+    const el = document.getElementById('iq-questions-'+_inlineQuizContentId);
+    if (el) el.innerHTML = (load('content')||[]).find(c=>c.id===_inlineQuizContentId)?.quiz?.questions
+      ?.map((q,i)=>renderStudentQuestion(q,i,'_inlineQuizAnswers','selectInlineOpt')).join('') || '';
+  }
+}
+
+function submitInlineQuiz(contentId) {
+  const c = (load('content')||[]).find(c=>c.id===contentId);
+  if (!c || !c.quiz) return;
+  let score = 0, total = 0;
+  c.quiz.questions.forEach(q => {
+    const pts = +q.points||1;
+    const ans = _inlineQuizAnswers[q.id]||'';
+    if (q.type!=='open') { total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
+  });
+  const pct = total ? Math.round(score/total*100) : 0;
+  const result = { score, total, pct, answers: {..._inlineQuizAnswers}, date: new Date().toLocaleDateString('ru') };
+  // Save to content item
+  const contents = load('content')||[];
+  const ci = contents.find(c=>c.id===contentId);
+  if (ci) {
+    if (!ci.inlineQuizResults) ci.inlineQuizResults = {};
+    const sid = currentUser && currentUser.id;
+    ci.inlineQuizResults[sid] = result;
+    save('content', contents);
+  }
+  const el = document.getElementById('inline-quiz-body-'+contentId);
+  if (el) _renderInlineQuizResult(el, c.quiz, result, contentId);
+  showNotif(`🧠 Тест пройден: ${score}/${total} б. (${pct}%)`);
+}
+
+function _renderInlineQuizResult(el, quiz, result, contentId) {
+  const pct = result.pct;
+  const color = pct>=80 ? '#27ae60' : pct>=50 ? '#e67e22' : '#e74c3c';
+  const emoji = pct>=80 ? '🏆' : pct>=50 ? '👍' : '📚';
+  el.innerHTML = `
+    <div style="padding:16px;background:linear-gradient(135deg,#f0f9ff,#e8f5f0);border-radius:12px;border:1.5px solid var(--green-pale);margin-top:16px">
+      <div style="font-weight:800;font-size:1rem;color:var(--green-deep);margin-bottom:12px">🧠 ${esc(quiz.title)}</div>
+      <div style="text-align:center;padding:16px 0;margin-bottom:12px">
+        <div style="font-size:2.2rem;margin-bottom:6px">${emoji}</div>
+        <div style="font-size:1.6rem;font-weight:900;color:${color};font-family:'Playfair Display',serif">${pct}%</div>
+        <div style="font-size:0.85rem;color:var(--text3);margin-top:4px">${result.score} из ${result.total} баллов · ${result.date||''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${quiz.questions.map(q=>{
+          const ans = result.answers[q.id]||'';
+          const correct = q.type!=='open' ? scoreQuestion(q,ans) : null;
+          const icon = q.type==='open' ? '📝' : correct ? '✅' : '❌';
+          return `<div style="padding:10px 12px;border-radius:10px;background:${q.type==='open'?'#f8f9fa':correct?'#e8f8f0':'#fef2f2'};border:1.5px solid ${q.type==='open'?'var(--green-xpale)':correct?'#a3e6c0':'#fca5a5'}">
+            <div style="font-size:0.83rem;font-weight:700;margin-bottom:4px">${icon} ${esc(q.text)}</div>
+            <div style="font-size:0.8rem;color:var(--text2)">Ответ: <em>${esc(ans||'—')}</em></div>
+            ${!correct && q.type!=='open' && q.correct ? `<div style="font-size:0.78rem;color:var(--green-deep);margin-top:3px">✅ Правильно: ${esc(q.correct)}</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="btn btn-outline btn-sm" style="margin-top:12px" onclick="retakeInlineQuiz('${contentId}')">🔄 Пройти снова</button>
+    </div>`;
+}
+
+function retakeInlineQuiz(contentId) {
+  // Remove saved result and restart
+  const contents = load('content')||[];
+  const ci = contents.find(c=>c.id===contentId);
+  if (ci && ci.inlineQuizResults && currentUser) {
+    delete ci.inlineQuizResults[currentUser.id];
+    save('content', contents);
+  }
+  _inlineQuizAnswers = {};
+  _inlineQuizContentId = contentId;
+  renderInlineQuiz(contentId);
 }
 
 // ─── TESTS ADMIN ───
@@ -4364,6 +4644,13 @@ function openEditContent(id){
   // Load blocks: prefer saved blocks, fall back to legacy
   _nbBlocks = cont.blocks && cont.blocks.length ? JSON.parse(JSON.stringify(cont.blocks)) : nbFromLegacy(cont);
   nbRender();
+  // Load quiz data if any
+  const ecQd = document.getElementById('ec-quiz-data');
+  const ecQp = document.getElementById('ec-quiz-preview');
+  const ecQl = document.getElementById('ec-quiz-label');
+  if (ecQd) ecQd.value = cont.quiz ? JSON.stringify(cont.quiz) : '';
+  if (ecQp) ecQp.style.display = cont.quiz ? 'block' : 'none';
+  if (ecQl && cont.quiz) ecQl.textContent = `📝 ${cont.quiz.title} · ${(cont.quiz.questions||[]).length} вопр.`;
   openModalEl('modal-edit-content');
 }
 function saveEditContent(){
@@ -4376,6 +4663,9 @@ function saveEditContent(){
   cont.title=title;
   const legacy = nbToLegacy(_nbBlocks);
   Object.assign(cont, legacy);
+  // Save quiz
+  try{const qd=document.getElementById('ec-quiz-data')?.value;cont.quiz=qd?JSON.parse(qd):undefined;}catch(e){cont.quiz=undefined;}
+  if(cont.quiz===undefined) delete cont.quiz;
   save('content',content);
   closeModal('modal-edit-content');
   renderContentAdmin();
