@@ -852,6 +852,56 @@ body.dark-theme .drawer-footer { background: var(--card); }
 .feedback-box strong { color: var(--green-deep); }
 
 
+/* ── Copy protection for student-facing views ── */
+.no-copy {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+.no-copy img { pointer-events: none !important; -webkit-user-drag: none !important; }
+
+/* ── Rich Text Floating Toolbar ── */
+.rt-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: var(--white);
+  border: 1.5px solid var(--green-pale);
+  border-radius: 10px;
+  padding: 6px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 12px rgba(45,106,79,0.10);
+}
+.rt-toolbar .rt-sep {
+  width: 1px; height: 22px; background: var(--green-xpale);
+  margin: 0 3px; flex-shrink: 0;
+}
+.rt-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 7px;
+  border: none; background: none; cursor: pointer;
+  font-size: 0.88rem; color: var(--text); transition: all 0.15s;
+  font-family: 'Nunito', sans-serif; flex-shrink: 0;
+}
+.rt-btn:hover { background: var(--green-xpale); color: var(--green-deep); }
+.rt-btn.active { background: var(--green-xpale); color: var(--green-deep); font-weight: 700; }
+.rt-btn-wide { width: auto; padding: 0 8px; font-size: 0.78rem; }
+.rt-color-input {
+  width: 26px; height: 26px; border-radius: 6px; border: 1.5px solid var(--green-pale);
+  cursor: pointer; padding: 1px; background: none; flex-shrink: 0;
+}
+.rt-select {
+  padding: 3px 6px; border-radius: 7px; border: 1.5px solid var(--green-pale);
+  font-family: 'Nunito', sans-serif; font-size: 0.78rem; color: var(--text);
+  background: var(--white); cursor: pointer; max-width: 90px;
+}
+
 /* ── Notion-style Block Editor ── */
 .nb-editor { border:1.5px solid var(--green-pale); border-radius:12px; background:var(--white); min-height:320px; padding:12px 8px; }
 .nb-block { display:flex; align-items:flex-start; gap:6px; margin-bottom:2px; position:relative; }
@@ -864,6 +914,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 .nb-content { flex:1; min-width:0; }
 .nb-block [contenteditable] { outline:none; width:100%; min-height:1.5em; word-break:break-word; }
 .nb-block [contenteditable]:empty:before { content:attr(data-ph); color:var(--text3); pointer-events:none; }
+.nb-block [contenteditable].is-empty:before { content:attr(data-ph); color:var(--text3); pointer-events:none; }
 .nb-p { font-size:0.95rem; line-height:1.75; color:var(--text); padding:3px 6px; border-radius:6px; }
 .nb-p:hover, .nb-p:focus { background:var(--bg); }
 .nb-h1 { font-family:'Playfair Display',serif; font-size:1.6rem; font-weight:700; color:var(--accent); padding:3px 6px; }
@@ -1715,12 +1766,12 @@ body.dark-theme .drawer-footer { background: var(--card); }
       </div>
     </div><!-- /page-student-taskbank -->
     <!-- Student Library (unified: Materials + Repeat) -->
-    <div class="page" id="page-student-library">
+    <div class="page no-copy" id="page-student-library">
       <!-- rendered by renderStudentLibrary() -->
     </div>
 
     <!-- Student Works (unified: Tests + HW + Trial) -->
-    <div class="page" id="page-student-works">
+    <div class="page no-copy" id="page-student-works">
       <!-- rendered by renderStudentWorks() -->
     </div>
 
@@ -2116,6 +2167,45 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('video')">🎬 Видео</button>
         <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('file')">📎 Файл</button>
       </div>
+      <div class="rt-toolbar" id="rt-toolbar-new">
+        <button class="rt-btn" title="Жирный (Ctrl+B)" onmousedown="event.preventDefault();document.execCommand('bold')"><b>B</b></button>
+        <button class="rt-btn" title="Курсив (Ctrl+I)" onmousedown="event.preventDefault();document.execCommand('italic')"><i>I</i></button>
+        <button class="rt-btn" title="Подчёркнутый (Ctrl+U)" onmousedown="event.preventDefault();document.execCommand('underline')"><u>U</u></button>
+        <button class="rt-btn" title="Зачёркнутый" onmousedown="event.preventDefault();document.execCommand('strikethrough')"><s>S</s></button>
+        <button class="rt-btn" title="Верхний индекс" onmousedown="event.preventDefault();document.execCommand('superscript')">x²</button>
+        <button class="rt-btn" title="Нижний индекс" onmousedown="event.preventDefault();document.execCommand('subscript')">x₂</button>
+        <span class="rt-sep"></span>
+        <button class="rt-btn rt-btn-wide" title="По левому краю" onmousedown="event.preventDefault();document.execCommand('justifyLeft')">⬅</button>
+        <button class="rt-btn rt-btn-wide" title="По центру" onmousedown="event.preventDefault();document.execCommand('justifyCenter')">≡</button>
+        <button class="rt-btn rt-btn-wide" title="По правому краю" onmousedown="event.preventDefault();document.execCommand('justifyRight')">➡</button>
+        <button class="rt-btn rt-btn-wide" title="По ширине" onmousedown="event.preventDefault();document.execCommand('justifyFull')">⬛</button>
+        <span class="rt-sep"></span>
+        <button class="rt-btn" title="Маркированный список" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')">• —</button>
+        <button class="rt-btn" title="Нумерованный список" onmousedown="event.preventDefault();document.execCommand('insertOrderedList')">1.</button>
+        <button class="rt-btn" title="Увеличить отступ" onmousedown="event.preventDefault();document.execCommand('indent')">→</button>
+        <button class="rt-btn" title="Уменьшить отступ" onmousedown="event.preventDefault();document.execCommand('outdent')">←</button>
+        <span class="rt-sep"></span>
+        <select class="rt-select" title="Размер шрифта" onchange="document.execCommand('fontSize',false,this.value);this.value=''">
+          <option value="">Размер</option>
+          <option value="1">Очень мал.</option>
+          <option value="2">Малый</option>
+          <option value="3">Обычный</option>
+          <option value="4">Крупный</option>
+          <option value="5">Большой</option>
+          <option value="6">Очень бол.</option>
+          <option value="7">Огромный</option>
+        </select>
+        <span class="rt-sep"></span>
+        <label title="Цвет текста" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
+          A <input type="color" class="rt-color-input" value="#222222" onchange="document.execCommand('foreColor',false,this.value)">
+        </label>
+        <label title="Цвет фона" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
+          🖊 <input type="color" class="rt-color-input" value="#ffff00" onchange="document.execCommand('hiliteColor',false,this.value)">
+        </label>
+        <span class="rt-sep"></span>
+        <button class="rt-btn" title="Ссылка" onmousedown="event.preventDefault();nbInsertLink()">🔗</button>
+        <button class="rt-btn" title="Убрать форматирование" onmousedown="event.preventDefault();document.execCommand('removeFormat')" style="font-size:0.7rem;width:auto;padding:0 6px">Aa✕</button>
+      </div>
       <div class="nb-editor" id="nb-canvas-new"></div>
       <div style="font-size:0.75rem;color:var(--text3);margin-top:6px;margin-bottom:14px">💡 Наведите на блок — ⠿ для перетаскивания, ✕ для удаления · 📋 Вставьте скопированное изображение <strong>Ctrl+V</strong> прямо в редактор</div>
       <hr class="divider">
@@ -2214,7 +2304,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
     <!-- Instruction -->
     <div id="trial-instruction-bar" style="display:none;background:#fff8e1;padding:10px 22px;font-size:0.83rem;color:#7d5a00;border-bottom:1px solid #ffe082;flex-shrink:0"></div>
     <!-- Body -->
-    <div style="flex:1;overflow-y:auto;padding:22px" id="trial-take-body"></div>
+    <div style="flex:1;overflow-y:auto;padding:22px" id="trial-take-body" class="no-copy"></div>
     <!-- Footer -->
     <div style="padding:14px 22px;border-top:1px solid var(--green-xpale);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:var(--white)">
       <div style="font-size:0.83rem;color:var(--text3)" id="trial-footer-stats"></div>
@@ -2695,7 +2785,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   <div class="modal">
     <div class="modal-title" id="view-article-title"></div>
     <span class="modal-close" onclick="closeModal('modal-view-article')">✕</span>
-    <div id="view-article-body" style="line-height:1.75;color:var(--text2);font-size:0.93rem"></div>
+    <div id="view-article-body" class="no-copy" style="line-height:1.75;color:var(--text2);font-size:0.93rem"></div>
   </div>
 </div>
 
@@ -2713,7 +2803,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
       </div>
     </div>
     <span class="modal-close" onclick="closeModal('modal-take-test')">✕</span>
-    <div id="take-test-body"></div>
+    <div id="take-test-body" class="no-copy"></div>
   </div>
 </div>
 
@@ -2832,6 +2922,45 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <button class="btn btn-outline btn-sm" onclick="nbAddBlock('image-upload')">📤 Загрузить</button>
           <button class="btn btn-outline btn-sm" onclick="nbAddBlock('video')">🎬 Видео</button>
           <button class="btn btn-outline btn-sm" onclick="nbAddBlock('file')">📎 Файл</button>
+        </div>
+        <div class="rt-toolbar" id="rt-toolbar-edit">
+          <button class="rt-btn" title="Жирный (Ctrl+B)" onmousedown="event.preventDefault();document.execCommand('bold')"><b>B</b></button>
+          <button class="rt-btn" title="Курсив (Ctrl+I)" onmousedown="event.preventDefault();document.execCommand('italic')"><i>I</i></button>
+          <button class="rt-btn" title="Подчёркнутый (Ctrl+U)" onmousedown="event.preventDefault();document.execCommand('underline')"><u>U</u></button>
+          <button class="rt-btn" title="Зачёркнутый" onmousedown="event.preventDefault();document.execCommand('strikethrough')"><s>S</s></button>
+          <button class="rt-btn" title="Верхний индекс" onmousedown="event.preventDefault();document.execCommand('superscript')">x²</button>
+          <button class="rt-btn" title="Нижний индекс" onmousedown="event.preventDefault();document.execCommand('subscript')">x₂</button>
+          <span class="rt-sep"></span>
+          <button class="rt-btn rt-btn-wide" title="По левому краю" onmousedown="event.preventDefault();document.execCommand('justifyLeft')">⬅</button>
+          <button class="rt-btn rt-btn-wide" title="По центру" onmousedown="event.preventDefault();document.execCommand('justifyCenter')">≡</button>
+          <button class="rt-btn rt-btn-wide" title="По правому краю" onmousedown="event.preventDefault();document.execCommand('justifyRight')">➡</button>
+          <button class="rt-btn rt-btn-wide" title="По ширине" onmousedown="event.preventDefault();document.execCommand('justifyFull')">⬛</button>
+          <span class="rt-sep"></span>
+          <button class="rt-btn" title="Маркированный список" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')">• —</button>
+          <button class="rt-btn" title="Нумерованный список" onmousedown="event.preventDefault();document.execCommand('insertOrderedList')">1.</button>
+          <button class="rt-btn" title="Увеличить отступ" onmousedown="event.preventDefault();document.execCommand('indent')">→</button>
+          <button class="rt-btn" title="Уменьшить отступ" onmousedown="event.preventDefault();document.execCommand('outdent')">←</button>
+          <span class="rt-sep"></span>
+          <select class="rt-select" title="Размер шрифта" onchange="document.execCommand('fontSize',false,this.value);this.value=''">
+            <option value="">Размер</option>
+            <option value="1">Очень мал.</option>
+            <option value="2">Малый</option>
+            <option value="3">Обычный</option>
+            <option value="4">Крупный</option>
+            <option value="5">Большой</option>
+            <option value="6">Очень бол.</option>
+            <option value="7">Огромный</option>
+          </select>
+          <span class="rt-sep"></span>
+          <label title="Цвет текста" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
+            A <input type="color" class="rt-color-input" value="#222222" onchange="document.execCommand('foreColor',false,this.value)">
+          </label>
+          <label title="Цвет фона" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
+            🖊 <input type="color" class="rt-color-input" value="#ffff00" onchange="document.execCommand('hiliteColor',false,this.value)">
+          </label>
+          <span class="rt-sep"></span>
+          <button class="rt-btn" title="Ссылка" onmousedown="event.preventDefault();nbInsertLink()">🔗</button>
+          <button class="rt-btn" title="Убрать форматирование" onmousedown="event.preventDefault();document.execCommand('removeFormat')" style="font-size:0.7rem;width:auto;padding:0 6px">Aa✕</button>
         </div>
         <div class="nb-editor" id="nb-canvas"></div>
         <div style="font-size:0.75rem;color:var(--text3);margin-top:6px">💡 Наведите на блок — ⠿ перетащить, + вставить ниже · 📋 Вставьте скопированное изображение <strong>Ctrl+V</strong> прямо в редактор</div>
