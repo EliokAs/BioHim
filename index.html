@@ -875,7 +875,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   flex-wrap: wrap;
   gap: 3px;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   box-shadow: 0 2px 12px rgba(45,106,79,0.10);
 }
 .rt-toolbar .rt-sep {
@@ -884,16 +884,24 @@ body.dark-theme .drawer-footer { background: var(--card); }
 }
 .rt-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: 7px;
+  min-width: 28px; height: 28px; border-radius: 7px;
   border: none; background: none; cursor: pointer;
-  font-size: 0.88rem; color: var(--text); transition: all 0.15s;
-  font-family: 'Nunito', sans-serif; flex-shrink: 0;
+  font-size: 0.85rem; color: var(--text); transition: all 0.15s;
+  font-family: 'Nunito', sans-serif; flex-shrink: 0; padding: 0 4px;
 }
 .rt-btn:hover { background: var(--green-xpale); color: var(--green-deep); }
 .rt-btn.active { background: var(--green-xpale); color: var(--green-deep); font-weight: 700; }
-.rt-btn-wide { width: auto; padding: 0 8px; font-size: 0.78rem; }
+.rt-btn-wide { padding: 0 6px; }
+.rt-block-btn {
+  background: var(--green-xpale);
+  color: var(--green-deep);
+  border: 1.5px solid var(--green-pale);
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+.rt-block-btn:hover { background: var(--green-pale); border-color: var(--green-mid); }
 .rt-color-input {
-  width: 26px; height: 26px; border-radius: 6px; border: 1.5px solid var(--green-pale);
+  width: 24px; height: 24px; border-radius: 5px; border: 1.5px solid var(--green-pale);
   cursor: pointer; padding: 1px; background: none; flex-shrink: 0;
 }
 .rt-select {
@@ -2153,21 +2161,22 @@ body.dark-theme .drawer-footer { background: var(--card); }
     </div>
     <div class="drawer-body">
       <div class="form-group" style="margin-bottom:14px"><label>Название урока</label><input id="nth-title" placeholder="Тема: Строение клетки" style="font-size:1rem"></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:var(--bg2);border-radius:10px">
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('p')">¶ Текст</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('h1')">H1</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('h2')">H2</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('h3')">H3</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('quote')">❝ Цитата</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('callout')">💡 Выноска</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('code')">{'}'} Код</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('divider')">— Разделитель</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('image')">🖼 Фото</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('image-upload')">📤 Загрузить</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('video')">🎬 Видео</button>
-        <button class="btn btn-outline btn-sm" onclick="nbAddBlockNew('file')">📎 Файл</button>
-      </div>
       <div class="rt-toolbar" id="rt-toolbar-new">
+        <!-- Блоки -->
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Абзац" onclick="nbAddBlockNew('p')">¶ Текст</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Заголовок 1" onclick="nbAddBlockNew('h1')">H1</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Заголовок 2" onclick="nbAddBlockNew('h2')">H2</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Заголовок 3" onclick="nbAddBlockNew('h3')">H3</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Цитата" onclick="nbAddBlockNew('quote')">❝</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Выноска" onclick="nbAddBlockNew('callout')">💡</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Код" onclick="nbAddBlockNew('code')">{}</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Разделитель" onclick="nbAddBlockNew('divider')">—</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Фото (URL)" onclick="nbAddBlockNew('image')">🖼</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Загрузить фото" onclick="nbAddBlockNew('image-upload')">📤</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Видео" onclick="nbAddBlockNew('video')">🎬</button>
+        <button class="rt-btn rt-btn-wide rt-block-btn" title="Файл" onclick="nbAddBlockNew('file')">📎</button>
+        <span class="rt-sep"></span>
+        <!-- Форматирование -->
         <button class="rt-btn" title="Жирный (Ctrl+B)" onmousedown="event.preventDefault();document.execCommand('bold')"><b>B</b></button>
         <button class="rt-btn" title="Курсив (Ctrl+I)" onmousedown="event.preventDefault();document.execCommand('italic')"><i>I</i></button>
         <button class="rt-btn" title="Подчёркнутый (Ctrl+U)" onmousedown="event.preventDefault();document.execCommand('underline')"><u>U</u></button>
@@ -2175,15 +2184,14 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <button class="rt-btn" title="Верхний индекс" onmousedown="event.preventDefault();document.execCommand('superscript')">x²</button>
         <button class="rt-btn" title="Нижний индекс" onmousedown="event.preventDefault();document.execCommand('subscript')">x₂</button>
         <span class="rt-sep"></span>
-        <button class="rt-btn rt-btn-wide" title="По левому краю" onmousedown="event.preventDefault();document.execCommand('justifyLeft')">⬅</button>
-        <button class="rt-btn rt-btn-wide" title="По центру" onmousedown="event.preventDefault();document.execCommand('justifyCenter')">≡</button>
-        <button class="rt-btn rt-btn-wide" title="По правому краю" onmousedown="event.preventDefault();document.execCommand('justifyRight')">➡</button>
-        <button class="rt-btn rt-btn-wide" title="По ширине" onmousedown="event.preventDefault();document.execCommand('justifyFull')">⬛</button>
+        <button class="rt-btn" title="По левому краю" onmousedown="event.preventDefault();document.execCommand('justifyLeft')">⬅</button>
+        <button class="rt-btn" title="По центру" onmousedown="event.preventDefault();document.execCommand('justifyCenter')">☰</button>
+        <button class="rt-btn" title="По правому краю" onmousedown="event.preventDefault();document.execCommand('justifyRight')">➡</button>
         <span class="rt-sep"></span>
-        <button class="rt-btn" title="Маркированный список" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')">• —</button>
+        <button class="rt-btn" title="Маркированный список" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')">•≡</button>
         <button class="rt-btn" title="Нумерованный список" onmousedown="event.preventDefault();document.execCommand('insertOrderedList')">1.</button>
-        <button class="rt-btn" title="Увеличить отступ" onmousedown="event.preventDefault();document.execCommand('indent')">→</button>
-        <button class="rt-btn" title="Уменьшить отступ" onmousedown="event.preventDefault();document.execCommand('outdent')">←</button>
+        <button class="rt-btn" title="Увеличить отступ" onmousedown="event.preventDefault();document.execCommand('indent')">→|</button>
+        <button class="rt-btn" title="Уменьшить отступ" onmousedown="event.preventDefault();document.execCommand('outdent')">|←</button>
         <span class="rt-sep"></span>
         <select class="rt-select" title="Размер шрифта" onchange="document.execCommand('fontSize',false,this.value);this.value=''">
           <option value="">Размер</option>
@@ -2195,14 +2203,8 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <option value="6">Очень бол.</option>
           <option value="7">Огромный</option>
         </select>
-        <span class="rt-sep"></span>
-        <label title="Цвет текста" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
-          A <input type="color" class="rt-color-input" value="#222222" onchange="document.execCommand('foreColor',false,this.value)">
-        </label>
-        <label title="Цвет фона" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
-          🖊 <input type="color" class="rt-color-input" value="#ffff00" onchange="document.execCommand('hiliteColor',false,this.value)">
-        </label>
-        <span class="rt-sep"></span>
+        <label title="Цвет текста" style="display:flex;align-items:center;gap:2px;font-size:0.7rem;color:var(--text3);cursor:pointer;margin-left:2px">A<input type="color" class="rt-color-input" value="#222222" onchange="document.execCommand('foreColor',false,this.value)"></label>
+        <label title="Цвет фона" style="display:flex;align-items:center;gap:2px;font-size:0.7rem;color:var(--text3);cursor:pointer">🖊<input type="color" class="rt-color-input" value="#ffff00" onchange="document.execCommand('hiliteColor',false,this.value)"></label>
         <button class="rt-btn" title="Ссылка" onmousedown="event.preventDefault();nbInsertLink()">🔗</button>
         <button class="rt-btn" title="Убрать форматирование" onmousedown="event.preventDefault();document.execCommand('removeFormat')" style="font-size:0.7rem;width:auto;padding:0 6px">Aa✕</button>
       </div>
@@ -2909,21 +2911,22 @@ body.dark-theme .drawer-footer { background: var(--card); }
       <input type="hidden" id="ec-type">
       <div class="form-group" style="margin-bottom:14px"><label>Название урока</label><input id="ec-title" style="font-size:1rem"></div>
       <div id="ec-theory-fields" style="display:none">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:8px;background:var(--bg2);border-radius:10px">
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('p')">¶ Текст</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('h1')">H1</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('h2')">H2</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('h3')">H3</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('quote')">❝ Цитата</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('callout')">💡 Выноска</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('code')">{'}'} Код</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('divider')">— Разделитель</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('image')">🖼 Фото</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('image-upload')">📤 Загрузить</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('video')">🎬 Видео</button>
-          <button class="btn btn-outline btn-sm" onclick="nbAddBlock('file')">📎 Файл</button>
-        </div>
         <div class="rt-toolbar" id="rt-toolbar-edit">
+          <!-- Блоки -->
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Абзац" onclick="nbAddBlock('p')">¶ Текст</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Заголовок 1" onclick="nbAddBlock('h1')">H1</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Заголовок 2" onclick="nbAddBlock('h2')">H2</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Заголовок 3" onclick="nbAddBlock('h3')">H3</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Цитата" onclick="nbAddBlock('quote')">❝</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Выноска" onclick="nbAddBlock('callout')">💡</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Код" onclick="nbAddBlock('code')">{}</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Разделитель" onclick="nbAddBlock('divider')">—</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Фото (URL)" onclick="nbAddBlock('image')">🖼</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Загрузить фото" onclick="nbAddBlock('image-upload')">📤</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Видео" onclick="nbAddBlock('video')">🎬</button>
+          <button class="rt-btn rt-btn-wide rt-block-btn" title="Файл" onclick="nbAddBlock('file')">📎</button>
+          <span class="rt-sep"></span>
+          <!-- Форматирование -->
           <button class="rt-btn" title="Жирный (Ctrl+B)" onmousedown="event.preventDefault();document.execCommand('bold')"><b>B</b></button>
           <button class="rt-btn" title="Курсив (Ctrl+I)" onmousedown="event.preventDefault();document.execCommand('italic')"><i>I</i></button>
           <button class="rt-btn" title="Подчёркнутый (Ctrl+U)" onmousedown="event.preventDefault();document.execCommand('underline')"><u>U</u></button>
@@ -2931,15 +2934,14 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <button class="rt-btn" title="Верхний индекс" onmousedown="event.preventDefault();document.execCommand('superscript')">x²</button>
           <button class="rt-btn" title="Нижний индекс" onmousedown="event.preventDefault();document.execCommand('subscript')">x₂</button>
           <span class="rt-sep"></span>
-          <button class="rt-btn rt-btn-wide" title="По левому краю" onmousedown="event.preventDefault();document.execCommand('justifyLeft')">⬅</button>
-          <button class="rt-btn rt-btn-wide" title="По центру" onmousedown="event.preventDefault();document.execCommand('justifyCenter')">≡</button>
-          <button class="rt-btn rt-btn-wide" title="По правому краю" onmousedown="event.preventDefault();document.execCommand('justifyRight')">➡</button>
-          <button class="rt-btn rt-btn-wide" title="По ширине" onmousedown="event.preventDefault();document.execCommand('justifyFull')">⬛</button>
+          <button class="rt-btn" title="По левому краю" onmousedown="event.preventDefault();document.execCommand('justifyLeft')">⬅</button>
+          <button class="rt-btn" title="По центру" onmousedown="event.preventDefault();document.execCommand('justifyCenter')">☰</button>
+          <button class="rt-btn" title="По правому краю" onmousedown="event.preventDefault();document.execCommand('justifyRight')">➡</button>
           <span class="rt-sep"></span>
-          <button class="rt-btn" title="Маркированный список" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')">• —</button>
+          <button class="rt-btn" title="Маркированный список" onmousedown="event.preventDefault();document.execCommand('insertUnorderedList')">•≡</button>
           <button class="rt-btn" title="Нумерованный список" onmousedown="event.preventDefault();document.execCommand('insertOrderedList')">1.</button>
-          <button class="rt-btn" title="Увеличить отступ" onmousedown="event.preventDefault();document.execCommand('indent')">→</button>
-          <button class="rt-btn" title="Уменьшить отступ" onmousedown="event.preventDefault();document.execCommand('outdent')">←</button>
+          <button class="rt-btn" title="Увеличить отступ" onmousedown="event.preventDefault();document.execCommand('indent')">→|</button>
+          <button class="rt-btn" title="Уменьшить отступ" onmousedown="event.preventDefault();document.execCommand('outdent')">|←</button>
           <span class="rt-sep"></span>
           <select class="rt-select" title="Размер шрифта" onchange="document.execCommand('fontSize',false,this.value);this.value=''">
             <option value="">Размер</option>
@@ -2951,14 +2953,8 @@ body.dark-theme .drawer-footer { background: var(--card); }
             <option value="6">Очень бол.</option>
             <option value="7">Огромный</option>
           </select>
-          <span class="rt-sep"></span>
-          <label title="Цвет текста" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
-            A <input type="color" class="rt-color-input" value="#222222" onchange="document.execCommand('foreColor',false,this.value)">
-          </label>
-          <label title="Цвет фона" style="display:flex;align-items:center;gap:3px;font-size:0.7rem;color:var(--text3);cursor:pointer">
-            🖊 <input type="color" class="rt-color-input" value="#ffff00" onchange="document.execCommand('hiliteColor',false,this.value)">
-          </label>
-          <span class="rt-sep"></span>
+          <label title="Цвет текста" style="display:flex;align-items:center;gap:2px;font-size:0.7rem;color:var(--text3);cursor:pointer;margin-left:2px">A<input type="color" class="rt-color-input" value="#222222" onchange="document.execCommand('foreColor',false,this.value)"></label>
+          <label title="Цвет фона" style="display:flex;align-items:center;gap:2px;font-size:0.7rem;color:var(--text3);cursor:pointer">🖊<input type="color" class="rt-color-input" value="#ffff00" onchange="document.execCommand('hiliteColor',false,this.value)"></label>
           <button class="rt-btn" title="Ссылка" onmousedown="event.preventDefault();nbInsertLink()">🔗</button>
           <button class="rt-btn" title="Убрать форматирование" onmousedown="event.preventDefault();document.execCommand('removeFormat')" style="font-size:0.7rem;width:auto;padding:0 6px">Aa✕</button>
         </div>
