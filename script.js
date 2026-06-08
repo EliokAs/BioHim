@@ -3496,8 +3496,10 @@ function renderTestBuilder(){
   const el=document.getElementById('nt-questions-list');
   const totalPts = _tempQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempQuestions.map((q,i)=>buildQuestionHTML(q,i,'test')).join('');
+  const emptyHint = document.getElementById('nt-empty-hint');
+  if(emptyHint) emptyHint.style.display = _tempQuestions.length ? 'none' : '';
   const hint = document.getElementById('nt-total-pts');
-  if(hint) hint.textContent = 'Итого: '+totalPts+' '+ptWord(totalPts);
+  if(hint) hint.textContent = _tempQuestions.length ? '· Итого: '+totalPts+' '+ptWord(totalPts) : '';
   // Sync maxpts field if not manual
   if(!_testMaxPtsManual){
     const maxEl = document.getElementById('nt-maxpts');
@@ -4085,8 +4087,10 @@ function renderHWBuilder(){
   const el=document.getElementById('nhw-questions-list');
   const totalPts = _tempHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempHWQuestions.map((q,i)=>buildQuestionHTML(q,i,'hw')).join('');
+  const emptyHint = document.getElementById('nhw-empty-hint');
+  if(emptyHint) emptyHint.style.display = _tempHWQuestions.length ? 'none' : '';
   const hint = document.getElementById('nhw-total-pts');
-  if(hint) hint.textContent = totalPts ? 'Итого: '+totalPts+' '+ptWord(totalPts) : '';
+  if(hint) hint.textContent = totalPts ? '· Итого: '+totalPts+' '+ptWord(totalPts) : '';
   // Sync maxpts field if not manual
   if(!_hwMaxPtsManual){
     const maxEl = document.getElementById('nhw-maxpts');
@@ -5544,20 +5548,23 @@ function renderTrialBuilder(){
         <span class="trial-pts-badge">⭐ ${secPts} б.</span>
         <button class="btn btn-red btn-sm" onclick="removeTrialSection(${si})">🗑</button>
       </div>
-      <div id="trial-sec-qs-${si}">
-        ${sec.questions.map((q,qi)=>trialQuestionBuilderHTML(si,qi,q)).join('')}
-      </div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <select onchange="if(this.value){addTrialQuestion(${si},this.value);this.value=''}" style="padding:6px 10px;border-radius:8px;border:1.5px solid var(--green-mid);font-family:Nunito,sans-serif;font-size:0.81rem;background:var(--white);color:var(--green-deep);font-weight:700;cursor:pointer">
-          <option value="">➕ Добавить вопрос...</option>
-          <option value="auto">⚡ Один правильный (авто)</option>
-          <option value="multi">☑️ Несколько правильных</option>
-          <option value="open">📝 Открытый (текст)</option>
-          <option value="fill">🔤 Вставка слова</option>
-          <option value="match">🔗 Соответствие</option>
-          <option value="pairs">🧩 Найти пары</option>
-          <option value="order">📊 По порядку</option>
-        </select>
+      <div class="qb-layout">
+        <div class="qb-main">
+          <div id="trial-sec-qs-${si}">
+            ${sec.questions.map((q,qi)=>trialQuestionBuilderHTML(si,qi,q)).join('')}
+            ${!sec.questions.length ? `<div class="qb-empty">Нет вопросов.<br>Нажмите <b>+</b> справа.</div>` : ''}
+          </div>
+        </div>
+        <div class="qtype-panel">
+        <div class="qtype-panel-title">Тип вопроса</div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'auto')"><span class="qtype-row-label">Одиночный выбор</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'multi')"><span class="qtype-row-label">Множественный выбор</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'open')"><span class="qtype-row-label">Ответ в свободной форме</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'fill')"><span class="qtype-row-label">Заполнение пропусков</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'match')"><span class="qtype-row-label">Установление соответствий</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'pairs')"><span class="qtype-row-label">Найти пары</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'order')"><span class="qtype-row-label">Расставить по порядку</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        </div>
       </div>
     </div>`;
   }).join('');
