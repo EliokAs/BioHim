@@ -1162,7 +1162,7 @@ function lsStudentOpenVideo(code){
 // ══════════════════════════════════════════
 // FIREBASE REALTIME DATABASE
 // ══════════════════════════════════════════
-const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','trials','groups','attendance','taskbank','flashcard_decks'];
+const COLLECTIONS = ['users','content','tests','hw','payments','courses','slots','bookings','notifs','trials','groups','attendance','taskbank','flashcard_decks','salary_payments','mistakes','contracts'];
 
 const _fbConfig = {
   apiKey: "AIzaSyAh_g-_X0bMd23YEh5r5dO3xLu4Awpb1ns",
@@ -1288,7 +1288,7 @@ async function preloadCache(){
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
-    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses'];
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
       // Firebase хранит массивы как объекты — конвертируем
@@ -1610,7 +1610,7 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем обратно
-      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses'];
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val);
       } else {
@@ -3501,6 +3501,13 @@ function _syncBuilderFromDOM(arr, ctx){
     if(ta) q.text=ta.value;
     if(q.type==='auto'||q.type==='multi'){
       pane.querySelectorAll('.qe-ans-input').forEach((inp,oi)=>{ if(q.options[oi]!==undefined) q.options[oi]=inp.value; });
+      if(q.type==='multi'){
+        const chks=Array.from(pane.querySelectorAll(`input[name="corr-${ctx}-${i}"]`));
+        if(chks.length){ q.correctIdx=chks.map((el,j)=>el.checked?j:-1).filter(j=>j>=0); q.correct=q.correctIdx.map(j=>q.options[j]||'').join(','); }
+      } else {
+        const r=pane.querySelector(`input[name="corr-${ctx}-${i}"]:checked`);
+        if(r){ const tr=r.closest('tr'); if(tr){ const idx=Array.from(tr.closest('tbody').querySelectorAll('tr')).indexOf(tr); q.correct=q.options[idx]||''; } }
+      }
     }
   });
 }
@@ -3670,7 +3677,9 @@ function buildQuestionHTML(q,i,ctx){
     const opts = (q.options && q.options.length) ? q.options : ['',''];
     const corrArr = IS('multi') ? (q.correct||'').split(',').map(s=>s.trim()) : [q.correct||''];
     const rows = opts.map((opt,oi)=>{
-      const isCorr = corrArr.includes(opt) && opt!=='';
+      const isCorr = IS('multi')
+        ? (q.correctIdx ? q.correctIdx.includes(oi) : (corrArr.includes(opt) && opt!==''))
+        : (corrArr.includes(opt) && opt!=='');
       const inputType = IS('multi') ? 'checkbox' : 'radio';
       return `<tr>
         <td class="qe-ans-num">${oi+1}</td>
@@ -3681,7 +3690,7 @@ function buildQuestionHTML(q,i,ctx){
         <td class="qe-ans-correct"><input type="${inputType}" name="corr-${ctx}-${i}"
           ${isCorr?'checked':''}
           onchange="${IS('multi')?
-            `var c=(${pfx}[${i}].options||[]).filter((_,j)=>document.querySelector('[name=\\'corr-${ctx}-${i}\\']:nth-of-type('+(j+1)+')'));${pfx}[${i}].correct=Array.from(document.querySelectorAll('[name=\\'corr-${ctx}-${i}\\']:checked')).map(el=>el.closest('tr').querySelector('.qe-ans-input').value).join(',')`:
+            `var _chk=Array.from(document.querySelectorAll('[name=\\'corr-${ctx}-${i}\\']'));${pfx}[${i}].correctIdx=_chk.map((el,j)=>el.checked?j:-1).filter(j=>j>=0);${pfx}[${i}].correct=${pfx}[${i}].correctIdx.map(j=>${pfx}[${i}].options[j]||'').join(',')`:
             `${pfx}[${i}].correct=this.closest('tr').querySelector('.qe-ans-input').value`
           }"></td>
         <td class="qe-ans-del"><button class="qe-del-btn" onclick="${pfx}[${i}].options.splice(${oi},1);${rebuildFn}">🗑</button></td>
@@ -4929,7 +4938,9 @@ function _renderEditQuizBuilder(type){
       const opts = (q.options&&q.options.length)?q.options:['',''];
       const corrArr = q.type==='multi'?(Array.isArray(q.correct)?q.correct:(q.correct||'').split(',').map(s=>s.trim())):[q.correct||''];
       const rows = opts.map((opt,oi)=>{
-        const isCorr = corrArr.includes(opt)&&opt!=='';
+        const isCorr = q.type==='multi'
+          ? (q.correctIdx ? q.correctIdx.includes(oi) : (corrArr.includes(opt)&&opt!==''))
+          : (corrArr.includes(opt)&&opt!=='');
         const inputType = q.type==='multi'?'checkbox':'radio';
         return `<tr>
           <td class="qe-ans-num">${oi+1}</td>
@@ -4940,7 +4951,7 @@ function _renderEditQuizBuilder(type){
           <td class="qe-ans-correct"><input type="${inputType}" name="ecorr-${qPfx}-${i}"
             ${isCorr?'checked':''}
             onchange="${q.type==='multi'?
-              `${arrStr}[${i}].correct=Array.from(document.querySelectorAll('[name=\\'ecorr-${qPfx}-${i}\\']:checked')).map(el=>el.closest('tr').querySelector('.qe-ans-input').value).join(',')`:
+              `var _chk=Array.from(document.querySelectorAll('[name=\\'ecorr-${qPfx}-${i}\\']'));${arrStr}[${i}].correctIdx=_chk.map((el,j)=>el.checked?j:-1).filter(j=>j>=0);${arrStr}[${i}].correct=${arrStr}[${i}].correctIdx.map(j=>${arrStr}[${i}].options[j]||'').join(',')` :
               `${arrStr}[${i}].correct=this.closest('tr').querySelector('.qe-ans-input').value`
             }"></td>
           <td class="qe-ans-del"><button class="qe-del-btn" onclick="${arrStr}[${i}].options.splice(${oi},1);_setDirty(true);${selfCall}">🗑</button></td>
@@ -5748,6 +5759,13 @@ function _syncTrialFromDOM(){
       if(ta) q.text=ta.value;
       if(q.type==='auto'||q.type==='multi'){
         pane.querySelectorAll('.qe-ans-input').forEach((inp,oi)=>{ if(q.options[oi]!==undefined) q.options[oi]=inp.value; });
+        if(q.type==='multi'){
+          const chks=Array.from(pane.querySelectorAll(`input[name="trcorr-${si}-${qi}"]`));
+          if(chks.length){ q.correctIdx=chks.map((el,j)=>el.checked?j:-1).filter(j=>j>=0); q.correct=q.correctIdx.map(j=>q.options[j]||'').join(','); }
+        } else {
+          const r=pane.querySelector(`input[name="trcorr-${si}-${qi}"]:checked`);
+          if(r){ const tr=r.closest('tr'); if(tr){ const idx=Array.from(tr.closest('tbody').querySelectorAll('tr')).indexOf(tr); q.correct=q.options[idx]||''; } }
+        }
       }
     });
   });
@@ -5814,7 +5832,9 @@ function trialQuestionBuilderHTML(si, qi, q){
     const opts=(q.options&&q.options.length)?q.options:['',''];
     const corrArr=q.type==='multi'?(Array.isArray(q.correct)?q.correct:(q.correct||'').split(',').map(s=>s.trim())):[q.correct||''];
     const rows=opts.map((opt,oi)=>{
-      const isCorr=corrArr.includes(opt)&&opt!=='';
+      const isCorr=q.type==='multi'
+        ? (q.correctIdx ? q.correctIdx.includes(oi) : (corrArr.includes(opt)&&opt!==''))
+        : (corrArr.includes(opt)&&opt!=='');
       const inputType=q.type==='multi'?'checkbox':'radio';
       return `<tr>
         <td class="qe-ans-num">${oi+1}</td>
@@ -5825,7 +5845,7 @@ function trialQuestionBuilderHTML(si, qi, q){
         <td class="qe-ans-correct"><input type="${inputType}" name="trcorr-${si}-${qi}"
           ${isCorr?'checked':''}
           onchange="${q.type==='multi'?
-            `_trialSections[${si}].questions[${qi}].correct=Array.from(document.querySelectorAll('[name=\\'trcorr-${si}-${qi}\\']:checked')).map(el=>el.closest('tr').querySelector('.qe-ans-input').value).join(',')`:
+            `var _chk=Array.from(document.querySelectorAll('[name=\\'trcorr-${si}-${qi}\\']'));_trialSections[${si}].questions[${qi}].correctIdx=_chk.map((el,j)=>el.checked?j:-1).filter(j=>j>=0);_trialSections[${si}].questions[${qi}].correct=_trialSections[${si}].questions[${qi}].correctIdx.map(j=>_trialSections[${si}].questions[${qi}].options[j]||'').join(',')` :
             `_trialSections[${si}].questions[${qi}].correct=this.closest('tr').querySelector('.qe-ans-input').value`
           }"></td>
         <td class="qe-ans-del"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].options.splice(${oi},1);renderTrialBuilder()">🗑</button></td>
@@ -11978,7 +11998,6 @@ function renderStudentChat(){
   const inp = document.getElementById('chat-student-input');
   if(inp) inp.value = '';
 }
-
 function sendStudentMsg(){
   const inp = document.getElementById('chat-student-input');
   const text = inp ? inp.value.trim() : '';
