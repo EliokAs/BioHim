@@ -3026,13 +3026,11 @@ function nbBlockElFor(blk, idx, arr, stateVar, canvasId){
 
 function nbHandleUploadFor(input, idx, stateVar, canvasId){
   const file=input.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=e=>{
+  _readAndCompress(file, dataUrl => {
     const arr=stateVar==='_nbBlocksNew'?_nbBlocksNew:_nbBlocks;
-    arr[idx].url=e.target.result; arr[idx].type='image';
+    arr[idx].url=dataUrl; arr[idx].type='image';
     nbRenderCanvas(arr,stateVar,canvasId);
-  };
-  reader.readAsDataURL(file);
+  });
 }
 
 function nbInsertLink(){
@@ -3697,15 +3695,11 @@ function updateQImgPreview(previewId, url){
 function handleQImgUpload(input, idx, arr, previewId){
   const file = input.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e=>{
-    const dataUrl = e.target.result;
-    // Безопасный доступ вместо eval
+  _readAndCompress(file, dataUrl => {
     if(arr==="_tempQuestions") _tempQuestions[idx].imageUrl=dataUrl;
     else if(arr==="_tempHWQuestions") _tempHWQuestions[idx].imageUrl=dataUrl;
     updateQImgPreview(previewId, dataUrl);
-  };
-  reader.readAsDataURL(file);
+  });
 }
 
 function removeQ(i){ _tempQuestions.splice(i,1); renderTestBuilder(); }
@@ -4514,9 +4508,7 @@ function nbAddBlock(type, afterIdx){
 
 function nbHandleImageUpload(input, idx){
   const file = input.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e=>{ _nbBlocks[idx].url = e.target.result; _nbBlocks[idx].type='image'; nbRender(); };
-  reader.readAsDataURL(file);
+  _readAndCompress(file, dataUrl => { _nbBlocks[idx].url = dataUrl; _nbBlocks[idx].type='image'; nbRender(); });
 }
 
 // Render блоков для просмотра (ученик + предпросмотр)
@@ -4831,13 +4823,11 @@ function renderEditHWBuilder(){ _renderEditQuizBuilder('hw'); }
 function handleEditQImgUpload(input, store, idx, previewId){
   const file = input.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    if(store==='_editTestQuestions') _editTestQuestions[idx].imageUrl=e.target.result;
-    else if(store==='_editHWQuestions') _editHWQuestions[idx].imageUrl=e.target.result;
-    updateQImgPreview(previewId, e.target.result);
-  };
-  reader.readAsDataURL(file);
+  _readAndCompress(file, dataUrl => {
+    if(store==='_editTestQuestions') _editTestQuestions[idx].imageUrl=dataUrl;
+    else if(store==='_editHWQuestions') _editHWQuestions[idx].imageUrl=dataUrl;
+    updateQImgPreview(previewId, dataUrl);
+  });
 }
 function addEditTestQuestion(type){
   _editTestQuestions.push({id:'q'+Date.now(),type,text:'',options:[],correct:'',points:1,pairs:[],items:[],hint:''});
@@ -5630,12 +5620,10 @@ function trialQuestionBuilderHTML(si, qi, q){
 function handleTrialQImgUpload(input, si, qi, previewId){
   const file = input.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    _trialSections[si].questions[qi].imageUrl = e.target.result;
-    updateQImgPreview(previewId, e.target.result);
-  };
-  reader.readAsDataURL(file);
+  _readAndCompress(file, dataUrl => {
+    _trialSections[si].questions[qi].imageUrl = dataUrl;
+    updateQImgPreview(previewId, dataUrl);
+  });
 }
 
 function saveTrial(){
@@ -5973,9 +5961,10 @@ function editTrialQuestionHTML(si, qi, q){
 
 function handleEditTrialQImgUpload(input, si, qi, previewId){
   const file=input.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=e=>{ _editTrialSections[si].questions[qi].imageUrl=e.target.result; updateQImgPreview(previewId,e.target.result); };
-  reader.readAsDataURL(file);
+  _readAndCompress(file, dataUrl => {
+    _editTrialSections[si].questions[qi].imageUrl=dataUrl;
+    updateQImgPreview(previewId,dataUrl);
+  });
 }
 
 function saveEditTrial(){
@@ -6355,9 +6344,10 @@ function updateTaskTypeUI(){
 let _ntaskImgData = '';
 function handleTaskImgUpload(input){
   const file=input.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=e=>{ _ntaskImgData=e.target.result; updateQImgPreview('ntask-img-preview',e.target.result); };
-  reader.readAsDataURL(file);
+  _readAndCompress(file, dataUrl => {
+    _ntaskImgData=dataUrl;
+    updateQImgPreview('ntask-img-preview', dataUrl);
+  });
 }
 
 function saveTask(){
@@ -13988,6 +13978,58 @@ if ('serviceWorker' in navigator) {
 // ЗАЩИТА ОТ ПОТЕРИ ДАННЫХ — beforeunload + backdrop
 // ═══════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// IMAGE COMPRESSION — сжатие картинок перед сохранением в Firebase
+// Без сжатия base64 > 3 МБ → Firebase отклоняет запись → данные теряются
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Сжимает File/Blob изображение через Canvas и возвращает base64 dataUrl.
+ * Максимальный размер стороны: MAX_PX (по умолчанию 1200px).
+ * Качество JPEG: QUALITY (0.0–1.0).
+ * Итоговый размер: ~50–200 КБ вместо 2–8 МБ.
+ */
+function _compressImage(fileOrBlob, maxPx, quality) {
+  maxPx   = maxPx   || 1200;
+  quality = quality || 0.75;
+  return new Promise(function(resolve, reject) {
+    const url = URL.createObjectURL(fileOrBlob);
+    const img = new Image();
+    img.onload = function() {
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w === 0 || h === 0) { reject(new Error('Bad image')); return; }
+      // Масштабируем пропорционально
+      if (w > maxPx || h > maxPx) {
+        if (w > h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else        { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('Load error')); };
+    img.src = url;
+  });
+}
+
+/**
+ * Читает изображение из File, сжимает и вызывает callback(dataUrl).
+ * Заменяет прямой FileReader.readAsDataURL везде где нужно сохранять в Firebase.
+ */
+function _readAndCompress(file, cb) {
+  if (!file) return;
+  _compressImage(file).then(cb).catch(function(e) {
+    console.error('[compress]', e);
+    // Fallback: читаем как есть (для очень маленьких изображений)
+    const reader = new FileReader();
+    reader.onload = function(ev) { cb(ev.target.result); };
+    reader.readAsDataURL(file);
+  });
+}
+
 // Предупреждение при закрытии/обновлении вкладки
 window.addEventListener('beforeunload', function(e) {
   if (_editorDirty) {
@@ -14013,9 +14055,8 @@ function _readPastedImage(clipboardData, cb) {
     if (items[i].type.startsWith('image/')) {
       const file = items[i].getAsFile();
       if (!file) continue;
-      const reader = new FileReader();
-      reader.onload = e => cb(e.target.result);
-      reader.readAsDataURL(file);
+      // Сжимаем перед сохранением — иначе Firebase отклоняет > 10 МБ
+      _readAndCompress(file, cb);
       return true;
     }
   }
