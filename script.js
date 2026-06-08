@@ -3600,81 +3600,187 @@ function buildQuestionHTML(q,i,ctx){
   const pfx = ctx==='test'?'_tempQuestions':'_tempHWQuestions';
   const removeFn = ctx==='test'?`removeQ(${i})`:`removeHWQ(${i})`;
   const rebuildFn = ctx==='test'?'renderTestBuilder()':'renderHWBuilder()';
-  const imgTabId  = `img-tab-${ctx}-${i}`;
-  const imgPreId  = `img-pre-${ctx}-${i}`;
-  const imgPreview = q.imageUrl
-    ? `<img id="${imgPreId}" class="q-img-preview" src="${safeUrl(q.imageUrl)}" alt="">`
-    : `<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`;
-  const typeLabels={auto:'⚡ Один правильный',multi:'☑️ Несколько правильных',open:'📝 Открытый',fill:'🔤 Вставка слова',match:'🔗 Соответствие',pairs:'🧩 Найти пары',order:'📊 По порядку'};
-  const IS = s => (q.type===s);
+  const imgPreId = `img-pre-${ctx}-${i}`;
+  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fill:'Заполнение пропусков',match:'Соответствие',pairs:'Найти пары',order:'По порядку'};
+  const IS = s => q.type===s;
+  const tabId = `qe-tab-${ctx}-${i}`;
 
-  // ── type-specific editor ──
-  let typeEditor='';
-  if(IS('auto')){
-    typeEditor=`
-      <input class="q-input" placeholder="Варианты через запятую: А,Б,В,Г" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].options=this.value.split(',').map(s=>s.trim())">
-      <input class="q-input" placeholder="Правильный ответ (точно как в вариантах)" value="${(q.correct||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].correct=this.value">`;
-  } else if(IS('multi')){
-    typeEditor=`
-      <input class="q-input" placeholder="Варианты через запятую: А,Б,В,Г" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].options=this.value.split(',').map(s=>s.trim())">
-      <input class="q-input" placeholder="Правильные через запятую: А,В" value="${(q.correct||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].correct=this.value">
-      <div style="font-size:0.76rem;color:var(--text3)">💡 Укажи все правильные ответы через запятую</div>`;
+  // ── toolbar html ──
+  const toolbar = `<div class="qe-toolbar">
+    <button class="qe-tb-btn" title="Снять форматирование"><i>T̲ₓ</i></button>
+    <div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn" title="Жирный"><b>B</b></button>
+    <button class="qe-tb-btn" title="Курсив"><i>I</i></button>
+    <button class="qe-tb-btn" title="Подчёркнутый" style="text-decoration:underline">U</button>
+    <button class="qe-tb-btn" title="Зачёркнутый" style="text-decoration:line-through">S</button>
+    <button class="qe-tb-btn" title="Подстрочный" style="font-size:0.65rem">X₂</button>
+    <button class="qe-tb-btn" title="Надстрочный" style="font-size:0.65rem">X²</button>
+    <div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn" title="Нумерованный список">≡</button>
+    <button class="qe-tb-btn" title="Маркированный список">☰</button>
+    <div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn" title="Увеличить отступ">⇥</button>
+    <button class="qe-tb-btn" title="Уменьшить отступ">⇤</button>
+    <div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn" title="Символы">Ω</button>
+    <button class="qe-tb-btn" title="Таблица">⊞</button>
+    <button class="qe-tb-btn" title="Формула"><i>fx</i></button>
+  </div>`;
+
+  // ── image block ──
+  const imgSrc = q.imageUrl ? safeUrl(q.imageUrl) : '';
+  const imgBlock = `<div class="qe-img-block" onclick="document.getElementById('${imgPreId}-file').click()" id="${imgPreId}-wrap">
+    ${imgSrc ? `<img src="${imgSrc}" alt="" id="${imgPreId}">` : `<div class="qe-img-placeholder"><span class="qe-img-icon">🖼</span>загрузить<br>изображение</div>`}
+    ${imgSrc ? `<button class="qe-img-crop-btn" onclick="event.stopPropagation()">✂</button>` : ''}
+    <input type="file" accept="image/*" id="${imgPreId}-file" style="display:none"
+      onchange="handleQImgUpload(this,${i},'${pfx}','${imgPreId}');updateQImgWrap('${imgPreId}',${i},'${pfx}')">
+  </div>`;
+
+  // ── question text section ──
+  const questionText = `<div class="qe-section-header">
+      <span>Текст вопроса</span>
+      <span style="font-size:0.75rem;font-weight:400;cursor:pointer">+ Добавить ▾</span>
+    </div>
+    ${toolbar}
+    <div class="qe-question-body">
+      <div class="qe-text-area">
+        <textarea class="qe-q-input" placeholder="Введите текст вопроса..."
+          oninput="${pfx}[${i}].text=this.value">${(q.text||'').replace(/</g,'&lt;')}</textarea>
+      </div>
+      ${imgBlock}
+    </div>`;
+
+  // ── answers section based on type ──
+  let answersSection = '';
+  if(IS('auto') || IS('multi')){
+    const opts = (q.options && q.options.length) ? q.options : ['',''];
+    const corrArr = IS('multi') ? (q.correct||'').split(',').map(s=>s.trim()) : [q.correct||''];
+    const rows = opts.map((opt,oi)=>{
+      const isCorr = corrArr.includes(opt) && opt!=='';
+      const inputType = IS('multi') ? 'checkbox' : 'radio';
+      return `<tr>
+        <td class="qe-ans-num">${oi+1}</td>
+        <td class="qe-ans-img"><div class="qe-ans-img-btn" title="Изображение">🖼</div></td>
+        <td class="qe-ans-text"><input class="qe-ans-input" placeholder="Введите текст..."
+          value="${(opt||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].options[${oi}]=this.value"></td>
+        <td class="qe-ans-correct"><input type="${inputType}" name="corr-${ctx}-${i}"
+          ${isCorr?'checked':''}
+          onchange="${IS('multi')?
+            `var c=(${pfx}[${i}].options||[]).filter((_,j)=>document.querySelector('[name=\\'corr-${ctx}-${i}\\']:nth-of-type('+(j+1)+')'));${pfx}[${i}].correct=Array.from(document.querySelectorAll('[name=\\'corr-${ctx}-${i}\\']:checked')).map(el=>el.closest('tr').querySelector('.qe-ans-input').value).join(',')`:
+            `${pfx}[${i}].correct=this.closest('tr').querySelector('.qe-ans-input').value`
+          }"></td>
+        <td class="qe-ans-del"><button class="qe-del-btn" onclick="${pfx}[${i}].options.splice(${oi},1);${rebuildFn}">🗑</button></td>
+      </tr>`;
+    }).join('');
+    answersSection = `<div class="qe-section-header answers-hdr">
+        <span>Варианты ответов</span>
+        <span style="display:flex;align-items:center;gap:10px">
+          <button class="qe-add-link" onclick="${pfx}[${i}].options=([...${pfx}[${i}].options||[]],'');${pfx}[${i}].options.push('');${rebuildFn}">добавить</button>
+          <span style="font-size:1rem;cursor:pointer">☰</span>
+        </span>
+      </div>
+      <table class="qe-answers-table">
+        <thead><tr>
+          <th>#</th><th>Текст вариантов ответов</th><th style="text-align:center">+ панель инструментов</th>
+          <th style="text-align:center">${IS('multi')?'Правильный<br>ответ':'Правильный<br>ответ'}</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } else if(IS('open')){
+    answersSection = `<div class="qe-section-header answers-hdr"><span>Эталонный ответ (необязательно)</span></div>
+      <div style="padding:12px 14px">
+        <textarea class="qe-free-input" placeholder="Образцовый ответ для ориентира при проверке..."
+          oninput="${pfx}[${i}].correct=this.value">${(q.correct||'').replace(/</g,'&lt;')}</textarea>
+      </div>`;
   } else if(IS('fill')){
-    typeEditor=`
-      <div style="font-size:0.76rem;color:var(--text3);margin-bottom:4px">💡 Напиши текст с пропуском через <b>___</b>: "Клетка состоит из ___ и ___"</div>
-      <input class="q-input" placeholder="Ответы через запятую (по порядку пропусков): цитоплазмы,ядра" value="${(q.correct||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].correct=this.value">`;
-  } else if(IS('match')){
-    typeEditor=`
-      <div style="font-size:0.76rem;color:var(--text3);margin-bottom:4px">💡 Левый столбец | Правый столбец — каждая пара на новой строке через <b>|</b></div>
-      <textarea class="q-input" rows="4" placeholder="Митохондрия|Синтез АТФ&#10;Рибосома|Синтез белка&#10;Ядро|Хранение ДНК" oninput="${pfx}[${i}].pairs=this.value.split('\\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length===2&&p[0])">${(q.pairs||[]).map(p=>p.join('|')).join('\n')}</textarea>`;
-  } else if(IS('pairs')){
-    typeEditor=`
-      <div style="font-size:0.76rem;color:var(--text3);margin-bottom:4px">💡 Пары слов — каждая пара на новой строке через <b>|</b></div>
-      <textarea class="q-input" rows="4" placeholder="Гликолиз|Цитоплазма&#10;Цикл Кребса|Митохондрия&#10;Фотосинтез|Хлоропласт" oninput="${pfx}[${i}].pairs=this.value.split('\\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length===2&&p[0])">${(q.pairs||[]).map(p=>p.join('|')).join('\n')}</textarea>`;
+    answersSection = `<div class="qe-section-header answers-hdr"><span>Правильные слова (через запятую, по порядку пропусков)</span></div>
+      <div style="padding:12px 14px">
+        <div style="font-size:0.76rem;color:#888;margin-bottom:6px">💡 В тексте вопроса используйте ___ для обозначения пропуска</div>
+        <input class="qe-q-input" placeholder="цитоплазмы,ядра"
+          value="${(q.correct||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].correct=this.value">
+      </div>`;
+  } else if(IS('match') || IS('pairs')){
+    answersSection = `<div class="qe-section-header answers-hdr"><span>Пары (каждая с новой строки через |)</span></div>
+      <div style="padding:12px 14px">
+        <div style="font-size:0.76rem;color:#888;margin-bottom:6px">💡 Левый столбец | Правый столбец</div>
+        <textarea class="qe-free-input" rows="4" placeholder="Митохондрия|Синтез АТФ&#10;Рибосома|Синтез белка"
+          oninput="${pfx}[${i}].pairs=this.value.split('\\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length===2&&p[0])"
+        >${(q.pairs||[]).map(p=>Array.isArray(p)?p.join('|'):(p.left||'')+'|'+(p.right||'')).join('\n').replace(/</g,'&lt;')}</textarea>
+      </div>`;
   } else if(IS('order')){
-    typeEditor=`
-      <div style="font-size:0.76rem;color:var(--text3);margin-bottom:4px">💡 Напиши элементы через запятую в правильном порядке</div>
-      <input class="q-input" placeholder="Интерфаза,Профаза,Метафаза,Анафаза,Телофаза" value="${(q.correct||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].correct=this.value;${pfx}[${i}].options=this.value.split(',').map(s=>s.trim())">`;
+    answersSection = `<div class="qe-section-header answers-hdr"><span>Элементы в правильном порядке (через запятую)</span></div>
+      <div style="padding:12px 14px">
+        <input class="qe-q-input" placeholder="Интерфаза,Профаза,Метафаза,Анафаза,Телофаза"
+          value="${(q.correct||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].correct=this.value;${pfx}[${i}].options=this.value.split(',').map(s=>s.trim())">
+      </div>`;
   }
 
-  return `<div class="question-block" style="margin-bottom:10px;border-left:3px solid var(--green-mid)" id="qblock-${ctx}-${i}" data-q-idx="${i}" data-q-arr="${pfx}" data-q-preview-id="${imgPreId}">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div class="question-num">${typeLabels[q.type]||q.type} · #${i+1}</div>
-      <button class="btn btn-red btn-sm" onclick="${removeFn}">✕</button>
-    </div>
-    <div class="q-points-row">
-      <span class="q-points-label">⭐ Баллов:</span>
-      <input type="number" class="q-points-input" min="0" max="100" value="${q.points||1}" oninput="${pfx}[${i}].points=+this.value||1;${rebuildFn}">
-    </div>
-    ${!IS('fill')?`<input class="q-input" placeholder="Текст вопроса..." value="${(q.text||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].text=this.value">`:'<input class="q-input" placeholder="Текст с пропуском: Клетка состоит из ___ и ___" value="'+((q.text||'').replace(/"/g,'&quot;'))+'" oninput="'+pfx+'['+i+'].text=this.value">'}
-    ${typeEditor}
-    <div class="q-img-row" style="margin-top:8px">
-      <label style="font-size:0.75rem;color:var(--text3)">🖼 Картинка к вопросу <span style="color:var(--text3);font-weight:400">(вставьте Ctrl+V или загрузите)</span></label>
-      <div class="q-img-tabs">
-        <div class="q-img-tab ${!(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('${imgTabId}','url')">Ссылка</div>
-        <div class="q-img-tab ${(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('${imgTabId}','file')">Загрузить</div>
+  // ── params tab ──
+  const paramsTab = `<div class="qe-params-section">
+    <div style="margin-bottom:12px">
+      <div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:8px">Подсчёт баллов:</div>
+      <div class="qe-scoring-row">
+        <label><input type="radio" name="pts-mode-${ctx}-${i}" value="whole" checked> Весь вопрос</label>
+        <label><input type="radio" name="pts-mode-${ctx}-${i}" value="per"> По ответам</label>
       </div>
-      <div id="${imgTabId}-url" style="${(q.imageUrl||'').startsWith('data:')?'display:none':''}">
-        <input class="q-input" placeholder="https://example.com/image.jpg"
-          value="${(q.imageUrl||'').startsWith('data:')?'':q.imageUrl||''}"
-          oninput="${pfx}[${i}].imageUrl=this.value;updateQImgPreview('${imgPreId}',this.value)">
+      <div style="font-size:0.84rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span>Баллов: за <b style="color:var(--accent)">правильный</b> ответ</span>
+        <input class="qe-pts-inline" type="number" min="0" value="${q.points||1}"
+          oninput="${pfx}[${i}].points=+this.value||1;${rebuildFn}">
+        <span>за <b style="color:#e57373">неправильный</b> ответ</span>
+        <input class="qe-pts-inline" type="number" min="-10" value="0" style="width:55px">
       </div>
-      <div id="${imgTabId}-file" style="${(q.imageUrl||'').startsWith('data:')?'':'display:none'}">
-        <input type="file" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
-          onchange="handleQImgUpload(this,${i},'${pfx==='_tempQuestions'?'_tempQuestions':'_tempHWQuestions'}','${imgPreId}')">
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:6px">💡 Подсказка (необязательно)</div>
+      <input class="qe-q-input" style="min-height:0" placeholder="Подсказка появится по кнопке..."
+        value="${(q.hint||'').replace(/"/g,'&quot;')}"
+        oninput="${pfx}[${i}].hint=this.value">
+    </div>
+    <div>
+      <div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:6px">🏷 Теги (через запятую)</div>
+      <input class="qe-q-input" style="min-height:0" placeholder="Фотосинтез, ЕГЭ задание 2..."
+        value="${(q.tags||'').replace(/"/g,'&quot;')}"
+        oninput="${pfx}[${i}].tags=this.value">
+    </div>
+  </div>`;
+
+  return `<div class="question-block" id="qblock-${ctx}-${i}" data-q-idx="${i}" data-q-arr="${pfx}" data-q-preview-id="${imgPreId}">
+    <div class="qe-tabs">
+      <div class="qe-tab active" onclick="qeSetTab('${tabId}','editor',this)">✏️ Редактор</div>
+      <div class="qe-tab" onclick="qeSetTab('${tabId}','params',this)">⚙️ Параметры</div>
+      <div style="margin-left:auto;display:flex;align-items:center;padding-right:8px">
+        <span style="font-size:0.72rem;color:#888;margin-right:8px">${typeLabels[q.type]||q.type} · #${i+1}</span>
+        <button class="btn btn-red btn-sm" onclick="${removeFn}" style="padding:3px 8px">✕</button>
       </div>
-      ${imgPreview}
     </div>
-    <div style="margin-top:8px">
-      <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка для ученика (необязательно)</label>
-      <input class="q-input" placeholder="Подсказка появится по кнопке — не раскрывает ответ..." value="${(q.hint||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].hint=this.value">
+    <div id="${tabId}-editor" class="qe-tab-pane active">
+      ${questionText}
+      ${answersSection ? `<div style="margin-top:0">${answersSection}</div>` : ''}
     </div>
-    <div style="margin-top:8px">
-      <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">🏷 Темы / теги (через запятую)</label>
-      <input class="q-input" placeholder="Например: Фотосинтез, ЕГЭ задание 2, Клетка..." value="${(q.tags||'').replace(/"/g,'&quot;')}" oninput="${pfx}[${i}].tags=this.value">
+    <div id="${tabId}-params" class="qe-tab-pane">
+      ${paramsTab}
     </div>
   </div>`;
 }
+
+function qeSetTab(tabId, pane, el){
+  ['editor','params'].forEach(p=>{
+    const pEl = document.getElementById(tabId+'-'+p);
+    if(pEl) pEl.classList.toggle('active', p===pane);
+  });
+  el.closest('.qe-tabs').querySelectorAll('.qe-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function updateQImgWrap(preId, idx, pfx){
+  // after upload re-render
+}
+
 
 function switchImgTab(tabId, tab){
   document.getElementById(tabId+'-url').style.display  = tab==='url'  ? '' : 'none';
@@ -4767,61 +4873,148 @@ function _renderEditQuizBuilder(type){
   const selfCall = isTest ? 'renderEditTestBuilder()' : 'renderEditHWBuilder()';
   const arrStr = isTest ? '_editTestQuestions' : '_editHWQuestions';
   const removeFn = isTest ? 'removeEditQ' : 'removeEditHWQ';
-  const el=document.getElementById(pfx+'-questions-list');
+  const el = document.getElementById(pfx+'-questions-list');
   if(!el) return;
-  const totalPts=arr.reduce((s,q)=>s+(+q.points||1),0);
-  const hint=document.getElementById(pfx+'-total-hint');
-  if(hint) hint.textContent=arr.length?`· ${arr.length} вопросов · итого ${totalPts} б.`:'';
+  const totalPts = arr.reduce((s,q)=>s+(+q.points||1),0);
+  const hint = document.getElementById(pfx+'-total-hint');
+  if(hint) hint.textContent = arr.length ? `· ${arr.length} вопр. · ${totalPts} б.` : '';
   if(!maxPtsManual){
-    const maxEl=document.getElementById(pfx+'-maxpts');
-    if(maxEl) maxEl.value=totalPts||0;
+    const maxEl = document.getElementById(pfx+'-maxpts');
+    if(maxEl) maxEl.value = totalPts||0;
   }
-  el.innerHTML=arr.map((q,i)=>{
-    const typeBody = editQTypeBody(q,arrStr,i,selfCall);
-    const showText = q.type!=='fillin';
-    return `<div class="question-block" style="margin-bottom:10px;border-left:3px solid var(--green-light)" data-q-idx="${i}" data-q-arr="${arrStr}" data-q-preview-id="${qPfx}-pre-${i}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <div class="question-num">${qTypeLabel(q.type)} #${i+1}
-          <span style="font-size:0.7rem;font-weight:600;margin-left:6px;color:${isAutoScored(q.type)?'var(--green-mid)':'var(--gold)'}">
-            ${isAutoScored(q.type)?'✅ Авто':'👁 Вручную'}</span></div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
-          <input type="number" min="0.5" step="0.5" value="${+q.points||1}"
-            style="width:65px;padding:5px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem"
-            oninput="${arrStr}[${i}].points=+this.value||1;${selfCall}">
-          <button class="btn btn-red btn-sm" onclick="${removeFn}(${i})">✕</button>
+
+  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fillin:'Заполнение пропусков',match:'Соответствие',order:'По порядку'};
+  const toolbar = `<div class="qe-toolbar">
+    <button class="qe-tb-btn"><i>T̲ₓ</i></button><div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn"><b>B</b></button>
+    <button class="qe-tb-btn"><i>I</i></button>
+    <button class="qe-tb-btn" style="text-decoration:underline">U</button>
+    <button class="qe-tb-btn" style="text-decoration:line-through">S</button>
+    <button class="qe-tb-btn" style="font-size:0.65rem">X₂</button>
+    <button class="qe-tb-btn" style="font-size:0.65rem">X²</button>
+    <div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn">≡</button><button class="qe-tb-btn">☰</button>
+    <div class="qe-tb-sep"></div>
+    <button class="qe-tb-btn">Ω</button><button class="qe-tb-btn">⊞</button><button class="qe-tb-btn"><i>fx</i></button>
+  </div>`;
+
+  el.innerHTML = arr.map((q,i)=>{
+    const tabId = `${qPfx}-tab-${i}`;
+    const imgPreId = `${qPfx}-pre-${i}`;
+    const imgSrc = q.imageUrl ? safeUrl(q.imageUrl) : '';
+    const imgBlock = `<div class="qe-img-block" onclick="document.getElementById('${imgPreId}-file').click()">
+      ${imgSrc ? `<img src="${imgSrc}" alt="" id="${imgPreId}">` : `<div class="qe-img-placeholder"><span class="qe-img-icon">🖼</span>загрузить<br>изображение</div>`}
+      <input type="file" accept="image/*" id="${imgPreId}-file" style="display:none"
+        onchange="handleEditQImgUpload(this,'${arrStr}',${i},'${imgPreId}')">
+    </div>`;
+
+    const showText = q.type !== 'fillin';
+    let answersSection = '';
+    if(q.type==='auto'||q.type==='multi'){
+      const opts = (q.options&&q.options.length)?q.options:['',''];
+      const corrArr = q.type==='multi'?(Array.isArray(q.correct)?q.correct:(q.correct||'').split(',').map(s=>s.trim())):[q.correct||''];
+      const rows = opts.map((opt,oi)=>{
+        const isCorr = corrArr.includes(opt)&&opt!=='';
+        const inputType = q.type==='multi'?'checkbox':'radio';
+        return `<tr>
+          <td class="qe-ans-num">${oi+1}</td>
+          <td class="qe-ans-img"><div class="qe-ans-img-btn">🖼</div></td>
+          <td class="qe-ans-text"><input class="qe-ans-input" placeholder="Введите текст..."
+            value="${(opt||'').replace(/"/g,'&quot;')}"
+            oninput="${arrStr}[${i}].options[${oi}]=this.value"></td>
+          <td class="qe-ans-correct"><input type="${inputType}" name="ecorr-${qPfx}-${i}"
+            ${isCorr?'checked':''}
+            onchange="${q.type==='multi'?
+              `${arrStr}[${i}].correct=Array.from(document.querySelectorAll('[name=\\'ecorr-${qPfx}-${i}\\']:checked')).map(el=>el.closest('tr').querySelector('.qe-ans-input').value).join(',')`:
+              `${arrStr}[${i}].correct=this.closest('tr').querySelector('.qe-ans-input').value`
+            }"></td>
+          <td class="qe-ans-del"><button class="qe-del-btn" onclick="${arrStr}[${i}].options.splice(${oi},1);_setDirty(true);${selfCall}">🗑</button></td>
+        </tr>`;
+      }).join('');
+      answersSection = `<div class="qe-section-header answers-hdr">
+          <span>Варианты ответов</span>
+          <button class="qe-add-link" onclick="${arrStr}[${i}].options.push('');_setDirty(true);${selfCall}">добавить</button>
+        </div>
+        <table class="qe-answers-table">
+          <thead><tr><th>#</th><th>Текст вариантов ответов</th><th style="text-align:center">+ панель инструментов</th><th style="text-align:center">Правильный<br>ответ</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } else if(q.type==='open'){
+      answersSection = `<div class="qe-section-header answers-hdr"><span>Эталонный ответ (необязательно)</span></div>
+        <div style="padding:12px 14px"><textarea class="qe-free-input" placeholder="Образцовый ответ..."
+          oninput="${arrStr}[${i}].correct=this.value">${(q.correct||'').replace(/</g,'&lt;')}</textarea></div>`;
+    } else if(q.type==='fillin'){
+      answersSection = `<div class="qe-section-header answers-hdr"><span>Текст с пропуском (___ ) и правильные слова</span></div>
+        <div style="padding:12px 14px">
+          <div style="font-size:0.76rem;color:#888;margin-bottom:6px">Текст вопроса с пропуском (___)</div>
+          <input class="qe-q-input" style="margin-bottom:8px" placeholder="Основная единица живого — это ___"
+            value="${(q.text||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].text=this.value">
+          <div style="font-size:0.76rem;color:#888;margin-bottom:6px">Правильное слово:</div>
+          <input class="qe-q-input" placeholder="клетка" value="${(q.correct||'').replace(/"/g,'&quot;')}"
+            oninput="${arrStr}[${i}].correct=this.value">
+        </div>`;
+    } else if(q.type==='match'){
+      answersSection = `<div class="qe-section-header answers-hdr"><span>Пары (левое → правое)</span></div>
+        <div style="padding:12px 14px"><textarea class="qe-free-input" rows="4"
+          placeholder="Митохондрия → Энергия&#10;Рибосома → Белок"
+          oninput="${arrStr}[${i}].pairs=this.value.split('\\n').filter(l=>l.includes('→')).map(l=>{const[a,b]=l.split('→');return{left:(a||'').trim(),right:(b||'').trim()}})"
+        >${(q.pairs||[]).map(p=>p.left+' → '+p.right).join('\n').replace(/</g,'&lt;')}</textarea></div>`;
+    } else if(q.type==='order'){
+      answersSection = `<div class="qe-section-header answers-hdr"><span>Элементы по порядку</span></div>
+        <div style="padding:12px 14px"><textarea class="qe-free-input" rows="4"
+          placeholder="Интерфаза&#10;Профаза&#10;Метафаза"
+          oninput="${arrStr}[${i}].items=this.value.split('\\n').map(x=>x.trim()).filter(Boolean)"
+        >${(q.items||[]).join('\n').replace(/</g,'&lt;')}</textarea></div>`;
+    }
+
+    const paramsTab = `<div class="qe-params-section">
+      <div style="margin-bottom:12px">
+        <div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:8px">Подсчёт баллов:</div>
+        <div class="qe-scoring-row">
+          <label><input type="radio" name="epts-${qPfx}-${i}" value="whole" checked> Весь вопрос</label>
+          <label><input type="radio" name="epts-${qPfx}-${i}" value="per"> По ответам</label>
+        </div>
+        <div style="font-size:0.84rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>Баллов: за <b style="color:var(--accent)">правильный</b> ответ</span>
+          <input class="qe-pts-inline" type="number" min="0" value="${+q.points||1}"
+            oninput="${arrStr}[${i}].points=+this.value||1;_setDirty(true);${selfCall}">
+          <span>за <b style="color:#e57373">неправильный</b> ответ</span>
+          <input class="qe-pts-inline" type="number" min="-10" value="0" style="width:55px">
         </div>
       </div>
-      ${showText?`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:8px;background:var(--white)"
-        placeholder="Текст вопроса..." oninput="${arrStr}[${i}].text=this.value" value="${(q.text||'').replace(/"/g,'&quot;')}">` :''}
-      ${typeBody}
-      <div style="margin-top:8px">
-        <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">🖼 Картинка к вопросу <span style="font-weight:400">(вставьте Ctrl+V или загрузите)</span></label>
-        <div class="q-img-tabs">
-          <div class="q-img-tab ${!(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('${qPfx}-${i}','url')">Ссылка</div>
-          <div class="q-img-tab ${(q.imageUrl||'').startsWith('data:')?'active':''}" onclick="switchImgTab('${qPfx}-${i}','file')">Загрузить</div>
-        </div>
-        <div id="${qPfx}-${i}-url" style="${(q.imageUrl||'').startsWith('data:')?'display:none':''}">
-          <input class="q-input" placeholder="https://example.com/image.jpg"
-            value="${(q.imageUrl||'').startsWith('data:')?'':q.imageUrl||''}"
-            oninput="${arrStr}[${i}].imageUrl=this.value;updateQImgPreview('${qPfx}-pre-${i}',this.value)">
-        </div>
-        <div id="${qPfx}-${i}-file" style="${(q.imageUrl||'').startsWith('data:')?'':'display:none'}">
-          <input type="file" accept="image/*" style="width:100%;font-size:0.83rem;padding:6px"
-            onchange="handleEditQImgUpload(this,'${arrStr}',${i},'${qPfx}-pre-${i}')">
-        </div>
-        <img id="${qPfx}-pre-${i}" class="q-img-preview" src="${safeUrl(q.imageUrl||'')} "style="${q.imageUrl?'':'display:none'}" alt="">
+      <div>
+        <div style="font-size:0.8rem;font-weight:700;color:var(--text2);margin-bottom:6px">💡 Подсказка</div>
+        <input class="qe-q-input" style="min-height:0" placeholder="Подсказка..."
+          value="${(q.hint||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].hint=this.value">
       </div>
-      <div style="margin-top:8px">
-        <label style="font-size:0.75rem;color:var(--text3);display:block;margin-bottom:4px">💡 Подсказка (необязательно)</label>
-        <input style="width:100%;padding:7px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.84rem;background:var(--white)"
-          placeholder="Подсказка для ученика — не раскрывает ответ..."
-          oninput="${arrStr}[${i}].hint=this.value"
-          value="${(q.hint||'').replace(/"/g,'&quot;')}">
+    </div>`;
+
+    return `<div class="question-block" data-q-idx="${i}" data-q-arr="${arrStr}" data-q-preview-id="${imgPreId}">
+      <div class="qe-tabs">
+        <div class="qe-tab active" onclick="qeSetTab('${tabId}','editor',this)">✏️ Редактор</div>
+        <div class="qe-tab" onclick="qeSetTab('${tabId}','params',this)">⚙️ Параметры</div>
+        <div style="margin-left:auto;display:flex;align-items:center;padding-right:8px">
+          <span style="font-size:0.72rem;color:#888;margin-right:8px">${typeLabels[q.type]||q.type} · #${i+1}</span>
+          <button class="btn btn-red btn-sm" onclick="${removeFn}(${i})" style="padding:3px 8px">✕</button>
+        </div>
       </div>
+      <div id="${tabId}-editor" class="qe-tab-pane active">
+        <div class="qe-section-header"><span>Текст вопроса</span><span style="font-size:0.75rem;font-weight:400;cursor:pointer">+ Добавить ▾</span></div>
+        ${toolbar}
+        <div class="qe-question-body">
+          <div class="qe-text-area">
+            ${showText ? `<textarea class="qe-q-input" placeholder="Введите текст вопроса..."
+              oninput="${arrStr}[${i}].text=this.value">${(q.text||'').replace(/</g,'&lt;')}</textarea>` : ''}
+          </div>
+          ${imgBlock}
+        </div>
+        ${answersSection}
+      </div>
+      <div id="${tabId}-params" class="qe-tab-pane">${paramsTab}</div>
     </div>`;
   }).join('');
 }
+
 function renderEditTestBuilder(){ _renderEditQuizBuilder('test'); }
 function renderEditHWBuilder(){ _renderEditQuizBuilder('hw'); }
 function handleEditQImgUpload(input, store, idx, previewId){
@@ -5570,56 +5763,109 @@ function renderTrialBuilder(){
   }).join('');
 }
 function trialQuestionBuilderHTML(si, qi, q){
-  const imgTabId  = `tr-img-${si}-${qi}`;
-  const imgUrlId  = `${imgTabId}-url-input`;
-  const imgFileId = `${imgTabId}-file-input`;
-  const imgPreId  = `${imgTabId}-preview`;
-  const isDataUrl = q.imageUrl && q.imageUrl.startsWith('data:');
+  const imgPreId = `tr-img-${si}-${qi}-preview`;
+  const imgSrc = q.imageUrl ? safeUrl(q.imageUrl) : '';
+  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fill:'Заполнение пропусков',match:'Соответствие',pairs:'Найти пары',order:'По порядку'};
+  const tabId = `trq-tab-${si}-${qi}`;
+  const toolbar = `<div class="qe-toolbar">
+    <button class="qe-tb-btn"><b>B</b></button><button class="qe-tb-btn"><i>I</i></button>
+    <button class="qe-tb-btn" style="text-decoration:underline">U</button>
+    <div class="qe-tb-sep"></div><button class="qe-tb-btn">Ω</button><button class="qe-tb-btn"><i>fx</i></button>
+  </div>`;
+  const imgBlock = `<div class="qe-img-block" onclick="document.getElementById('${imgPreId}-file').click()">
+    ${imgSrc ? `<img src="${imgSrc}" alt="">` : `<div class="qe-img-placeholder"><span class="qe-img-icon">🖼</span>загрузить</div>`}
+    <input type="file" accept="image/*" id="${imgPreId}-file" style="display:none"
+      onchange="handleTrialQImgUpload(this,${si},${qi},'${imgPreId}')">
+  </div>`;
 
-  const imgUrlBlock = `<input id="${imgUrlId}"
-    style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--white)"
-    placeholder="https://example.com/image.jpg"
-    value="${isDataUrl ? '' : (q.imageUrl||'').replace(/"/g,'&quot;')}"
-    oninput="_trialSections[${si}].questions[${qi}].imageUrl=this.value;updateQImgPreview('${imgPreId}',this.value)">`;
+  let answersSection = '';
+  if(q.type==='auto'||q.type==='multi'){
+    const opts=(q.options&&q.options.length)?q.options:['',''];
+    const corrArr=q.type==='multi'?(Array.isArray(q.correct)?q.correct:(q.correct||'').split(',').map(s=>s.trim())):[q.correct||''];
+    const rows=opts.map((opt,oi)=>{
+      const isCorr=corrArr.includes(opt)&&opt!=='';
+      const inputType=q.type==='multi'?'checkbox':'radio';
+      return `<tr>
+        <td class="qe-ans-num">${oi+1}</td>
+        <td class="qe-ans-img"><div class="qe-ans-img-btn">🖼</div></td>
+        <td class="qe-ans-text"><input class="qe-ans-input" placeholder="Введите текст..."
+          value="${(opt||'').replace(/"/g,'&quot;')}"
+          oninput="_trialSections[${si}].questions[${qi}].options[${oi}]=this.value"></td>
+        <td class="qe-ans-correct"><input type="${inputType}" name="trcorr-${si}-${qi}"
+          ${isCorr?'checked':''}
+          onchange="${q.type==='multi'?
+            `_trialSections[${si}].questions[${qi}].correct=Array.from(document.querySelectorAll('[name=\\'trcorr-${si}-${qi}\\']:checked')).map(el=>el.closest('tr').querySelector('.qe-ans-input').value).join(',')`:
+            `_trialSections[${si}].questions[${qi}].correct=this.closest('tr').querySelector('.qe-ans-input').value`
+          }"></td>
+        <td class="qe-ans-del"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].options.splice(${oi},1);renderTrialBuilder()">🗑</button></td>
+      </tr>`;
+    }).join('');
+    answersSection=`<div class="qe-section-header answers-hdr">
+        <span>Варианты ответов</span>
+        <button class="qe-add-link" onclick="_trialSections[${si}].questions[${qi}].options.push('');renderTrialBuilder()">добавить</button>
+      </div>
+      <table class="qe-answers-table">
+        <thead><tr><th>#</th><th>Текст вариантов ответов</th><th style="text-align:center">+ панель</th><th style="text-align:center">Правильный</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } else if(q.type==='open'){
+    answersSection=`<div class="qe-section-header answers-hdr"><span>Эталонный ответ</span></div>
+      <div style="padding:12px 14px"><textarea class="qe-free-input" placeholder="Образцовый ответ..."
+        oninput="_trialSections[${si}].questions[${qi}].correct=this.value">${(q.correct||'').replace(/</g,'&lt;')}</textarea></div>`;
+  } else if(q.type==='fill'){
+    answersSection=`<div class="qe-section-header answers-hdr"><span>Правильные слова (через запятую)</span></div>
+      <div style="padding:12px 14px">
+        <input class="qe-q-input" placeholder="цитоплазмы,ядра"
+          value="${(q.correct||'').replace(/"/g,'&quot;')}"
+          oninput="_trialSections[${si}].questions[${qi}].correct=this.value">
+      </div>`;
+  } else if(q.type==='match'||q.type==='pairs'){
+    answersSection=`<div class="qe-section-header answers-hdr"><span>Пары (через |)</span></div>
+      <div style="padding:12px 14px"><textarea class="qe-free-input" rows="3"
+        placeholder="Митохондрия|Синтез АТФ&#10;Рибосома|Синтез белка"
+        oninput="_trialSections[${si}].questions[${qi}].pairs=this.value.split('\\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length===2&&p[0])"
+      >${(q.pairs||[]).map(p=>Array.isArray(p)?p.join('|'):(p.left||'')+'|'+(p.right||'')).join('\n').replace(/</g,'&lt;')}</textarea></div>`;
+  } else if(q.type==='order'){
+    answersSection=`<div class="qe-section-header answers-hdr"><span>Элементы по порядку (через запятую)</span></div>
+      <div style="padding:12px 14px">
+        <input class="qe-q-input" placeholder="Интерфаза,Профаза,Метафаза"
+          value="${(q.correct||'').replace(/"/g,'&quot;')}"
+          oninput="_trialSections[${si}].questions[${qi}].correct=this.value;_trialSections[${si}].questions[${qi}].options=this.value.split(',').map(s=>s.trim())">
+      </div>`;
+  }
 
-  const imgFileBlock = `<input type="file" id="${imgFileId}" accept="image/*"
-    style="width:100%;font-size:0.83rem;padding:6px"
-    onchange="handleTrialQImgUpload(this,${si},${qi},'${imgPreId}')">`;
-
-  const imgPreview = q.imageUrl
-    ? `<img id="${imgPreId}" class="q-img-preview" src="${safeUrl(q.imageUrl)}" alt="">`
-    : `<img id="${imgPreId}" class="q-img-preview" style="display:none" src="" alt="">`;
-
-  return `<div style="background:var(--white);border:1px solid var(--green-xpale);border-radius:10px;padding:12px;margin-bottom:8px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-      <span style="font-size:0.75rem;font-weight:700;color:var(--text3);text-transform:uppercase">${{auto:'⚡ Авто',multi:'☑️ Несколько',open:'📝 Открытый',fill:'🔤 Вставка',match:'🔗 Соответствие',pairs:'🧩 Пары',order:'📊 Порядок'}[q.type]||q.type}</span>
-      <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
-        <label style="font-size:0.75rem;color:var(--text3)">Баллов:</label>
-        <input class="trial-q-pts" type="number" min="0.5" step="0.5" value="${+q.points||1}"
+  return `<div class="question-block" style="margin-bottom:8px">
+    <div class="qe-tabs">
+      <div class="qe-tab active" onclick="qeSetTab('${tabId}','editor',this)">✏️ Редактор</div>
+      <div class="qe-tab" onclick="qeSetTab('${tabId}','params',this)">⚙️ Параметры</div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;padding-right:8px">
+        <input type="number" min="0.5" step="0.5" value="${+q.points||1}" title="Баллов"
+          style="width:55px;padding:4px 7px;border-radius:7px;border:1.5px solid #dde3e9;font-family:Nunito,sans-serif;font-size:0.8rem;text-align:center"
           oninput="_trialSections[${si}].questions[${qi}].points=+this.value||1;renderTrialBuilder()">
-        <button class="btn btn-red btn-sm" onclick="removeTrialQuestion(${si},${qi})">✕</button>
+        <span style="font-size:0.68rem;color:#999">${typeLabels[q.type]||q.type} #${qi+1}</span>
+        <button class="btn btn-red btn-sm" onclick="removeTrialQuestion(${si},${qi})" style="padding:3px 8px">✕</button>
       </div>
     </div>
-    <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--bg)"
-      placeholder="Текст вопроса..." value="${(q.text||'').replace(/"/g,'&quot;')}"
-      oninput="_trialSections[${si}].questions[${qi}].text=this.value">
-    ${q.type==='auto'?`
-      <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--bg)"
-        placeholder="Варианты через запятую: А,Б,В,Г" value="${(q.options||[]).join(',').replace(/"/g,'&quot;')}"
-        oninput="_trialSections[${si}].questions[${qi}].options=this.value.split(',').map(s=>s.trim())">
-      <input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;margin-bottom:6px;background:var(--bg)"
-        placeholder="Правильный ответ" value="${(q.correct||'').replace(/"/g,'&quot;')}"
-        oninput="_trialSections[${si}].questions[${qi}].correct=this.value">
-    `:''}
-    <div class="q-img-row">
-      <label>🖼 Картинка к вопросу (необязательно)</label>
-      <div class="q-img-tabs">
-        <div class="q-img-tab ${!isDataUrl?'active':''}" onclick="switchImgTab('${imgTabId}','url')">Ссылка</div>
-        <div class="q-img-tab ${isDataUrl?'active':''}" onclick="switchImgTab('${imgTabId}','file')">Загрузить</div>
+    <div id="${tabId}-editor" class="qe-tab-pane active">
+      <div class="qe-section-header"><span>Текст вопроса</span></div>
+      ${toolbar}
+      <div class="qe-question-body">
+        <div class="qe-text-area">
+          <textarea class="qe-q-input" placeholder="Введите текст вопроса..."
+            oninput="_trialSections[${si}].questions[${qi}].text=this.value">${(q.text||'').replace(/</g,'&lt;')}</textarea>
+        </div>
+        ${imgBlock}
       </div>
-      <div id="${imgTabId}-url" style="${isDataUrl?'display:none':''}">${imgUrlBlock}</div>
-      <div id="${imgTabId}-file" style="${isDataUrl?'':'display:none'}">${imgFileBlock}</div>
-      ${imgPreview}
+      ${answersSection}
+    </div>
+    <div id="${tabId}-params" class="qe-tab-pane">
+      <div class="qe-params-section">
+        <div style="font-size:0.84rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>Баллов: за <b style="color:var(--accent)">правильный</b> ответ</span>
+          <input class="qe-pts-inline" type="number" min="0" value="${+q.points||1}"
+            oninput="_trialSections[${si}].questions[${qi}].points=+this.value||1;renderTrialBuilder()">
+        </div>
+      </div>
     </div>
   </div>`;
 }
