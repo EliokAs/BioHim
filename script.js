@@ -3492,7 +3492,21 @@ function saveItemOverallReview(itemId, itemType){
 }
 function addTestQuestion(type){ _tempQuestions.push(initQuestion('q'+Date.now(),type)); renderTestBuilder(); }
 function addHWQuestion(type){ _tempHWQuestions.push(initQuestion('q'+Date.now(),type)); renderHWBuilder(); }
+function _syncBuilderFromDOM(arr, ctx){
+  arr.forEach((q,i)=>{
+    const tabId=`qe-tab-${ctx}-${i}`;
+    const pane=document.getElementById(tabId+'-editor');
+    if(!pane) return;
+    const ta=pane.querySelector('.qe-q-input');
+    if(ta) q.text=ta.value;
+    if(q.type==='auto'||q.type==='multi'){
+      pane.querySelectorAll('.qe-ans-input').forEach((inp,oi)=>{ if(q.options[oi]!==undefined) q.options[oi]=inp.value; });
+    }
+  });
+}
+
 function renderTestBuilder(){
+  _syncBuilderFromDOM(_tempQuestions,'test');
   const el=document.getElementById('nt-questions-list');
   const totalPts = _tempQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempQuestions.map((q,i)=>buildQuestionHTML(q,i,'test')).join('');
@@ -3676,7 +3690,7 @@ function buildQuestionHTML(q,i,ctx){
     answersSection = `<div class="qe-section-header answers-hdr">
         <span>Варианты ответов</span>
         <span style="display:flex;align-items:center;gap:10px">
-          <button class="qe-add-link" onclick="${pfx}[${i}].options=([...${pfx}[${i}].options||[]],'');${pfx}[${i}].options.push('');${rebuildFn}">добавить</button>
+          <button class="qe-add-link" onclick="if(!Array.isArray(${pfx}[${i}].options)||!${pfx}[${i}].options.length){${pfx}[${i}].options=['',''];}${pfx}[${i}].options.push('');${rebuildFn}">добавить</button>
           <span style="font-size:1rem;cursor:pointer">☰</span>
         </span>
       </div>
@@ -4190,6 +4204,7 @@ function checkHWOpenAnswer(hwId,qId){
   openModal('modal-check-answer');
 }
 function renderHWBuilder(){
+  _syncBuilderFromDOM(_tempHWQuestions,'hw');
   const el=document.getElementById('nhw-questions-list');
   const totalPts = _tempHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempHWQuestions.map((q,i)=>buildQuestionHTML(q,i,'hw')).join('');
@@ -5723,7 +5738,23 @@ function removeTrialQuestion(sIdx, qIdx){
   _trialSections[sIdx].questions.splice(qIdx,1);
   renderTrialBuilder();
 }
+function _syncTrialFromDOM(){
+  _trialSections.forEach((sec,si)=>{
+    sec.questions.forEach((q,qi)=>{
+      const tabId=`trq-tab-${si}-${qi}`;
+      const pane=document.getElementById(tabId+'-editor');
+      if(!pane) return;
+      const ta=pane.querySelector('.qe-q-input');
+      if(ta) q.text=ta.value;
+      if(q.type==='auto'||q.type==='multi'){
+        pane.querySelectorAll('.qe-ans-input').forEach((inp,oi)=>{ if(q.options[oi]!==undefined) q.options[oi]=inp.value; });
+      }
+    });
+  });
+}
+
 function renderTrialBuilder(){
+  _syncTrialFromDOM();
   const el = document.getElementById('ntr-sections-list');
   if(!el) return;
   let totalPts = 0;
@@ -5802,7 +5833,7 @@ function trialQuestionBuilderHTML(si, qi, q){
     }).join('');
     answersSection=`<div class="qe-section-header answers-hdr">
         <span>Варианты ответов</span>
-        <button class="qe-add-link" onclick="_trialSections[${si}].questions[${qi}].options.push('');renderTrialBuilder()">добавить</button>
+        <button class="qe-add-link" onclick="if(!_trialSections[${si}].questions[${qi}].options.length)_trialSections[${si}].questions[${qi}].options=['',''];_trialSections[${si}].questions[${qi}].options.push('');renderTrialBuilder()">добавить</button>
       </div>
       <table class="qe-answers-table">
         <thead><tr><th>#</th><th>Текст вариантов ответов</th><th style="text-align:center">+ панель</th><th style="text-align:center">Правильный</th><th></th></tr></thead>
