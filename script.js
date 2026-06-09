@@ -13975,27 +13975,40 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
     </div>`;
 
   } else if(q.type==='order'){
-    const items=(q.options||q.correct.split(',')).map(s=>s.trim()).filter(Boolean);
-    const shuffled = ans ? ans.split(',').map(s=>s.trim()) : [...items].sort(()=>Math.random()-0.5);
-    body=`<div style="font-size:0.76rem;color:var(--text3);margin-bottom:8px">Расставь элементы в правильном порядке</div>
+    const items=(q.options||(q.correct||'').split(',')).map(s=>s.trim()).filter(Boolean);
+    const _sk='_ordershuf_'+q.id;
+    if(!window[_sk]||window[_sk].length!==items.length) window[_sk]=[...items].sort(()=>Math.random()-0.5);
+    const shuffled = ans ? ans.split(',').map(s=>s.trim()).filter(Boolean) : window[_sk];
+    body=`<div style="font-size:0.76rem;color:var(--text3);margin-bottom:8px">✋ Перетащи элементы или используй стрелки для расстановки в правильном порядке</div>
     <div style="display:grid;gap:6px" id="order-list-${q.id}">
       ${shuffled.map((item,ii)=>`
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--white);border-radius:8px;border:1.5px solid var(--green-pale)">
-          <span style="font-size:0.8rem;color:var(--text3);font-weight:700;min-width:20px">${ii+1}.</span>
-          <span style="flex:1;font-size:0.88rem">${item}</span>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--white);border-radius:9px;border:1.5px solid var(--green-pale);cursor:grab;user-select:none;transition:all 0.15s"
+          draggable="true"
+          ondragstart="window._dragOrderQId='${q.id}';window._dragOrderIdx=${ii};window._dragOrderAns='${answerObj}';this.classList.add('order-item-dragging')"
+          ondragend="this.classList.remove('order-item-dragging')"
+          ondragover="event.preventDefault();event.stopPropagation();this.classList.add('order-item-dragover')"
+          ondragleave="this.classList.remove('order-item-dragover')"
+          ondrop="event.preventDefault();event.stopPropagation();this.classList.remove('order-item-dragover');(function(toIdx){if(window._dragOrderQId!=='${q.id}')return;moveOrderItem(window._dragOrderQId,window._dragOrderIdx,toIdx-window._dragOrderIdx,window._dragOrderAns)})(${ii})">
+          <span style="font-size:1.1rem;color:var(--text3);cursor:grab;line-height:1;padding:0 2px">⠿</span>
+          <span style="font-size:0.76rem;color:var(--text3);font-weight:700;min-width:22px;background:var(--bg);padding:2px 6px;border-radius:5px;text-align:center">${ii+1}</span>
+          <span style="flex:1;font-size:0.88rem">${escHtml(item)}</span>
           <div style="display:flex;flex-direction:column;gap:2px">
-            ${ii>0?`<button onclick="moveOrderItem('${q.id}',${ii},-1,'${answerObj}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;padding:2px">▲</button>`:'<span style="padding:2px;font-size:0.8rem">　</span>'}
-            ${ii<shuffled.length-1?`<button onclick="moveOrderItem('${q.id}',${ii},1,'${answerObj}')" style="background:none;border:none;cursor:pointer;font-size:0.8rem;padding:2px">▼</button>`:'<span style="padding:2px;font-size:0.8rem">　</span>'}
+            ${ii>0?`<button onclick="moveOrderItem('${q.id}',${ii},-1,'${answerObj}')" style="background:none;border:1.5px solid var(--green-pale);border-radius:4px;cursor:pointer;font-size:0.68rem;padding:2px 5px;line-height:1;color:var(--text2)">▲</button>`:'<span style="width:22px;height:20px;display:block"></span>'}
+            ${ii<shuffled.length-1?`<button onclick="moveOrderItem('${q.id}',${ii},1,'${answerObj}')" style="background:none;border:1.5px solid var(--green-pale);border-radius:4px;cursor:pointer;font-size:0.68rem;padding:2px 5px;line-height:1;color:var(--text2)">▼</button>`:'<span style="width:22px;height:20px;display:block"></span>'}
           </div>
         </div>`).join('')}
     </div>`;
   }
 
-  return `<div class="question-block">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <div class="question-num">${typeLabels[q.type]||q.type} · Вопрос ${idx+1}</div>
-      <span style="font-size:0.78rem;color:var(--text3)">⭐ ${pts} б.</span>
+  return `<div class="question-block" style="border-left:3.5px solid var(--green-mid);padding:0;overflow:hidden">
+    <div style="padding:12px 16px 10px;border-bottom:1px solid var(--green-xpale);display:flex;justify-content:space-between;align-items:center;background:var(--bg)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="background:var(--green-deep);color:#fff;border-radius:6px;padding:2px 8px;font-size:0.7rem;font-weight:700;letter-spacing:.04em">${idx+1}</span>
+        <span class="question-num" style="margin:0">${typeLabels[q.type]||q.type}</span>
+      </div>
+      <span style="font-size:0.78rem;color:var(--text3);font-weight:700">⭐ ${pts} б.</span>
     </div>
+    <div style="padding:14px 16px">
     ${q.type!=='fill'?`<div class="question-text">${escHtml(q.text)}</div>`:''}
     ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
     ${body}
@@ -14005,6 +14018,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
         <span style="font-weight:700;margin-right:6px">💡</span>${q.hint}
       </div>
     </div>`:''}
+    </div>
   </div>`;
 }
 
