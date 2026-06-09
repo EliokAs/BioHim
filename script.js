@@ -4998,7 +4998,6 @@ let _editorDirty = false;
 function _setDirty(val) {
   _editorDirty = !!val;
 }
-
 function _safeClose(id, force) {
   if (!force && _DIRTY_MODALS.includes(id) && _editorDirty) {
     if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
@@ -6999,7 +6998,7 @@ function submitTrial(timeout=false){
   (t.sections||[]).forEach(s=>s.questions.forEach(q=>{
     const pts=+q.points||1;
     const ans=_trialAnswers[q.id]||'';
-    if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
+    if(q.type!=='open'){ total+=pts; score+=calcQuestionScore(q,ans); }
   }));
   t.autoScore=score;
   t.autoTotal=t.maxPts||total; // maxPts = full trial max (auto+open), used as denominator
@@ -9609,7 +9608,7 @@ function submitTest(autoSubmit){
   t.questions.forEach(q=>{
     const pts=+q.points||1;
     const ans=_testAnswers[q.id]||'';
-    if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
+    if(q.type!=='open'){ total+=pts; score+=calcQuestionScore(q,ans); }
   });
   t.autoScore=score;
   t.autoTotal=t.maxPts||total; // maxPts = сумма всех вопросов включая открытые
@@ -9754,7 +9753,7 @@ function submitHW(){
   (h.questions||[]).forEach(q=>{
     const pts=+q.points||1;
     const ans=_hwAnswers[q.id]||'';
-    if(q.type!=='open'){ total+=pts; if(scoreQuestion(q,ans)) score+=pts; }
+    if(q.type!=='open'){ total+=pts; score+=calcQuestionScore(q,ans); }
   });
   h.autoScore=score;
   h.autoTotal=h.maxPts||total; // maxPts = сумма всех вопросов включая открытые
@@ -14114,13 +14113,12 @@ function scoreQuestion(q, ans){
     const given   = (ans||'').split(',').map(s=>norm(s));
     return correct.every((c,i)=>c===given[i]);
   } else if(q.type==='match'||q.type==='pairs'){
-    // ans = "A:B,C:D,..." where A is left item, B is right item student chose
+    // ans = "encA:encB,..." where A is left item, B is right item student chose
     const pairs = (q.pairs||[]).map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     if(!pairs.length) return false;
-    // Build correct mapping using correctMap (index-based) or default diagonal
     const cMap = q.correctMap || {};
     const correctPairs = pairs.map((p,i)=>[norm(p[0]), norm(pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'')]);
-    const givenPairs = (ans||'').split(',').map(s=>{ const[a,b]=s.split(':'); return[norm(a||''),norm(b||'')]; });
+    const givenPairs = (ans||'').split(',').map(s=>{ const ci=s.indexOf(':'); if(ci<0)return['','']; try{return[norm(decodeURIComponent(s.slice(0,ci).trim())),norm(decodeURIComponent(s.slice(ci+1).trim()))]}catch(e){const[a,b]=s.split(':');return[norm(a||''),norm(b||'')];} });
     return givenPairs.length===pairs.length && correctPairs.every(([a,b])=>givenPairs.some(([ga,gb])=>ga===a&&gb===b));
   } else if(q.type==='order'){
     const correct = (q.correct||'').split(',').map(s=>norm(s));
@@ -14128,6 +14126,45 @@ function scoreQuestion(q, ans){
     return JSON.stringify(correct)===JSON.stringify(given);
   }
   return false;
+}
+
+/**
+ * Возвращает числовое количество очков за вопрос с учётом scoringMode для match/pairs.
+ * Для остальных типов — pts если правильно, 0 иначе.
+ */
+function calcQuestionScore(q, ans) {
+  const pts = +q.points || 1;
+  if (q.type !== 'match' && q.type !== 'pairs') {
+    return scoreQuestion(q, ans) ? pts : 0;
+  }
+  // match / pairs: поддержка per / partial / whole
+  const pairs = (q.pairs||[]).map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+  if (!pairs.length) return 0;
+  const norm = s => (s||'').toString().trim().toLowerCase();
+  const cMap = q.correctMap || {};
+  const correctPairs = pairs.map((p,i)=>[norm(p[0]), norm(pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'')]);
+  const givenMap = {};
+  (ans||'').split(',').forEach(s=>{
+    const ci = s.indexOf(':'); if(ci<0) return;
+    try { givenMap[norm(decodeURIComponent(s.slice(0,ci).trim()))] = norm(decodeURIComponent(s.slice(ci+1).trim())); }
+    catch(e) { const[a,b]=s.split(':'); if(a) givenMap[norm(a)] = norm(b||''); }
+  });
+  const correctCount = correctPairs.filter(([a,b]) => givenMap[a] === b).length;
+  const total = correctPairs.length;
+  const wrongCount = total - correctCount;
+  const wrongPts = +q.wrongPoints || 0;
+  const mode = q.scoringMode || 'whole';
+  if (mode === 'per') {
+    // каждый правильный = pts/total, каждый неправильный = wrongPts/total
+    const perPair = pts / total;
+    return Math.max(0, Math.round((correctCount * perPair + (q.penalizeErrors ? wrongCount * (wrongPts/total) : 0)) * 100) / 100);
+  } else if (mode === 'partial') {
+    const frac = total > 0 ? correctCount / total : 0;
+    return Math.max(0, Math.round(pts * frac * 100) / 100);
+  } else {
+    // whole: всё или ничего
+    return correctCount === total ? pts : (q.penalizeErrors ? Math.max(0, pts + wrongPts * wrongCount) : 0);
+  }
 }
 
 /** Render a question for a student taking a test/hw/trial */
@@ -14306,14 +14343,35 @@ function renderReviewQuestion(q, answers){
   } else if(q.type==='multi'){
     detail=`<div class="option-item ${correct?'correct':'wrong'}" style="margin-top:4px">${ans||'—'} ${correct?'✅':'❌ Правильно: '+q.correct}</div>`;
   } else if(q.type==='match'||q.type==='pairs'){
-    const pairs=q.pairs||[];
-    detail=pairs.map(p=>{
-      const givenMap={};
-      (ans||'').split(',').forEach(s=>{const[a,b]=s.split(':');if(a&&b)givenMap[a.trim()]=b.trim();});
-      const given=givenMap[p[0]]||'—';
-      const ok=(given||'').toLowerCase()===p[1].toLowerCase();
-      return `<div class="option-item ${ok?'correct':'wrong'}" style="margin-top:4px">${p[0]} → ${given} ${ok?'✅':'❌ Правильно: '+p[1]}</div>`;
+    const pairs=(q.pairs||[]).map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+    const cMap = q.correctMap || {};
+    const givenMap={};
+    (ans||'').split(',').forEach(s=>{
+      const ci=s.indexOf(':'); if(ci<0) return;
+      try { givenMap[decodeURIComponent(s.slice(0,ci).trim()).toLowerCase()] = decodeURIComponent(s.slice(ci+1).trim()).toLowerCase(); }
+      catch(e) { const[a,b]=s.split(':'); if(a) givenMap[a.trim().toLowerCase()]=( b||'').trim().toLowerCase(); }
+    });
+    const correctCount = pairs.filter((_,i) => {
+      const correctRight = (pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'').toLowerCase();
+      return givenMap[(pairs[i][0]||'').toLowerCase()] === correctRight;
+    }).length;
+    detail=pairs.map((p,i)=>{
+      const correctRight = pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'';
+      const givenVal = givenMap[(p[0]||'').toLowerCase()]||'—';
+      const ok = givenVal.toLowerCase()===(correctRight||'').toLowerCase();
+      return `<div class="option-item ${ok?'correct':'wrong'}" style="margin-top:4px">${escHtml(p[0])} → ${escHtml(givenVal)} ${ok?'✅':'❌ Правильно: '+escHtml(correctRight)}</div>`;
     }).join('');
+    // Показываем частичный балл в заголовке
+    const earnedPts = calcQuestionScore(q, ans);
+    return `<div class="question-block">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="question-num">🔗 Соответствие</div>
+        <span style="font-size:0.78rem;font-weight:700;color:${earnedPts===pts?'var(--green-mid)':earnedPts>0?'var(--gold)':'var(--red)'}">⭐ ${earnedPts}/${pts} б.</span>
+      </div>
+      <div class="question-text">${escHtml(q.text)}</div>
+      ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
+      ${detail}
+    </div>`;
   }
 
   return `<div class="question-block">
