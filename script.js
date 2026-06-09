@@ -3767,88 +3767,137 @@ function buildQuestionHTML(q,i,ctx){
           oninput="${pfx}[${i}].correct=this.value">
       </div>`;
   } else if(IS('match') || IS('pairs')){
-    // Rich two-column match editor
+    // OTP-style vertical match editor
     const pairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
-    // Normalize pairs to arrays
     const pairsArr = pairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
-    const leftLabel = q.leftLabel || '';
-    const rightLabel = q.rightLabel || '';
     const rightExtra = q.rightExtra || [];
+    const allowDrag = q.allowDrag !== false;
+
+    // Scoring block (OTP-style)
+    const scoringBlock = `
+      <div class="qe-match-scoring">
+        <div class="qe-match-scoring-left">
+          <span class="qe-match-scoring-label">ПОДСЧЁТ БАЛЛОВ:</span>
+          <select class="qe-match-scoring-mode" onchange="${pfx}[${i}].scoringMode=this.value">
+            <option value="whole" ${(q.scoringMode||'whole')==='whole'?'selected':''}>Весь вопрос правильный</option>
+            <option value="per" ${q.scoringMode==='per'?'selected':''}>За каждый правильный</option>
+            <option value="partial" ${q.scoringMode==='partial'?'selected':''}>Частичный балл</option>
+          </select>
+          <label class="qe-match-penalize-label">
+            <input type="checkbox" ${q.penalizeErrors?'checked':''} onchange="${pfx}[${i}].penalizeErrors=this.checked">
+            За каждую ошибку понижать
+          </label>
+        </div>
+        <div class="qe-match-scoring-right">
+          <span class="qe-match-score-pts-row">
+            <span>Баллов: за <b class="qe-score-correct">правильный</b> ответ</span>
+            <input type="number" min="0" class="qe-pts-inline" value="${q.points||1}" oninput="${pfx}[${i}].points=+this.value||1;${rebuildFn}">
+          </span>
+          <span class="qe-match-score-pts-row">
+            <span>за <b class="qe-score-wrong">неправильный</b> ответ</span>
+            <input type="number" min="-10" class="qe-pts-inline" value="${q.wrongPoints||0}" oninput="${pfx}[${i}].wrongPoints=+this.value">
+          </span>
+        </div>
+      </div>`;
+
+    // Left list rows
     const leftRows = pairsArr.map((p,pi)=>`
       <tr>
-        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
-        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:0.8rem" title="Изображение">🖼</div></td>
-        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
+        <td class="qe-match-num">${pi+1}</td>
+        <td class="qe-match-img-cell"><div class="qe-ans-img-btn" title="Изображение">🖼</div></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
           oninput="${pfx}[${i}].pairs[${pi}]=[this.value,${pfx}[${i}].pairs[${pi}][1]||'']"></td>
-        <td style="padding:6px 4px;width:80px">
-          <select style="padding:4px 6px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;width:72px"
+        <td class="qe-match-corr-cell">
+          <select class="qe-match-corr-select"
             onchange="${pfx}[${i}].correctMap=${pfx}[${i}].correctMap||{};${pfx}[${i}].correctMap[${pi}]=+this.value">
-            ${pairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||pi===ri?'selected':''}>${ri+1}</option>`).join('')}
+            ${pairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':''}>${ri+1}</option>`).join('')}
           </select>
         </td>
-        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);if(${pfx}[${i}].correctMap){delete ${pfx}[${i}].correctMap[${pi}]};${rebuildFn}">🗑</button></td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);if(${pfx}[${i}].correctMap){delete ${pfx}[${i}].correctMap[${pi}]};${rebuildFn}">🗑</button></td>
       </tr>`).join('');
+
+    // Right list rows
     const rightRows = pairsArr.map((p,pi)=>`
       <tr>
-        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
-        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:0.8rem" title="Изображение">🖼</div></td>
-        <td style="padding:6px 4px;width:100%"><input class="qe-ans-input" style="width:100%;box-sizing:border-box" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+        <td class="qe-match-num">${pi+1}</td>
+        <td class="qe-match-img-cell"><div class="qe-ans-img-btn" title="Изображение">🖼</div></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
           oninput="${pfx}[${i}].pairs[${pi}]=[${pfx}[${i}].pairs[${pi}][0]||'',this.value]"></td>
-        <td style="padding:6px 4px;width:32px;min-width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
       </tr>`).join('');
+
+    // Right extra (distractor) rows
     const rightExtraRows = rightExtra.map((val,ei)=>`
-      <tr style="background:var(--bg2)">
-        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px;opacity:0.5">+</td>
-        <td style="padding:6px 4px;width:36px"></td>
-        <td style="padding:6px 4px;width:100%"><input class="qe-ans-input" style="width:100%;box-sizing:border-box" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
+      <tr style="background:var(--bg)">
+        <td class="qe-match-num" style="opacity:0.5">+</td>
+        <td class="qe-match-img-cell"></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
           oninput="${pfx}[${i}].rightExtra[${ei}]=this.value"></td>
-        <td style="padding:6px 4px;width:32px;min-width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].rightExtra.splice(${ei},1);${rebuildFn}">🗑</button></td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].rightExtra.splice(${ei},1);${rebuildFn}">🗑</button></td>
       </tr>`).join('');
+
     answersSection = `
-      <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
-        <!-- LEFT LIST -->
-        <div style="flex:1;min-width:0;overflow:hidden">
-          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
-            <span>СПИСОК 1 (СЛЕВА)</span>
-            <button class="qe-add-link" style="margin-left:8px" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+      ${scoringBlock}
+      <!-- LEFT LIST -->
+      <div class="qe-match-list-wrap">
+        <div class="qe-match-list-header">
+          <div class="qe-match-list-title">
+            <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 1 (СЛЕВА)</text></svg>
           </div>
-          <div style="padding:6px 10px 4px">
-            <input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
-              value="${(q.leftLabel||'').replace(/"/g,'&quot;')}"
-              oninput="${pfx}[${i}].leftLabel=this.value">
-          </div>
-          <table class="qe-answers-table" style="table-layout:fixed;width:100%">
-            <thead><tr>
-              <th style="width:30px">#</th><th style="width:36px"></th>
-              <th>Текст вариантов ответов</th>
-              <th style="text-align:center;width:80px">Правильное<br>соответствие</th>
-              <th style="width:32px"></th>
-            </tr></thead>
-            <tbody>${leftRows}</tbody>
-          </table>
+          <button class="qe-add-link" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+          <span class="qe-match-sort-icon" title="Сортировка">☰</span>
         </div>
-        <!-- RIGHT LIST -->
-        <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
-          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
-            <span>СПИСОК 2 (СПРАВА)</span>
-            <button class="qe-add-link" style="margin-left:8px" title="Добавляет вариант справа и автоматически строку слева" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
-            <button class="qe-add-link" style="margin-left:4px;opacity:0.75;font-size:0.78rem" title="Добавить только доп. вариант (дистрактор) без строки слева" onclick="${pfx}[${i}].rightExtra=[...(${pfx}[${i}].rightExtra||[]),''];${rebuildFn}">+ дистрактор</button>
-          </div>
-          <div style="padding:6px 10px 4px">
-            <input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
-              value="${(q.rightLabel||'').replace(/"/g,'&quot;')}"
-              oninput="${pfx}[${i}].rightLabel=this.value">
-          </div>
-          <table class="qe-answers-table" style="table-layout:fixed;width:100%">
-            <thead><tr>
-              <th style="width:30px">#</th><th style="width:36px"></th>
-              <th>Текст вариантов ответов</th>
-              <th style="width:32px;min-width:32px"></th>
-            </tr></thead>
-            <tbody>${rightRows}${rightExtraRows}</tbody>
-          </table>
-          ${rightExtra.length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
+        <div class="qe-match-list-name-row">
+          <input class="qe-ans-input qe-match-list-name" placeholder="Название списка"
+            value="${(q.leftLabel||'').replace(/"/g,'&quot;')}"
+            oninput="${pfx}[${i}].leftLabel=this.value">
         </div>
+        <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
+          <thead><tr>
+            <th style="width:30px">#</th>
+            <th style="width:36px"></th>
+            <th>Текст</th>
+            <th style="text-align:right;width:130px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
+            <th style="text-align:center;width:80px;white-space:nowrap">Правильное<br>соответствие</th>
+            <th style="width:32px"></th>
+          </tr></thead>
+          <tbody>${leftRows}</tbody>
+        </table>
+      </div>
+      <!-- RIGHT LIST -->
+      <div class="qe-match-list-wrap" style="margin-top:10px">
+        <div class="qe-match-list-header">
+          <div class="qe-match-list-title">
+            <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 2 (СПРАВА)</text></svg>
+          </div>
+          <button class="qe-add-link" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+          <span class="qe-match-sort-icon" title="Сортировка">☰</span>
+          <button class="qe-add-link" style="font-size:0.76rem;opacity:0.75;margin-left:4px" title="Добавить дистрактор (доп. вариант без пары слева)" onclick="${pfx}[${i}].rightExtra=[...(${pfx}[${i}].rightExtra||[]),''];${rebuildFn}">+ дистрактор</button>
+        </div>
+        <div class="qe-match-list-name-row">
+          <input class="qe-ans-input qe-match-list-name" placeholder="Название списка"
+            value="${(q.rightLabel||'').replace(/"/g,'&quot;')}"
+            oninput="${pfx}[${i}].rightLabel=this.value">
+        </div>
+        <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
+          <thead><tr>
+            <th style="width:30px">#</th>
+            <th style="width:36px"></th>
+            <th>Текст</th>
+            <th style="text-align:right;width:160px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
+            <th style="width:32px"></th>
+          </tr></thead>
+          <tbody>${rightRows}${rightExtraRows}</tbody>
+        </table>
+        ${rightExtra.length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
+      </div>
+      <!-- Drag checkbox -->
+      <div class="qe-match-drag-row">
+        <label class="qe-match-drag-label">
+          <input type="checkbox" ${allowDrag?'checked':''} onchange="${pfx}[${i}].allowDrag=this.checked">
+          Разрешить перетаскивание с помощью мыши
+        </label>
+        <span class="qe-match-drag-info" title="При включённом перетаскивании студент может перемещать варианты мышью">&#9432;</span>
       </div>`;
   } else if(IS('order')){
     answersSection = `<div class="qe-section-header answers-hdr"><span>Элементы в правильном порядке (через запятую)</span></div>
@@ -5124,60 +5173,121 @@ function _renderEditQuizBuilder(type){
     } else if(q.type==='match'){
       const _ePairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
       const _ePairsArr = _ePairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+      const _eRightExtra = q.rightExtra || [];
+      const _eAllowDrag = q.allowDrag !== false;
+
+      const _eScoringBlock = `
+        <div class="qe-match-scoring">
+          <div class="qe-match-scoring-left">
+            <span class="qe-match-scoring-label">ПОДСЧЁТ БАЛЛОВ:</span>
+            <select class="qe-match-scoring-mode" onchange="${arrStr}[${i}].scoringMode=this.value;_setDirty(true)">
+              <option value="whole" ${(q.scoringMode||'whole')==='whole'?'selected':''}>Весь вопрос правильный</option>
+              <option value="per" ${q.scoringMode==='per'?'selected':''}>За каждый правильный</option>
+              <option value="partial" ${q.scoringMode==='partial'?'selected':''}>Частичный балл</option>
+            </select>
+            <label class="qe-match-penalize-label">
+              <input type="checkbox" ${q.penalizeErrors?'checked':''} onchange="${arrStr}[${i}].penalizeErrors=this.checked;_setDirty(true)">
+              За каждую ошибку понижать
+            </label>
+          </div>
+          <div class="qe-match-scoring-right">
+            <span class="qe-match-score-pts-row">
+              <span>Баллов: за <b class="qe-score-correct">правильный</b> ответ</span>
+              <input type="number" min="0" class="qe-pts-inline" value="${+q.points||1}" oninput="${arrStr}[${i}].points=+this.value||1;_setDirty(true);${selfCall}">
+            </span>
+            <span class="qe-match-score-pts-row">
+              <span>за <b class="qe-score-wrong">неправильный</b> ответ</span>
+              <input type="number" min="-10" class="qe-pts-inline" value="${q.wrongPoints||0}" oninput="${arrStr}[${i}].wrongPoints=+this.value;_setDirty(true)">
+            </span>
+          </div>
+        </div>`;
+
       const _eLeftRows = _ePairsArr.map((p,pi)=>`
         <tr>
-          <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
-          <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
-          <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
+          <td class="qe-match-num">${pi+1}</td>
+          <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
+          <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
             oninput="${arrStr}[${i}].pairs[${pi}]=[this.value,${arrStr}[${i}].pairs[${pi}][1]||''];_setDirty(true)"></td>
-          <td style="padding:6px 4px;width:80px">
-            <select style="padding:4px 6px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;width:72px"
+          <td class="qe-match-corr-cell">
+            <select class="qe-match-corr-select"
               onchange="${arrStr}[${i}].correctMap=${arrStr}[${i}].correctMap||{};${arrStr}[${i}].correctMap[${pi}]=+this.value;_setDirty(true)">
-              ${_ePairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||pi===ri?'selected':''}>${ri+1}</option>`).join('')}
+              ${_ePairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':''}>${ri+1}</option>`).join('')}
             </select>
           </td>
-          <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
+          <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`).join('');
+
       const _eRightRows = _ePairsArr.map((p,pi)=>`
         <tr>
-          <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
-          <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
-          <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+          <td class="qe-match-num">${pi+1}</td>
+          <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
+          <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
             oninput="${arrStr}[${i}].pairs[${pi}]=[${arrStr}[${i}].pairs[${pi}][0]||'',this.value];_setDirty(true)"></td>
-          <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
+          <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`).join('');
-      const _eRightExtraRows = (q.rightExtra||[]).map((val,ei)=>`
-        <tr style="background:var(--bg2)">
-          <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px;opacity:0.5">+</td>
-          <td style="padding:6px 4px;width:36px"></td>
-          <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
+
+      const _eRightExtraRows = _eRightExtra.map((val,ei)=>`
+        <tr style="background:var(--bg)">
+          <td class="qe-match-num" style="opacity:0.5">+</td>
+          <td class="qe-match-img-cell"></td>
+          <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
             oninput="${arrStr}[${i}].rightExtra[${ei}]=this.value;_setDirty(true)"></td>
-          <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].rightExtra.splice(${ei},1);_setDirty(true);${selfCall}">🗑</button></td>
+          <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].rightExtra.splice(${ei},1);_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`).join('');
+
       answersSection = `
-        <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
-          <div style="flex:1;min-width:0;overflow:hidden">
-            <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
-              <span>СПИСОК 1 (СЛЕВА)</span>
-              <button class="qe-add-link" style="margin-left:8px" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+        ${_eScoringBlock}
+        <div class="qe-match-list-wrap">
+          <div class="qe-match-list-header">
+            <div class="qe-match-list-title">
+              <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 1 (СЛЕВА)</text></svg>
             </div>
-            <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
-              value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].leftLabel=this.value;_setDirty(true)"></div>
-            <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
-            <tbody>${_eLeftRows}</tbody></table>
+            <button class="qe-add-link" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+            <span class="qe-match-sort-icon">☰</span>
           </div>
-          <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
-            <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
-              <span>СПИСОК 2 (СПРАВА)</span>
-              <button class="qe-add-link" style="margin-left:8px" title="Добавляет вариант справа и автоматически строку слева" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
-              <button class="qe-add-link" style="margin-left:4px;opacity:0.75;font-size:0.78rem" title="Добавить только доп. вариант (дистрактор) без строки слева" onclick="${arrStr}[${i}].rightExtra=[...(${arrStr}[${i}].rightExtra||[]),''];_setDirty(true);${selfCall}">+ дистрактор</button>
+          <div class="qe-match-list-name-row">
+            <input class="qe-ans-input qe-match-list-name" placeholder="Название списка"
+              value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].leftLabel=this.value;_setDirty(true)">
+          </div>
+          <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
+            <thead><tr>
+              <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
+              <th style="text-align:right;width:130px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
+              <th style="text-align:center;width:80px;white-space:nowrap">Правильное<br>соответствие</th>
+              <th style="width:32px"></th>
+            </tr></thead>
+            <tbody>${_eLeftRows}</tbody>
+          </table>
+        </div>
+        <div class="qe-match-list-wrap" style="margin-top:10px">
+          <div class="qe-match-list-header">
+            <div class="qe-match-list-title">
+              <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 2 (СПРАВА)</text></svg>
             </div>
-            <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
-              value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].rightLabel=this.value;_setDirty(true)"></div>
-            <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
-            <tbody>${_eRightRows}${(_eRightExtraRows||'')}</tbody></table>
-            ${(q.rightExtra||[]).length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
+            <button class="qe-add-link" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+            <span class="qe-match-sort-icon">☰</span>
+            <button class="qe-add-link" style="font-size:0.76rem;opacity:0.75;margin-left:4px" onclick="${arrStr}[${i}].rightExtra=[...(${arrStr}[${i}].rightExtra||[]),''];_setDirty(true);${selfCall}">+ дистрактор</button>
           </div>
+          <div class="qe-match-list-name-row">
+            <input class="qe-ans-input qe-match-list-name" placeholder="Название списка"
+              value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].rightLabel=this.value;_setDirty(true)">
+          </div>
+          <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
+            <thead><tr>
+              <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
+              <th style="text-align:right;width:160px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
+              <th style="width:32px"></th>
+            </tr></thead>
+            <tbody>${_eRightRows}${_eRightExtraRows}</tbody>
+          </table>
+          ${_eRightExtra.length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
+        </div>
+        <div class="qe-match-drag-row">
+          <label class="qe-match-drag-label">
+            <input type="checkbox" ${_eAllowDrag?'checked':''} onchange="${arrStr}[${i}].allowDrag=this.checked;_setDirty(true)">
+            Разрешить перетаскивание с помощью мыши
+          </label>
+          <span class="qe-match-drag-info" title="Студент сможет перетаскивать варианты мышью">&#9432;</span>
         </div>`;
     } else if(q.type==='order'){
       answersSection = `<div class="qe-section-header answers-hdr"><span>Элементы по порядку</span></div>
@@ -6065,62 +6175,125 @@ function trialQuestionBuilderHTML(si, qi, q){
           oninput="_trialSections[${si}].questions[${qi}].correct=this.value">
       </div>`;
   } else if(q.type==='match'||q.type==='pairs'){
+  } else if(q.type==='match'||q.type==='pairs'){
     const _tPairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
     const _tPairsArr = _tPairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+    const _tRightExtra = q.rightExtra || [];
+    const _tAllowDrag = q.allowDrag !== false;
+    const _tRef = `_trialSections[${si}].questions[${qi}]`;
+
+    const _tScoringBlock = `
+      <div class="qe-match-scoring">
+        <div class="qe-match-scoring-left">
+          <span class="qe-match-scoring-label">ПОДСЧЁТ БАЛЛОВ:</span>
+          <select class="qe-match-scoring-mode" onchange="${_tRef}.scoringMode=this.value">
+            <option value="whole" ${(q.scoringMode||'whole')==='whole'?'selected':''}>Весь вопрос правильный</option>
+            <option value="per" ${q.scoringMode==='per'?'selected':''}>За каждый правильный</option>
+            <option value="partial" ${q.scoringMode==='partial'?'selected':''}>Частичный балл</option>
+          </select>
+          <label class="qe-match-penalize-label">
+            <input type="checkbox" ${q.penalizeErrors?'checked':''} onchange="${_tRef}.penalizeErrors=this.checked">
+            За каждую ошибку понижать
+          </label>
+        </div>
+        <div class="qe-match-scoring-right">
+          <span class="qe-match-score-pts-row">
+            <span>Баллов: за <b class="qe-score-correct">правильный</b> ответ</span>
+            <input type="number" min="0" class="qe-pts-inline" value="${q.points||1}" oninput="${_tRef}.points=+this.value||1">
+          </span>
+          <span class="qe-match-score-pts-row">
+            <span>за <b class="qe-score-wrong">неправильный</b> ответ</span>
+            <input type="number" min="-10" class="qe-pts-inline" value="${q.wrongPoints||0}" oninput="${_tRef}.wrongPoints=+this.value">
+          </span>
+        </div>
+      </div>`;
+
     const _tLeftRows = _tPairsArr.map((p,pi)=>`
       <tr>
-        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
-        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
-        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
-          oninput="_trialSections[${si}].questions[${qi}].pairs[${pi}]=[this.value,_trialSections[${si}].questions[${qi}].pairs[${pi}][1]||'']"></td>
-        <td style="padding:6px 4px;width:80px">
-          <select style="padding:4px 6px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;width:72px"
-            onchange="_trialSections[${si}].questions[${qi}].correctMap=_trialSections[${si}].questions[${qi}].correctMap||{};_trialSections[${si}].questions[${qi}].correctMap[${pi}]=+this.value">
-            ${_tPairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||pi===ri?'selected':''}>${ri+1}</option>`).join('')}
+        <td class="qe-match-num">${pi+1}</td>
+        <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
+          oninput="${_tRef}.pairs[${pi}]=[this.value,${_tRef}.pairs[${pi}][1]||'']"></td>
+        <td class="qe-match-corr-cell">
+          <select class="qe-match-corr-select"
+            onchange="${_tRef}.correctMap=${_tRef}.correctMap||{};${_tRef}.correctMap[${pi}]=+this.value">
+            ${_tPairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':''}>${ri+1}</option>`).join('')}
           </select>
         </td>
-        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
       </tr>`).join('');
+
     const _tRightRows = _tPairsArr.map((p,pi)=>`
       <tr>
-        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
-        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
-        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
-          oninput="_trialSections[${si}].questions[${qi}].pairs[${pi}]=[_trialSections[${si}].questions[${qi}].pairs[${pi}][0]||'',this.value]"></td>
-        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
+        <td class="qe-match-num">${pi+1}</td>
+        <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+          oninput="${_tRef}.pairs[${pi}]=[${_tRef}.pairs[${pi}][0]||'',this.value]"></td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
       </tr>`).join('');
-    const _tRightExtraRows = (q.rightExtra||[]).map((val,ei)=>`
-      <tr style="background:var(--bg2)">
-        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px;opacity:0.5">+</td>
-        <td style="padding:6px 4px;width:36px"></td>
-        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
-          oninput="_trialSections[${si}].questions[${qi}].rightExtra[${ei}]=this.value"></td>
-        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].rightExtra.splice(${ei},1);renderTrialBuilder()">🗑</button></td>
+
+    const _tRightExtraRows = _tRightExtra.map((val,ei)=>`
+      <tr style="background:var(--bg)">
+        <td class="qe-match-num" style="opacity:0.5">+</td>
+        <td class="qe-match-img-cell"></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
+          oninput="${_tRef}.rightExtra[${ei}]=this.value"></td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.rightExtra.splice(${ei},1);renderTrialBuilder()">🗑</button></td>
       </tr>`).join('');
+
     answersSection=`
-      <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
-        <div style="flex:1;min-width:0;overflow:hidden">
-          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
-            <span>СПИСОК 1 (СЛЕВА)</span>
-            <button class="qe-add-link" style="margin-left:8px" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+      ${_tScoringBlock}
+      <div class="qe-match-list-wrap">
+        <div class="qe-match-list-header">
+          <div class="qe-match-list-title">
+            <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 1 (СЛЕВА)</text></svg>
           </div>
-          <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
-            value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].leftLabel=this.value"></div>
-          <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
-          <tbody>${_tLeftRows}</tbody></table>
+          <button class="qe-add-link" onclick="${_tRef}.pairs=[...(_tRef.pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+          <span class="qe-match-sort-icon">☰</span>
         </div>
-        <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
-          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
-            <span>СПИСОК 2 (СПРАВА)</span>
-            <button class="qe-add-link" style="margin-left:8px" title="Добавляет вариант справа и автоматически строку слева" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
-            <button class="qe-add-link" style="margin-left:4px;opacity:0.75;font-size:0.78rem" title="Добавить только доп. вариант (дистрактор) без строки слева" onclick="_trialSections[${si}].questions[${qi}].rightExtra=[...(_trialSections[${si}].questions[${qi}].rightExtra||[]),''];renderTrialBuilder()">+ дистрактор</button>
+        <div class="qe-match-list-name-row">
+          <input class="qe-ans-input qe-match-list-name" placeholder="Название списка"
+            value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="${_tRef}.leftLabel=this.value">
+        </div>
+        <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
+          <thead><tr>
+            <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
+            <th style="text-align:right;width:130px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
+            <th style="text-align:center;width:80px;white-space:nowrap">Правильное<br>соответствие</th>
+            <th style="width:32px"></th>
+          </tr></thead>
+          <tbody>${_tLeftRows}</tbody>
+        </table>
+      </div>
+      <div class="qe-match-list-wrap" style="margin-top:10px">
+        <div class="qe-match-list-header">
+          <div class="qe-match-list-title">
+            <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 2 (СПРАВА)</text></svg>
           </div>
-          <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
-            value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].rightLabel=this.value"></div>
-          <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
-          <tbody>${_tRightRows}${_tRightExtraRows}</tbody></table>
-          ${(q.rightExtra||[]).length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
+          <button class="qe-add-link" onclick="${_tRef}.pairs=[...(_tRef.pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+          <span class="qe-match-sort-icon">☰</span>
+          <button class="qe-add-link" style="font-size:0.76rem;opacity:0.75;margin-left:4px" onclick="${_tRef}.rightExtra=[...(_tRef.rightExtra||[]),''];renderTrialBuilder()">+ дистрактор</button>
         </div>
+        <div class="qe-match-list-name-row">
+          <input class="qe-ans-input qe-match-list-name" placeholder="Название списка"
+            value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="${_tRef}.rightLabel=this.value">
+        </div>
+        <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
+          <thead><tr>
+            <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
+            <th style="text-align:right;width:160px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
+            <th style="width:32px"></th>
+          </tr></thead>
+          <tbody>${_tRightRows}${_tRightExtraRows}</tbody>
+        </table>
+        ${_tRightExtra.length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
+      </div>
+      <div class="qe-match-drag-row">
+        <label class="qe-match-drag-label">
+          <input type="checkbox" ${_tAllowDrag?'checked':''} onchange="${_tRef}.allowDrag=this.checked">
+          Разрешить перетаскивание с помощью мыши
+        </label>
+        <span class="qe-match-drag-info" title="Студент сможет перетаскивать варианты мышью">&#9432;</span>
       </div>`;
   } else if(q.type==='order'){
     answersSection=`<div class="qe-section-header answers-hdr"><span>Элементы по порядку (через запятую)</span></div>
