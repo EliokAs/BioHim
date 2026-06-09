@@ -3110,6 +3110,23 @@ function addTheory(){
   }
   save('content',content);
   newItems.filter(i=>i.studentId).forEach(item=>{ try{srScheduleItem(item.studentId,item.id);}catch{} });
+  // Auto-send linked test to the same students
+  if(linkedTestId) {
+    const allTests = load('tests')||[];
+    const libTest = allTests.find(t=>t.id===linkedTestId);
+    if(libTest) {
+      let changed=false;
+      newItems.filter(i=>i.studentId).forEach(item=>{
+        const sid=item.studentId;
+        if(!allTests.some(t=>t.studentId===sid && (t.id===linkedTestId||t.linkedFromId===linkedTestId||t.title===libTest.title))) {
+          allTests.push({...libTest, id:'t'+Date.now()+'_'+sid, studentId:sid, isLibrary:false, linkedFromId:linkedTestId, submitted:false, answers:{}, autoScore:0, attempts:[]});
+          addNotif(sid,{type:'test',text:`📝 Новый тест: ${libTest.title}`,nav:'student-tests'});
+          changed=true;
+        }
+      });
+      if(changed) save('tests',allTests);
+    }
+  }
   _nbBlocksNew=[];
   document.getElementById('nth-title').value='';
   ['nth-open-at','nth-close-at'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
@@ -3204,8 +3221,20 @@ window.saveLinkTestToContent = function() {
   const content = load('content') || [];
   const idx = content.findIndex(c=>c.id===contentId);
   if (idx < 0) return;
+  const oldId = content[idx].linkedTestId || null;
   content[idx].linkedTestId = testId || null;
   save('content', content);
+  // Auto-send to student if newly linked
+  if(testId && testId !== oldId && content[idx].studentId){
+    const allTestsLTC = load('tests')||[];
+    const libTestLTC = allTestsLTC.find(t=>t.id===testId);
+    const sid = content[idx].studentId;
+    if(libTestLTC && !allTestsLTC.some(t=>t.studentId===sid && (t.id===testId||t.linkedFromId===testId||t.title===libTestLTC.title))){
+      allTestsLTC.push({...libTestLTC, id:'t'+Date.now()+'_'+sid, studentId:sid, isLibrary:false, linkedFromId:testId, submitted:false, answers:{}, autoScore:0, attempts:[]});
+      addNotif(sid,{type:'test',text:`📝 Новый тест: ${libTestLTC.title}`,nav:'student-tests'});
+      save('tests', allTestsLTC);
+    }
+  }
   closeModal('modal-link-test-content');
   renderContentAdmin();
   showNotif(testId ? '✅ Тест прикреплён к уроку' : '✅ Тест откреплён');
@@ -3726,12 +3755,77 @@ function buildQuestionHTML(q,i,ctx){
           oninput="${pfx}[${i}].correct=this.value">
       </div>`;
   } else if(IS('match') || IS('pairs')){
-    answersSection = `<div class="qe-section-header answers-hdr"><span>Пары (каждая с новой строки через |)</span></div>
-      <div style="padding:12px 14px">
-        <div style="font-size:0.76rem;color:#888;margin-bottom:6px">💡 Левый столбец | Правый столбец</div>
-        <textarea class="qe-free-input" rows="4" placeholder="Митохондрия|Синтез АТФ&#10;Рибосома|Синтез белка"
-          oninput="${pfx}[${i}].pairs=this.value.split('\\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length===2&&p[0])"
-        >${(q.pairs||[]).map(p=>Array.isArray(p)?p.join('|'):(p.left||'')+'|'+(p.right||'')).join('\n').replace(/</g,'&lt;')}</textarea>
+    // Rich two-column match editor
+    const pairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
+    // Normalize pairs to arrays
+    const pairsArr = pairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+    const leftLabel = q.leftLabel || '';
+    const rightLabel = q.rightLabel || '';
+    const leftRows = pairsArr.map((p,pi)=>`
+      <tr>
+        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
+        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:0.8rem" title="Изображение">🖼</div></td>
+        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].pairs[${pi}]=[this.value,${pfx}[${i}].pairs[${pi}][1]||'']"></td>
+        <td style="padding:6px 4px;width:80px">
+          <select style="padding:4px 6px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;width:72px"
+            onchange="${pfx}[${i}].correctMap=${pfx}[${i}].correctMap||{};${pfx}[${i}].correctMap[${pi}]=+this.value">
+            ${pairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||pi===ri?'selected':''}>${ri+1}</option>`).join('')}
+          </select>
+        </td>
+        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);if(${pfx}[${i}].correctMap){delete ${pfx}[${i}].correctMap[${pi}]};${rebuildFn}">🗑</button></td>
+      </tr>`).join('');
+    const rightRows = pairsArr.map((p,pi)=>`
+      <tr>
+        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
+        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:0.8rem" title="Изображение">🖼</div></td>
+        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].pairs[${pi}]=[${pfx}[${i}].pairs[${pi}][0]||'',this.value]"></td>
+        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
+      </tr>`).join('');
+    answersSection = `
+      <div style="display:flex;align-items:flex-start;gap:0">
+        <!-- LEFT LIST -->
+        <div style="flex:1;min-width:0">
+          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
+            <span>СПИСОК 1 (СЛЕВА)</span>
+            <button class="qe-add-link" style="margin-left:8px" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+          </div>
+          <div style="padding:6px 10px 4px">
+            <input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
+              value="${(q.leftLabel||'').replace(/"/g,'&quot;')}"
+              oninput="${pfx}[${i}].leftLabel=this.value">
+          </div>
+          <table class="qe-answers-table">
+            <thead><tr>
+              <th style="width:30px">#</th><th style="width:36px"></th>
+              <th>Текст вариантов ответов</th>
+              <th style="text-align:center;width:80px">Правильное<br>соответствие</th>
+              <th style="width:32px"></th>
+            </tr></thead>
+            <tbody>${leftRows}</tbody>
+          </table>
+        </div>
+        <!-- RIGHT LIST -->
+        <div style="flex:1;min-width:0;border-left:2px solid var(--green-pale)">
+          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
+            <span>СПИСОК 2 (СПРАВА)</span>
+            <button class="qe-add-link" style="margin-left:8px" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+          </div>
+          <div style="padding:6px 10px 4px">
+            <input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
+              value="${(q.rightLabel||'').replace(/"/g,'&quot;')}"
+              oninput="${pfx}[${i}].rightLabel=this.value">
+          </div>
+          <table class="qe-answers-table">
+            <thead><tr>
+              <th style="width:30px">#</th><th style="width:36px"></th>
+              <th>Текст вариантов ответов</th>
+              <th style="width:32px"></th>
+            </tr></thead>
+            <tbody>${rightRows}</tbody>
+          </table>
+        </div>
       </div>`;
   } else if(IS('order')){
     answersSection = `<div class="qe-section-header answers-hdr"><span>Элементы в правильном порядке (через запятую)</span></div>
@@ -3941,12 +4035,23 @@ function confirmAssignStudents(){
     const content=load('content')||[];
     const original=content.find(c=>c.id===_assignId);
     if(!original){ showNotif('Материал не найден'); return; }
+    const linkedTestIdAssign = original.linkedTestId || null;
+    const allTestsAssign = linkedTestIdAssign ? (load('tests')||[]) : null;
+    const libTestAssign = linkedTestIdAssign && allTestsAssign ? allTestsAssign.find(t=>t.id===linkedTestIdAssign) : null;
+    let testChangedAssign = false;
     checked.forEach(sid=>{
       // Don't duplicate
       if(content.some(c=>c.title===original.title && c.studentId===sid && c.type===original.type)) return;
       content.push({...original, id:'ct_'+Date.now()+'_'+sid, studentId:sid, isLibrary:false});
+      // Auto-send linked test
+      if(libTestAssign && !allTestsAssign.some(t=>t.studentId===sid && (t.id===linkedTestIdAssign||t.linkedFromId===linkedTestIdAssign||t.title===libTestAssign.title))){
+        allTestsAssign.push({...libTestAssign, id:'t'+Date.now()+'_'+sid, studentId:sid, isLibrary:false, linkedFromId:linkedTestIdAssign, submitted:false, answers:{}, autoScore:0, attempts:[]});
+        addNotif(sid,{type:'test',text:`📝 Новый тест: ${libTestAssign.title}`,nav:'student-tests'});
+        testChangedAssign=true;
+      }
     });
     save('content',content);
+    if(testChangedAssign && allTestsAssign) save('tests', allTestsAssign);
     renderContentAdmin();
   } else if(_assignType==='test'){
     const tests=load('tests')||[];
@@ -4769,8 +4874,21 @@ function saveEditContent(){
   Object.assign(cont, legacy);
   // Save linked test
   const ltEl = document.getElementById('ec-linked-test-id');
-  if (ltEl) cont.linkedTestId = ltEl.value || null;
+  const oldLinkedTestId = cont.linkedTestId || null;
+  const newLinkedTestId = ltEl ? (ltEl.value || null) : oldLinkedTestId;
+  cont.linkedTestId = newLinkedTestId;
   save('content',content);
+  // Auto-send linked test to student if newly linked
+  if(newLinkedTestId && newLinkedTestId !== oldLinkedTestId && cont.studentId){
+    const allTestsEC = load('tests')||[];
+    const libTestEC = allTestsEC.find(t=>t.id===newLinkedTestId);
+    const sid = cont.studentId;
+    if(libTestEC && !allTestsEC.some(t=>t.studentId===sid && (t.id===newLinkedTestId||t.linkedFromId===newLinkedTestId||t.title===libTestEC.title))){
+      allTestsEC.push({...libTestEC, id:'t'+Date.now()+'_'+sid, studentId:sid, isLibrary:false, linkedFromId:newLinkedTestId, submitted:false, answers:{}, autoScore:0, attempts:[]});
+      addNotif(sid,{type:'test',text:`📝 Новый тест: ${libTestEC.title}`,nav:'student-tests'});
+      save('tests', allTestsEC);
+    }
+  }
   closeModal('modal-edit-content');
   renderContentAdmin();
   showNotif('✅ Урок обновлён');
@@ -4980,11 +5098,53 @@ function _renderEditQuizBuilder(type){
             oninput="${arrStr}[${i}].correct=this.value">
         </div>`;
     } else if(q.type==='match'){
-      answersSection = `<div class="qe-section-header answers-hdr"><span>Пары (левое → правое)</span></div>
-        <div style="padding:12px 14px"><textarea class="qe-free-input" rows="4"
-          placeholder="Митохондрия → Энергия&#10;Рибосома → Белок"
-          oninput="${arrStr}[${i}].pairs=this.value.split('\\n').filter(l=>l.includes('→')).map(l=>{const[a,b]=l.split('→');return{left:(a||'').trim(),right:(b||'').trim()}})"
-        >${(q.pairs||[]).map(p=>p.left+' → '+p.right).join('\n').replace(/</g,'&lt;')}</textarea></div>`;
+      const _ePairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
+      const _ePairsArr = _ePairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+      const _eLeftRows = _ePairsArr.map((p,pi)=>`
+        <tr>
+          <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
+          <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
+          <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
+            oninput="${arrStr}[${i}].pairs[${pi}]=[this.value,${arrStr}[${i}].pairs[${pi}][1]||''];_setDirty(true)"></td>
+          <td style="padding:6px 4px;width:80px">
+            <select style="padding:4px 6px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;width:72px"
+              onchange="${arrStr}[${i}].correctMap=${arrStr}[${i}].correctMap||{};${arrStr}[${i}].correctMap[${pi}]=+this.value;_setDirty(true)">
+              ${_ePairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||pi===ri?'selected':''}>${ri+1}</option>`).join('')}
+            </select>
+          </td>
+          <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
+        </tr>`).join('');
+      const _eRightRows = _ePairsArr.map((p,pi)=>`
+        <tr>
+          <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
+          <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
+          <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+            oninput="${arrStr}[${i}].pairs[${pi}]=[${arrStr}[${i}].pairs[${pi}][0]||'',this.value];_setDirty(true)"></td>
+          <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
+        </tr>`).join('');
+      answersSection = `
+        <div style="display:flex;align-items:flex-start;gap:0">
+          <div style="flex:1;min-width:0">
+            <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
+              <span>СПИСОК 1 (СЛЕВА)</span>
+              <button class="qe-add-link" style="margin-left:8px" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+            </div>
+            <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
+              value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].leftLabel=this.value;_setDirty(true)"></div>
+            <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
+            <tbody>${_eLeftRows}</tbody></table>
+          </div>
+          <div style="flex:1;min-width:0;border-left:2px solid var(--green-pale)">
+            <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
+              <span>СПИСОК 2 (СПРАВА)</span>
+              <button class="qe-add-link" style="margin-left:8px" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+            </div>
+            <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
+              value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].rightLabel=this.value;_setDirty(true)"></div>
+            <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
+            <tbody>${_eRightRows}</tbody></table>
+          </div>
+        </div>`;
     } else if(q.type==='order'){
       answersSection = `<div class="qe-section-header answers-hdr"><span>Элементы по порядку</span></div>
         <div style="padding:12px 14px"><textarea class="qe-free-input" rows="4"
@@ -5871,11 +6031,53 @@ function trialQuestionBuilderHTML(si, qi, q){
           oninput="_trialSections[${si}].questions[${qi}].correct=this.value">
       </div>`;
   } else if(q.type==='match'||q.type==='pairs'){
-    answersSection=`<div class="qe-section-header answers-hdr"><span>Пары (через |)</span></div>
-      <div style="padding:12px 14px"><textarea class="qe-free-input" rows="3"
-        placeholder="Митохондрия|Синтез АТФ&#10;Рибосома|Синтез белка"
-        oninput="_trialSections[${si}].questions[${qi}].pairs=this.value.split('\\n').map(l=>l.split('|').map(s=>s.trim())).filter(p=>p.length===2&&p[0])"
-      >${(q.pairs||[]).map(p=>Array.isArray(p)?p.join('|'):(p.left||'')+'|'+(p.right||'')).join('\n').replace(/</g,'&lt;')}</textarea></div>`;
+    const _tPairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
+    const _tPairsArr = _tPairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+    const _tLeftRows = _tPairsArr.map((p,pi)=>`
+      <tr>
+        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
+        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
+        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
+          oninput="_trialSections[${si}].questions[${qi}].pairs[${pi}]=[this.value,_trialSections[${si}].questions[${qi}].pairs[${pi}][1]||'']"></td>
+        <td style="padding:6px 4px;width:80px">
+          <select style="padding:4px 6px;border-radius:6px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.82rem;width:72px"
+            onchange="_trialSections[${si}].questions[${qi}].correctMap=_trialSections[${si}].questions[${qi}].correctMap||{};_trialSections[${si}].questions[${qi}].correctMap[${pi}]=+this.value">
+            ${_tPairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||pi===ri?'selected':''}>${ri+1}</option>`).join('')}
+          </select>
+        </td>
+        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
+      </tr>`).join('');
+    const _tRightRows = _tPairsArr.map((p,pi)=>`
+      <tr>
+        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
+        <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:0.8rem">🖼</div></td>
+        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+          oninput="_trialSections[${si}].questions[${qi}].pairs[${pi}]=[_trialSections[${si}].questions[${qi}].pairs[${pi}][0]||'',this.value]"></td>
+        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
+      </tr>`).join('');
+    answersSection=`
+      <div style="display:flex;align-items:flex-start;gap:0">
+        <div style="flex:1;min-width:0">
+          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
+            <span>СПИСОК 1 (СЛЕВА)</span>
+            <button class="qe-add-link" style="margin-left:8px" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+          </div>
+          <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
+            value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].leftLabel=this.value"></div>
+          <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
+          <tbody>${_tLeftRows}</tbody></table>
+        </div>
+        <div style="flex:1;min-width:0;border-left:2px solid var(--green-pale)">
+          <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
+            <span>СПИСОК 2 (СПРАВА)</span>
+            <button class="qe-add-link" style="margin-left:8px" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+          </div>
+          <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
+            value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].rightLabel=this.value"></div>
+          <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
+          <tbody>${_tRightRows}</tbody></table>
+        </div>
+      </div>`;
   } else if(q.type==='order'){
     answersSection=`<div class="qe-section-header answers-hdr"><span>Элементы по порядку (через запятую)</span></div>
       <div style="padding:12px 14px">
@@ -13678,11 +13880,14 @@ function scoreQuestion(q, ans){
     const given   = (ans||'').split(',').map(s=>norm(s));
     return correct.every((c,i)=>c===given[i]);
   } else if(q.type==='match'||q.type==='pairs'){
-    // ans = "A:B,C:D,..."
-    const pairs = (q.pairs||[]);
-    const correctMap = Object.fromEntries(pairs.map(p=>[norm(p[0]),norm(p[1])]));
-    const givenPairs = (ans||'').split(',').map(s=>s.split(':').map(norm));
-    return givenPairs.length===pairs.length && givenPairs.every(([a,b])=>correctMap[a]===b);
+    // ans = "A:B,C:D,..." where A is left item, B is right item student chose
+    const pairs = (q.pairs||[]).map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+    if(!pairs.length) return false;
+    // Build correct mapping using correctMap (index-based) or default diagonal
+    const cMap = q.correctMap || {};
+    const correctPairs = pairs.map((p,i)=>[norm(p[0]), norm(pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'')]);
+    const givenPairs = (ans||'').split(',').map(s=>{ const[a,b]=s.split(':'); return[norm(a||''),norm(b||'')]; });
+    return givenPairs.length===pairs.length && correctPairs.every(([a,b])=>givenPairs.some(([ga,gb])=>ga===a&&gb===b));
   } else if(q.type==='order'){
     const correct = (q.correct||'').split(',').map(s=>norm(s));
     const given   = (ans||'').split(',').map(s=>norm(s));
@@ -13732,42 +13937,41 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       body=`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem" placeholder="Ваш ответ..." value="${(ans||'').replace(/"/g,'&quot;')}" oninput="${answerObj}['${q.id}']=this.value">`;
     }
 
-  } else if(q.type==='match'){
-    const pairs=q.pairs||[];
-    const leftCol=pairs.map(p=>p[0]);
-    const rightCol=[...pairs.map(p=>p[1])].sort(()=>Math.random()-0.5);
-    const curMap = {};
-    (ans||'').split(',').forEach(s=>{ const[a,b]=s.split(':'); if(a&&b) curMap[a.trim()]=b.trim(); });
-    body=`<div style="font-size:0.76rem;color:var(--text3);margin-bottom:8px">Соедини каждый элемент слева с соответствующим справа</div>
-    <div style="display:grid;gap:8px">${leftCol.map(left=>`
-      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">
-        <div style="padding:8px 12px;background:var(--green-xpale);border-radius:8px;font-weight:600;font-size:0.85rem">${left}</div>
-        <span style="color:var(--text3)">→</span>
-        <select style="padding:8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem"
-          onchange="(function(sel,l){const m={};'${ans}'.split(',').forEach(s=>{const[a,b]=s.split(':');if(a&&b)m[a.trim()]=b.trim()});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).map(([a,b])=>a+':'+b).join(',')})(this,'${left.replace(/'/g,"\\'")}')">
-          <option value="">— выбери —</option>
-          ${rightCol.map(r=>`<option value="${r.replace(/"/g,'&quot;')}" ${curMap[left]===r?'selected':''}>${r}</option>`).join('')}
-        </select>
-      </div>`).join('')}
-    </div>`;
-
-  } else if(q.type==='pairs'){
-    const pairs=q.pairs||[];
-    const leftCol=pairs.map(p=>p[0]);
-    const rightCol=[...pairs.map(p=>p[1])].sort(()=>Math.random()-0.5);
+  } else if(q.type==='match'||q.type==='pairs'){
+    const pairsRaw=q.pairs||[];
+    const pairsN=pairsRaw.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
+    const leftCol=pairsN.map(p=>p[0]);
+    const cMapSt=q.correctMap||{};
+    const rightColCorrect=pairsN.map((_,i)=>pairsN[cMapSt[i]!==undefined?cMapSt[i]:i]?.[1]||'');
+    const _rsk='_mrshuffle_'+q.id;
+    if(!window[_rsk]||window[_rsk].length!==pairsN.length){
+      window[_rsk]=[...rightColCorrect].sort(()=>Math.random()-0.5);
+    }
+    const rightCol=window[_rsk];
+    const leftLabel=q.leftLabel||'';
+    const rightLabel=q.rightLabel||'';
     const curMap={};
-    (ans||'').split(',').forEach(s=>{ const[a,b]=s.split(':'); if(a&&b) curMap[a.trim()]=b.trim(); });
-    body=`<div style="font-size:0.76rem;color:var(--text3);margin-bottom:8px">Выбери пару для каждого элемента</div>
-    <div style="display:grid;gap:8px">${leftCol.map(left=>`
-      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">
-        <div style="padding:8px 12px;background:#e8f5e9;border-radius:8px;font-weight:600;font-size:0.85rem;border:1.5px solid var(--green-pale)">${left}</div>
-        <span style="color:var(--text3)">↔</span>
-        <select style="padding:8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem"
-          onchange="(function(sel,l){const m={};'${ans}'.split(',').forEach(s=>{const[a,b]=s.split(':');if(a&&b)m[a.trim()]=b.trim()});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).map(([a,b])=>a+':'+b).join(',')})(this,'${left.replace(/'/g,"\\'")}')">
-          <option value="">— выбери —</option>
-          ${rightCol.map(r=>`<option value="${r.replace(/"/g,'&quot;')}" ${curMap[left]===r?'selected':''}>${r}</option>`).join('')}
-        </select>
-      </div>`).join('')}
+    (ans||'').split(',').forEach(s=>{
+      const ci=s.indexOf(':'); if(ci<0) return;
+      const a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());
+      if(a) curMap[a]=b;
+    });
+    body=`<div style="border:1.5px solid var(--green-pale);border-radius:10px;overflow:hidden">
+      ${leftLabel||rightLabel?`<div style="display:grid;grid-template-columns:1fr 1fr">
+        <div style="padding:8px 14px;background:var(--bg2);font-size:0.73rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em">${escHtml(leftLabel)}</div>
+        <div style="padding:8px 14px;background:var(--bg2);font-size:0.73rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em;border-left:1.5px solid var(--green-pale)">${escHtml(rightLabel)}</div>
+      </div>`:''}
+      ${leftCol.map((left,li)=>{
+        const selOpts='<option value="">— выберите —</option>'+rightCol.map(r=>`<option value="${r.replace(/"/g,'&quot;')}" ${curMap[left]===r?'selected':''}>${escHtml(r)}</option>`).join('');
+        const leftJ=JSON.stringify(left);
+        const onch=`(function(sel,l){var m={};(${answerObj}['${q.id}']||'').split(',').forEach(function(s){var ci=s.indexOf(':');if(ci<0)return;var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return encodeURIComponent(e[0])+':'+encodeURIComponent(e[1])}).join(',')})(this,${leftJ})`;
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;${li>0?'border-top:1px solid var(--green-pale)':''}">
+          <div style="padding:10px 14px;background:var(--green-xpale);font-weight:600;font-size:0.85rem;display:flex;align-items:center;gap:6px"><span style="font-size:0.73rem;color:var(--text3);font-weight:700;min-width:18px">${li+1}.</span>${escHtml(left)}</div>
+          <div style="border-left:1.5px solid var(--green-pale)">
+            <select style="width:100%;height:100%;padding:8px 10px;border:none;font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--white);cursor:pointer" onchange="${onch}">${selOpts}</select>
+          </div>
+        </div>`;
+      }).join('')}
     </div>`;
 
   } else if(q.type==='order'){
@@ -15794,7 +15998,6 @@ function renderTeacherGroups() {
     el.innerHTML = '<div class="empty-state"><div class="big">👥</div><p>Вам пока не назначено ни одной группы.<br>Обратитесь к администратору.</p></div>';
     return;
   }
-
   el.innerHTML = groups.map(g => {
     const members = (g.memberIds || []).map(id => students.find(s => s.id === id)).filter(Boolean);
     const course  = g.courseId ? courses.find(c => c.id === g.courseId) : null;
