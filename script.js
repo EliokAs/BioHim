@@ -3538,31 +3538,15 @@ function _syncBuilderFromDOM(arr, ctx){
         if(r){ const tr=r.closest('tr'); if(tr){ const idx=Array.from(tr.closest('tbody').querySelectorAll('tr')).indexOf(tr); q.correct=q.options[idx]||''; } }
       }
     }
-    // Sync pairs (match/pairs types) from the two-column table in DOM
+    // pairs/match: data is always up-to-date via oninput handlers,
+    // so we only sync the correctMap selects from DOM (not the pairs array itself)
     if(q.type==='match'||q.type==='pairs'){
       const tbodies=pane.querySelectorAll('.qe-answers-table tbody');
       if(tbodies.length>=2){
-        const leftRows=tbodies[0].querySelectorAll('tr');
-        const rightRows=tbodies[1].querySelectorAll('tr');
-        const domN=Math.min(leftRows.length,rightRows.length);
-        // Use max of DOM rows and current q.pairs length so newly-pushed
-        // pairs (added before re-render) are not truncated by the sync
-        const modelN=q.pairs?q.pairs.length:0;
-        const n=Math.max(domN,modelN);
-        if(n>0){
-          const oldPairs=q.pairs||[];
-          q.pairs=Array.from({length:n},(_,pi)=>{
-            const lInp=pi<leftRows.length?leftRows[pi].querySelector('.qe-ans-input'):null;
-            const rInp=pi<rightRows.length?rightRows[pi].querySelector('.qe-ans-input'):null;
-            return [lInp?lInp.value:(oldPairs[pi]?oldPairs[pi][0]||'':''),
-                    rInp?rInp.value:(oldPairs[pi]?oldPairs[pi][1]||'':'')];
-          });
-          const selects=tbodies[0].querySelectorAll('select');
+        const selects=tbodies[0].querySelectorAll('select');
+        if(selects.length>0){
           const newMap={};
           selects.forEach((sel,pi)=>{ newMap[pi]=+sel.value; });
-          for(let pi=selects.length;pi<n;pi++){
-            newMap[pi]=(q.correctMap&&q.correctMap[pi]!==undefined)?q.correctMap[pi]:pi;
-          }
           q.correctMap=newMap;
         }
       }
@@ -3571,7 +3555,6 @@ function _syncBuilderFromDOM(arr, ctx){
 }
 
 function renderTestBuilder(){
-  _syncBuilderFromDOM(_tempQuestions,'test');
   const el=document.getElementById('nt-questions-list');
   const totalPts = _tempQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempQuestions.map((q,i)=>buildQuestionHTML(q,i,'test')).join('');
@@ -3959,6 +3942,7 @@ function handleQImgUpload(input, idx, arr, previewId){
 function removeQ(i){ _tempQuestions.splice(i,1); renderTestBuilder(); }
 function saveTest(){
   requireAdmin('saveTest');
+  _syncBuilderFromDOM(_tempQuestions,'test');
   const title=document.getElementById('nt-title').value.trim();
   if(!title){ showNotif('Введите название теста'); return; }
   if(!_tempQuestions.length){ showNotif('Добавьте хотя бы один вопрос'); return; }
@@ -4347,7 +4331,6 @@ function checkHWOpenAnswer(hwId,qId){
   openModal('modal-check-answer');
 }
 function renderHWBuilder(){
-  _syncBuilderFromDOM(_tempHWQuestions,'hw');
   const el=document.getElementById('nhw-questions-list');
   const totalPts = _tempHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
   el.innerHTML=_tempHWQuestions.map((q,i)=>buildQuestionHTML(q,i,'hw')).join('');
@@ -4364,6 +4347,7 @@ function renderHWBuilder(){
 function removeHWQ(i){ _tempHWQuestions.splice(i,1); renderHWBuilder(); }
 function saveHW(){
   requireAdmin('saveHW');
+  _syncBuilderFromDOM(_tempHWQuestions,'hw');
   const title=document.getElementById('nhw-title').value.trim();
   const desc=document.getElementById('nhw-desc').value.trim();
   const due=document.getElementById('nhw-due').value;
@@ -8014,7 +7998,6 @@ function _renderStudentCourseProgress(sid) {
     el.innerHTML = '';
   }
 }
-
 
 // ═══════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════
@@ -16014,7 +15997,6 @@ function saveAssignToTeacher(){
   renderTeachersAdmin();
   showNotif('✅ Привязки сохранены');
 }
-
 // ═══════════════════════════════════════════════
 // TEACHER DASHBOARD
 // ═══════════════════════════════════════════════
