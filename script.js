@@ -3538,6 +3538,27 @@ function _syncBuilderFromDOM(arr, ctx){
         if(r){ const tr=r.closest('tr'); if(tr){ const idx=Array.from(tr.closest('tbody').querySelectorAll('tr')).indexOf(tr); q.correct=q.options[idx]||''; } }
       }
     }
+    // Sync pairs (match/pairs types) from the two-column table in DOM
+    if(q.type==='match'||q.type==='pairs'){
+      const tbodies=pane.querySelectorAll('.qe-answers-table tbody');
+      if(tbodies.length>=2){
+        const leftRows=tbodies[0].querySelectorAll('tr');
+        const rightRows=tbodies[1].querySelectorAll('tr');
+        const n=Math.min(leftRows.length,rightRows.length);
+        if(n>0){
+          q.pairs=Array.from({length:n},(_,pi)=>{
+            const lInp=leftRows[pi].querySelector('.qe-ans-input');
+            const rInp=rightRows[pi].querySelector('.qe-ans-input');
+            return [lInp?lInp.value:(q.pairs&&q.pairs[pi]?q.pairs[pi][0]||'':''),
+                    rInp?rInp.value:(q.pairs&&q.pairs[pi]?q.pairs[pi][1]||'':'')];
+          });
+          const selects=tbodies[0].querySelectorAll('select');
+          const newMap={};
+          selects.forEach((sel,pi)=>{ newMap[pi]=+sel.value; });
+          q.correctMap=newMap;
+        }
+      }
+    }
   });
 }
 
@@ -3779,9 +3800,9 @@ function buildQuestionHTML(q,i,ctx){
       <tr>
         <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
         <td style="padding:6px 4px;width:36px"><div style="width:32px;height:32px;border:1.5px dashed #ccc;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:0.8rem" title="Изображение">🖼</div></td>
-        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
+        <td style="padding:6px 4px;width:100%"><input class="qe-ans-input" style="width:100%;box-sizing:border-box" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
           oninput="${pfx}[${i}].pairs[${pi}]=[${pfx}[${i}].pairs[${pi}][0]||'',this.value]"></td>
-        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
+        <td style="padding:6px 4px;width:32px;min-width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
       </tr>`).join('');
     answersSection = `
       <div style="display:flex;align-items:flex-start;gap:0">
@@ -3817,11 +3838,11 @@ function buildQuestionHTML(q,i,ctx){
               value="${(q.rightLabel||'').replace(/"/g,'&quot;')}"
               oninput="${pfx}[${i}].rightLabel=this.value">
           </div>
-          <table class="qe-answers-table">
+          <table class="qe-answers-table" style="table-layout:fixed;width:100%">
             <thead><tr>
               <th style="width:30px">#</th><th style="width:36px"></th>
               <th>Текст вариантов ответов</th>
-              <th style="width:32px"></th>
+              <th style="width:32px;min-width:32px"></th>
             </tr></thead>
             <tbody>${rightRows}</tbody>
           </table>
@@ -9977,7 +9998,6 @@ function buildStudentICS(sid) {
     lines.push('END:VALARM');
     lines.push('END:VEVENT');
   });
-
   // ── 2. Past attendance records as single events
   const myAtt = att.filter(a => a.studentId === sid && a.present && a.date);
   myAtt.forEach(a => {
