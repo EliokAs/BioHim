@@ -3800,21 +3800,31 @@ function buildQuestionHTML(q,i,ctx){
         </div>
       </div>`;
 
-    // Left list rows
-    const leftRows = pairsArr.map((p,pi)=>`
+    // Left list rows — dropdown shows actual right-side text values (repeats allowed)
+    const rightTexts = pairsArr.map(p=>p[1]||'').filter(Boolean);
+    const leftRows = pairsArr.map((p,pi)=>{
+      const curRightIdx = (q.correctMap&&q.correctMap[pi]!==undefined) ? q.correctMap[pi] : pi;
+      const curRightVal = pairsArr[curRightIdx] ? (pairsArr[curRightIdx][1]||'') : '';
+      const opts = pairsArr.map((rp,ri)=>{
+        const rv = rp[1]||'';
+        const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
+        return `<option value="${ri}" ${sel}>${ri+1}. ${rv.replace(/"/g,'&quot;')}</option>`;
+      }).join('');
+      return `
       <tr>
         <td class="qe-match-num">${pi+1}</td>
         <td class="qe-match-img-cell"><div class="qe-ans-img-btn" title="Изображение">🖼</div></td>
         <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[0]||'').replace(/"/g,'&quot;')}"
-          oninput="${pfx}[${i}].pairs[${pi}]=[this.value,${pfx}[${i}].pairs[${pi}][1]||'']"></td>
+          oninput="${pfx}[${i}].pairs[${pi}]=[this.value,${pfx}[${i}].pairs[${pi}][1]||''];${rebuildFn}"></td>
         <td class="qe-match-corr-cell">
           <select class="qe-match-corr-select"
             onchange="${pfx}[${i}].correctMap=${pfx}[${i}].correctMap||{};${pfx}[${i}].correctMap[${pi}]=+this.value">
-            ${pairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':''}>${ri+1}</option>`).join('')}
+            ${opts}
           </select>
         </td>
         <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);if(${pfx}[${i}].correctMap){delete ${pfx}[${i}].correctMap[${pi}]};${rebuildFn}">🗑</button></td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
 
     // Right list rows
     const rightRows = pairsArr.map((p,pi)=>`
@@ -3822,7 +3832,7 @@ function buildQuestionHTML(q,i,ctx){
         <td class="qe-match-num">${pi+1}</td>
         <td class="qe-match-img-cell"><div class="qe-ans-img-btn" title="Изображение">🖼</div></td>
         <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
-          oninput="${pfx}[${i}].pairs[${pi}]=[${pfx}[${i}].pairs[${pi}][0]||'',this.value]"></td>
+          oninput="${pfx}[${i}].pairs[${pi}]=[${pfx}[${i}].pairs[${pi}][0]||'',this.value];${rebuildFn}"></td>
         <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
       </tr>`).join('');
 
@@ -3988,7 +3998,6 @@ function updateQImgPreview(previewId, url){
   if(url){ el.src=url; el.style.display='block'; }
   else   { el.style.display='none'; }
 }
-
 function handleQImgUpload(input, idx, arr, previewId){
   const file = input.files[0];
   if(!file) return;
@@ -5202,7 +5211,13 @@ function _renderEditQuizBuilder(type){
           </div>
         </div>`;
 
-      const _eLeftRows = _ePairsArr.map((p,pi)=>`
+      const _eLeftRows = _ePairsArr.map((p,pi)=>{
+        const _eOpts = _ePairsArr.map((rp,ri)=>{
+          const rv = rp[1]||'';
+          const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
+          return `<option value="${ri}" ${sel}>${ri+1}. ${rv.replace(/"/g,'&quot;')}</option>`;
+        }).join('');
+        return `
         <tr>
           <td class="qe-match-num">${pi+1}</td>
           <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
@@ -5211,18 +5226,19 @@ function _renderEditQuizBuilder(type){
           <td class="qe-match-corr-cell">
             <select class="qe-match-corr-select"
               onchange="${arrStr}[${i}].correctMap=${arrStr}[${i}].correctMap||{};${arrStr}[${i}].correctMap[${pi}]=+this.value;_setDirty(true)">
-              ${_ePairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':''}>${ri+1}</option>`).join('')}
+              ${_eOpts}
             </select>
           </td>
           <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
 
       const _eRightRows = _ePairsArr.map((p,pi)=>`
         <tr>
           <td class="qe-match-num">${pi+1}</td>
           <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
           <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
-            oninput="${arrStr}[${i}].pairs[${pi}]=[${arrStr}[${i}].pairs[${pi}][0]||'',this.value];_setDirty(true)"></td>
+            oninput="${arrStr}[${i}].pairs[${pi}]=[${arrStr}[${i}].pairs[${pi}][0]||'',this.value];_setDirty(true);${selfCall}"></td>
           <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`).join('');
 
@@ -6175,7 +6191,6 @@ function trialQuestionBuilderHTML(si, qi, q){
           oninput="_trialSections[${si}].questions[${qi}].correct=this.value">
       </div>`;
   } else if(q.type==='match'||q.type==='pairs'){
-  } else if(q.type==='match'||q.type==='pairs'){
     const _tPairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
     const _tPairsArr = _tPairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     const _tRightExtra = q.rightExtra || [];
@@ -6208,7 +6223,13 @@ function trialQuestionBuilderHTML(si, qi, q){
         </div>
       </div>`;
 
-    const _tLeftRows = _tPairsArr.map((p,pi)=>`
+    const _tLeftRows = _tPairsArr.map((p,pi)=>{
+      const _tOpts = _tPairsArr.map((rp,ri)=>{
+        const rv = rp[1]||'';
+        const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
+        return `<option value="${ri}" ${sel}>${ri+1}. ${rv.replace(/"/g,'&quot;')}</option>`;
+      }).join('');
+      return `
       <tr>
         <td class="qe-match-num">${pi+1}</td>
         <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
@@ -6217,18 +6238,19 @@ function trialQuestionBuilderHTML(si, qi, q){
         <td class="qe-match-corr-cell">
           <select class="qe-match-corr-select"
             onchange="${_tRef}.correctMap=${_tRef}.correctMap||{};${_tRef}.correctMap[${pi}]=+this.value">
-            ${_tPairsArr.map((_,ri)=>`<option value="${ri}" ${(q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':''}>${ri+1}</option>`).join('')}
+            ${_tOpts}
           </select>
         </td>
         <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
 
     const _tRightRows = _tPairsArr.map((p,pi)=>`
       <tr>
         <td class="qe-match-num">${pi+1}</td>
         <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
         <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
-          oninput="${_tRef}.pairs[${pi}]=[${_tRef}.pairs[${pi}][0]||'',this.value]"></td>
+          oninput="${_tRef}.pairs[${pi}]=[${_tRef}.pairs[${pi}][0]||'',this.value];renderTrialBuilder()"></td>
         <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
       </tr>`).join('');
 
@@ -8975,7 +8997,6 @@ function _renderStudentProfileEdit(container){
       <button class="btn btn-outline" style="margin-top:14px" onclick="saveStudentPassword()">🔐 Сменить пароль</button>
     </div>`;
 }
-
 function saveStudentProfile(){
   const name  = (document.getElementById('sp-name')  || {}).value?.trim();
   const birth = (document.getElementById('sp-birth') || {}).value;
