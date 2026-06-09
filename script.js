@@ -3773,6 +3773,7 @@ function buildQuestionHTML(q,i,ctx){
     const pairsArr = pairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     const leftLabel = q.leftLabel || '';
     const rightLabel = q.rightLabel || '';
+    const rightExtra = q.rightExtra || [];
     const leftRows = pairsArr.map((p,pi)=>`
       <tr>
         <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px">${pi+1}</td>
@@ -3794,6 +3795,14 @@ function buildQuestionHTML(q,i,ctx){
         <td style="padding:6px 4px;width:100%"><input class="qe-ans-input" style="width:100%;box-sizing:border-box" placeholder="Введите текст..." value="${(p[1]||'').replace(/"/g,'&quot;')}"
           oninput="${pfx}[${i}].pairs[${pi}]=[${pfx}[${i}].pairs[${pi}][0]||'',this.value]"></td>
         <td style="padding:6px 4px;width:32px;min-width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
+      </tr>`).join('');
+    const rightExtraRows = rightExtra.map((val,ei)=>`
+      <tr style="background:var(--bg2)">
+        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px;opacity:0.5">+</td>
+        <td style="padding:6px 4px;width:36px"></td>
+        <td style="padding:6px 4px;width:100%"><input class="qe-ans-input" style="width:100%;box-sizing:border-box" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].rightExtra[${ei}]=this.value"></td>
+        <td style="padding:6px 4px;width:32px;min-width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].rightExtra.splice(${ei},1);${rebuildFn}">🗑</button></td>
       </tr>`).join('');
     answersSection = `
       <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
@@ -3822,7 +3831,8 @@ function buildQuestionHTML(q,i,ctx){
         <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
           <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
             <span>СПИСОК 2 (СПРАВА)</span>
-            <button class="qe-add-link" style="margin-left:8px" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+            <button class="qe-add-link" style="margin-left:8px" title="Добавляет вариант справа и автоматически строку слева" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+            <button class="qe-add-link" style="margin-left:4px;opacity:0.75;font-size:0.78rem" title="Добавить только доп. вариант (дистрактор) без строки слева" onclick="${pfx}[${i}].rightExtra=[...(${pfx}[${i}].rightExtra||[]),''];${rebuildFn}">+ дистрактор</button>
           </div>
           <div style="padding:6px 10px 4px">
             <input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
@@ -3835,8 +3845,9 @@ function buildQuestionHTML(q,i,ctx){
               <th>Текст вариантов ответов</th>
               <th style="width:32px;min-width:32px"></th>
             </tr></thead>
-            <tbody>${rightRows}</tbody>
+            <tbody>${rightRows}${rightExtraRows}</tbody>
           </table>
+          ${rightExtra.length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
         </div>
       </div>`;
   } else if(IS('order')){
@@ -5135,6 +5146,14 @@ function _renderEditQuizBuilder(type){
             oninput="${arrStr}[${i}].pairs[${pi}]=[${arrStr}[${i}].pairs[${pi}][0]||'',this.value];_setDirty(true)"></td>
           <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`).join('');
+      const _eRightExtraRows = (q.rightExtra||[]).map((val,ei)=>`
+        <tr style="background:var(--bg2)">
+          <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px;opacity:0.5">+</td>
+          <td style="padding:6px 4px;width:36px"></td>
+          <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
+            oninput="${arrStr}[${i}].rightExtra[${ei}]=this.value;_setDirty(true)"></td>
+          <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].rightExtra.splice(${ei},1);_setDirty(true);${selfCall}">🗑</button></td>
+        </tr>`).join('');
       answersSection = `
         <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
           <div style="flex:1;min-width:0;overflow:hidden">
@@ -5150,12 +5169,14 @@ function _renderEditQuizBuilder(type){
           <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
             <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
               <span>СПИСОК 2 (СПРАВА)</span>
-              <button class="qe-add-link" style="margin-left:8px" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+              <button class="qe-add-link" style="margin-left:8px" title="Добавляет вариант справа и автоматически строку слева" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+              <button class="qe-add-link" style="margin-left:4px;opacity:0.75;font-size:0.78rem" title="Добавить только доп. вариант (дистрактор) без строки слева" onclick="${arrStr}[${i}].rightExtra=[...(${arrStr}[${i}].rightExtra||[]),''];_setDirty(true);${selfCall}">+ дистрактор</button>
             </div>
             <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
               value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].rightLabel=this.value;_setDirty(true)"></div>
             <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
-            <tbody>${_eRightRows}</tbody></table>
+            <tbody>${_eRightRows}${(_eRightExtraRows||'')}</tbody></table>
+            ${(q.rightExtra||[]).length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
           </div>
         </div>`;
     } else if(q.type==='order'){
@@ -6068,6 +6089,14 @@ function trialQuestionBuilderHTML(si, qi, q){
           oninput="_trialSections[${si}].questions[${qi}].pairs[${pi}]=[_trialSections[${si}].questions[${qi}].pairs[${pi}][0]||'',this.value]"></td>
         <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
       </tr>`).join('');
+    const _tRightExtraRows = (q.rightExtra||[]).map((val,ei)=>`
+      <tr style="background:var(--bg2)">
+        <td style="padding:6px 8px;color:var(--text3);font-weight:700;font-size:0.85rem;width:30px;opacity:0.5">+</td>
+        <td style="padding:6px 4px;width:36px"></td>
+        <td style="padding:6px 4px"><input class="qe-ans-input" placeholder="Доп. вариант (дистрактор)..." value="${(val||'').replace(/"/g,'&quot;')}"
+          oninput="_trialSections[${si}].questions[${qi}].rightExtra[${ei}]=this.value"></td>
+        <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].rightExtra.splice(${ei},1);renderTrialBuilder()">🗑</button></td>
+      </tr>`).join('');
     answersSection=`
       <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
         <div style="flex:1;min-width:0;overflow:hidden">
@@ -6083,12 +6112,14 @@ function trialQuestionBuilderHTML(si, qi, q){
         <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
           <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
             <span>СПИСОК 2 (СПРАВА)</span>
-            <button class="qe-add-link" style="margin-left:8px" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+            <button class="qe-add-link" style="margin-left:8px" title="Добавляет вариант справа и автоматически строку слева" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+            <button class="qe-add-link" style="margin-left:4px;opacity:0.75;font-size:0.78rem" title="Добавить только доп. вариант (дистрактор) без строки слева" onclick="_trialSections[${si}].questions[${qi}].rightExtra=[...(_trialSections[${si}].questions[${qi}].rightExtra||[]),''];renderTrialBuilder()">+ дистрактор</button>
           </div>
           <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
             value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].rightLabel=this.value"></div>
           <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
-          <tbody>${_tRightRows}</tbody></table>
+          <tbody>${_tRightRows}${_tRightExtraRows}</tbody></table>
+          ${(q.rightExtra||[]).length>0?`<div style="padding:4px 10px 6px;font-size:0.73rem;color:var(--text3)">💡 Доп. варианты (дистракторы) показываются справа, но не имеют правильного соответствия слева</div>`:''}
         </div>
       </div>`;
   } else if(q.type==='order'){
@@ -13670,7 +13701,7 @@ function clearEditAvail(){
 
 /** Create a blank question of any type */
 function initQuestion(id, type){
-  return {id, type, text:'', options:[], correct:'', pairs:[], points:1, imageUrl:'', hint:'', tags:''};
+  return {id, type, text:'', options:[], correct:'', pairs:[], rightExtra:[], points:1, imageUrl:'', hint:'', tags:''};
 }
 
 /** Auto-score a question (returns true/false) */
@@ -13952,9 +13983,11 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
     const leftCol=pairsN.map(p=>p[0]);
     const cMapSt=q.correctMap||{};
     const rightColCorrect=pairsN.map((_,i)=>pairsN[cMapSt[i]!==undefined?cMapSt[i]:i]?.[1]||'');
+    const rightExtraItems=(q.rightExtra||[]).filter(Boolean);
+    const allRightItems=[...rightColCorrect,...rightExtraItems];
     const _rsk='_mrshuffle_'+q.id;
-    if(!window[_rsk]||window[_rsk].length!==pairsN.length){
-      window[_rsk]=[...rightColCorrect].sort(()=>Math.random()-0.5);
+    if(!window[_rsk]||window[_rsk].length!==allRightItems.length){
+      window[_rsk]=[...allRightItems].sort(()=>Math.random()-0.5);
     }
     const rightCol=window[_rsk];
     const leftLabel=q.leftLabel||'';
