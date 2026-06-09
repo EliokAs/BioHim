@@ -3544,17 +3544,25 @@ function _syncBuilderFromDOM(arr, ctx){
       if(tbodies.length>=2){
         const leftRows=tbodies[0].querySelectorAll('tr');
         const rightRows=tbodies[1].querySelectorAll('tr');
-        const n=Math.min(leftRows.length,rightRows.length);
+        const domN=Math.min(leftRows.length,rightRows.length);
+        // Use max of DOM rows and current q.pairs length so newly-pushed
+        // pairs (added before re-render) are not truncated by the sync
+        const modelN=q.pairs?q.pairs.length:0;
+        const n=Math.max(domN,modelN);
         if(n>0){
+          const oldPairs=q.pairs||[];
           q.pairs=Array.from({length:n},(_,pi)=>{
-            const lInp=leftRows[pi].querySelector('.qe-ans-input');
-            const rInp=rightRows[pi].querySelector('.qe-ans-input');
-            return [lInp?lInp.value:(q.pairs&&q.pairs[pi]?q.pairs[pi][0]||'':''),
-                    rInp?rInp.value:(q.pairs&&q.pairs[pi]?q.pairs[pi][1]||'':'')];
+            const lInp=pi<leftRows.length?leftRows[pi].querySelector('.qe-ans-input'):null;
+            const rInp=pi<rightRows.length?rightRows[pi].querySelector('.qe-ans-input'):null;
+            return [lInp?lInp.value:(oldPairs[pi]?oldPairs[pi][0]||'':''),
+                    rInp?rInp.value:(oldPairs[pi]?oldPairs[pi][1]||'':'')];
           });
           const selects=tbodies[0].querySelectorAll('select');
           const newMap={};
           selects.forEach((sel,pi)=>{ newMap[pi]=+sel.value; });
+          for(let pi=selects.length;pi<n;pi++){
+            newMap[pi]=(q.correctMap&&q.correctMap[pi]!==undefined)?q.correctMap[pi]:pi;
+          }
           q.correctMap=newMap;
         }
       }
@@ -11990,7 +11998,6 @@ function renderTodoList(mode){
   // Sort by date then type priority (blue < yellow < red)
   const typePrio = {blue:0, yellow:1, red:2};
   filtered.sort((a,b)=> a.date-b.date || typePrio[a.type]-typePrio[b.type]);
-
   if(!filtered.length){
     const msgs = {day:'Сегодня событий нет 🎉', week:'На этой неделе событий нет', all:'Нет предстоящих событий'};
     el.innerHTML = `<div class="todo-empty">${msgs[mode]}</div>`;
