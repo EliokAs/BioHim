@@ -3805,9 +3805,9 @@ function buildQuestionHTML(q,i,ctx){
         <td style="padding:6px 4px;width:32px;min-width:32px"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);${rebuildFn}">🗑</button></td>
       </tr>`).join('');
     answersSection = `
-      <div style="display:flex;align-items:flex-start;gap:0">
+      <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
         <!-- LEFT LIST -->
-        <div style="flex:1;min-width:0">
+        <div style="flex:1;min-width:0;overflow:hidden">
           <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
             <span>СПИСОК 1 (СЛЕВА)</span>
             <button class="qe-add-link" style="margin-left:8px" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
@@ -3817,7 +3817,7 @@ function buildQuestionHTML(q,i,ctx){
               value="${(q.leftLabel||'').replace(/"/g,'&quot;')}"
               oninput="${pfx}[${i}].leftLabel=this.value">
           </div>
-          <table class="qe-answers-table">
+          <table class="qe-answers-table" style="table-layout:fixed;width:100%">
             <thead><tr>
               <th style="width:30px">#</th><th style="width:36px"></th>
               <th>Текст вариантов ответов</th>
@@ -3828,7 +3828,7 @@ function buildQuestionHTML(q,i,ctx){
           </table>
         </div>
         <!-- RIGHT LIST -->
-        <div style="flex:1;min-width:0;border-left:2px solid var(--green-pale)">
+        <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
           <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
             <span>СПИСОК 2 (СПРАВА)</span>
             <button class="qe-add-link" style="margin-left:8px" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
@@ -5144,25 +5144,25 @@ function _renderEditQuizBuilder(type){
           <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`).join('');
       answersSection = `
-        <div style="display:flex;align-items:flex-start;gap:0">
-          <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
+          <div style="flex:1;min-width:0;overflow:hidden">
             <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
               <span>СПИСОК 1 (СЛЕВА)</span>
               <button class="qe-add-link" style="margin-left:8px" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
             </div>
             <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
               value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].leftLabel=this.value;_setDirty(true)"></div>
-            <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
+            <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
             <tbody>${_eLeftRows}</tbody></table>
           </div>
-          <div style="flex:1;min-width:0;border-left:2px solid var(--green-pale)">
+          <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
             <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
               <span>СПИСОК 2 (СПРАВА)</span>
               <button class="qe-add-link" style="margin-left:8px" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
             </div>
             <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
               value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="${arrStr}[${i}].rightLabel=this.value;_setDirty(true)"></div>
-            <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
+            <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
             <tbody>${_eRightRows}</tbody></table>
           </div>
         </div>`;
@@ -6077,25 +6077,25 @@ function trialQuestionBuilderHTML(si, qi, q){
         <td style="padding:6px 4px;width:32px"><button class="qe-del-btn" onclick="_trialSections[${si}].questions[${qi}].pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
       </tr>`).join('');
     answersSection=`
-      <div style="display:flex;align-items:flex-start;gap:0">
-        <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:0;overflow:hidden">
+        <div style="flex:1;min-width:0;overflow:hidden">
           <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
             <span>СПИСОК 1 (СЛЕВА)</span>
             <button class="qe-add-link" style="margin-left:8px" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
           </div>
           <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
             value="${(q.leftLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].leftLabel=this.value"></div>
-          <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
+          <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="text-align:center;width:80px">Правильное<br>соответствие</th><th style="width:32px"></th></tr></thead>
           <tbody>${_tLeftRows}</tbody></table>
         </div>
-        <div style="flex:1;min-width:0;border-left:2px solid var(--green-pale)">
+        <div style="flex:1;min-width:0;overflow:hidden;border-left:2px solid var(--green-pale)">
           <div class="qe-section-header answers-hdr" style="display:flex;align-items:center;gap:8px;border-radius:0">
             <span>СПИСОК 2 (СПРАВА)</span>
             <button class="qe-add-link" style="margin-left:8px" onclick="_trialSections[${si}].questions[${qi}].pairs=[...(_trialSections[${si}].questions[${qi}].pairs||[]),['','']];renderTrialBuilder()">добавить</button>
           </div>
           <div style="padding:6px 10px 4px"><input class="qe-ans-input" placeholder="Название списка" style="font-size:0.8rem;padding:4px 8px;margin-bottom:4px"
             value="${(q.rightLabel||'').replace(/"/g,'&quot;')}" oninput="_trialSections[${si}].questions[${qi}].rightLabel=this.value"></div>
-          <table class="qe-answers-table"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
+          <table class="qe-answers-table" style="table-layout:fixed;width:100%"><thead><tr><th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th><th style="width:32px"></th></tr></thead>
           <tbody>${_tRightRows}</tbody></table>
         </div>
       </div>`;
@@ -11998,7 +11998,6 @@ function renderTodoList(mode){
   }
 
   const typeLabels = {blue:'📅 Занятие', red:'📝 Сдача ДЗ', yellow:'📋 Тест'};
-
   if(mode==='day'){
     // No date grouping needed
     el.innerHTML = filtered.map(ev=>`
