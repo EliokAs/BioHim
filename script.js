@@ -3806,9 +3806,8 @@ function buildQuestionHTML(q,i,ctx){
       const curRightIdx = (q.correctMap&&q.correctMap[pi]!==undefined) ? q.correctMap[pi] : pi;
       const curRightVal = pairsArr[curRightIdx] ? (pairsArr[curRightIdx][1]||'') : '';
       const opts = pairsArr.map((rp,ri)=>{
-        const rv = rp[1]||'';
         const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
-        return `<option value="${ri}" ${sel}>${ri+1}. ${rv.replace(/"/g,'&quot;')}</option>`;
+        return `<option value="${ri}" ${sel}>${ri+1}</option>`;
       }).join('');
       return `
       <tr>
@@ -3867,8 +3866,7 @@ function buildQuestionHTML(q,i,ctx){
             <th style="width:30px">#</th>
             <th style="width:36px"></th>
             <th>Текст</th>
-            <th style="text-align:right;width:130px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
-            <th style="text-align:center;width:80px;white-space:nowrap">Правильное<br>соответствие</th>
+            <th style="text-align:center;width:60px;white-space:nowrap">Правильное<br>соответствие</th>
             <th style="width:32px"></th>
           </tr></thead>
           <tbody>${leftRows}</tbody>
@@ -3894,7 +3892,6 @@ function buildQuestionHTML(q,i,ctx){
             <th style="width:30px">#</th>
             <th style="width:36px"></th>
             <th>Текст</th>
-            <th style="text-align:right;width:160px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
             <th style="width:32px"></th>
           </tr></thead>
           <tbody>${rightRows}${rightExtraRows}</tbody>
@@ -5213,9 +5210,8 @@ function _renderEditQuizBuilder(type){
 
       const _eLeftRows = _ePairsArr.map((p,pi)=>{
         const _eOpts = _ePairsArr.map((rp,ri)=>{
-          const rv = rp[1]||'';
           const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
-          return `<option value="${ri}" ${sel}>${ri+1}. ${rv.replace(/"/g,'&quot;')}</option>`;
+          return `<option value="${ri}" ${sel}>${ri+1}</option>`;
         }).join('');
         return `
         <tr>
@@ -5268,8 +5264,7 @@ function _renderEditQuizBuilder(type){
           <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
             <thead><tr>
               <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
-              <th style="text-align:right;width:130px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
-              <th style="text-align:center;width:80px;white-space:nowrap">Правильное<br>соответствие</th>
+              <th style="text-align:center;width:60px;white-space:nowrap">Правильное<br>соответствие</th>
               <th style="width:32px"></th>
             </tr></thead>
             <tbody>${_eLeftRows}</tbody>
@@ -5291,7 +5286,6 @@ function _renderEditQuizBuilder(type){
           <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
             <thead><tr>
               <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
-              <th style="text-align:right;width:160px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
               <th style="width:32px"></th>
             </tr></thead>
             <tbody>${_eRightRows}${_eRightExtraRows}</tbody>
@@ -6225,9 +6219,8 @@ function trialQuestionBuilderHTML(si, qi, q){
 
     const _tLeftRows = _tPairsArr.map((p,pi)=>{
       const _tOpts = _tPairsArr.map((rp,ri)=>{
-        const rv = rp[1]||'';
         const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
-        return `<option value="${ri}" ${sel}>${ri+1}. ${rv.replace(/"/g,'&quot;')}</option>`;
+        return `<option value="${ri}" ${sel}>${ri+1}</option>`;
       }).join('');
       return `
       <tr>
@@ -6280,8 +6273,7 @@ function trialQuestionBuilderHTML(si, qi, q){
         <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
           <thead><tr>
             <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
-            <th style="text-align:right;width:130px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
-            <th style="text-align:center;width:80px;white-space:nowrap">Правильное<br>соответствие</th>
+            <th style="text-align:center;width:60px;white-space:nowrap">Правильное<br>соответствие</th>
             <th style="width:32px"></th>
           </tr></thead>
           <tbody>${_tLeftRows}</tbody>
@@ -6303,7 +6295,6 @@ function trialQuestionBuilderHTML(si, qi, q){
         <table class="qe-answers-table qe-match-table" style="table-layout:fixed;width:100%">
           <thead><tr>
             <th style="width:30px">#</th><th style="width:36px"></th><th>Текст</th>
-            <th style="text-align:right;width:160px;padding-right:8px;color:var(--text3);font-size:0.7rem;font-weight:400;white-space:nowrap">+ панель инструментов</th>
             <th style="width:32px"></th>
           </tr></thead>
           <tbody>${_tRightRows}${_tRightExtraRows}</tbody>
