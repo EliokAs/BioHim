@@ -4998,6 +4998,7 @@ let _editorDirty = false;
 function _setDirty(val) {
   _editorDirty = !!val;
 }
+
 function _safeClose(id, force) {
   if (!force && _DIRTY_MODALS.includes(id) && _editorDirty) {
     if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
