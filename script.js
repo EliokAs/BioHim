@@ -3546,8 +3546,18 @@ function _syncBuilderFromDOM(arr, ctx){
         const selects=tbodies[0].querySelectorAll('select');
         if(selects.length>0){
           const newMap={};
-          selects.forEach((sel,pi)=>{ newMap[pi]=+sel.value; });
+          const newMapExtra={};
+          const pairsLen=(q.pairs||[]).length;
+          selects.forEach((sel,pi)=>{
+            if(sel.classList.contains('qe-match-corr-extra')){
+              // extra left row index = pi - pairsLen
+              newMapExtra[pi-pairsLen]=+sel.value;
+            } else {
+              newMap[pi]=+sel.value;
+            }
+          });
           q.correctMap=newMap;
+          if(Object.keys(newMapExtra).length) q.correctMapExtra=newMapExtra;
         }
       }
     }
@@ -3771,6 +3781,7 @@ function buildQuestionHTML(q,i,ctx){
     const pairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
     const pairsArr = pairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     const rightExtra = q.rightExtra || [];
+    const leftExtra = q.leftExtra || [];
     const allowDrag = q.allowDrag !== false;
 
     // Scoring block (OTP-style)
@@ -3800,15 +3811,14 @@ function buildQuestionHTML(q,i,ctx){
         </div>
       </div>`;
 
-    // Left list rows — dropdown shows actual right-side text values (repeats allowed)
-    const rightTexts = pairsArr.map(p=>p[1]||'').filter(Boolean);
+    // Left list rows — dropdown shows right-side items count only (pairsArr = right side)
+    const _rightOptsHtml = (curIdx, defaultIdx) => pairsArr.map((rp,ri)=>{
+      const sel = curIdx===ri||(curIdx===undefined&&defaultIdx===ri)?'selected':'';
+      return `<option value="${ri}" ${sel}>${ri+1}</option>`;
+    }).join('');
     const leftRows = pairsArr.map((p,pi)=>{
       const curRightIdx = (q.correctMap&&q.correctMap[pi]!==undefined) ? q.correctMap[pi] : pi;
-      const curRightVal = pairsArr[curRightIdx] ? (pairsArr[curRightIdx][1]||'') : '';
-      const opts = pairsArr.map((rp,ri)=>{
-        const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
-        return `<option value="${ri}" ${sel}>${ri+1}</option>`;
-      }).join('');
+      const opts = _rightOptsHtml(q.correctMap&&q.correctMap[pi]!==undefined?q.correctMap[pi]:undefined, pi);
       return `
       <tr>
         <td class="qe-match-num">${pi+1}</td>
@@ -3822,6 +3832,26 @@ function buildQuestionHTML(q,i,ctx){
           </select>
         </td>
         <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].pairs.splice(${pi},1);if(${pfx}[${i}].correctMap){delete ${pfx}[${i}].correctMap[${pi}]};${rebuildFn}">🗑</button></td>
+      </tr>`;
+    }).join('');
+    // Extra left rows (leftExtra) — only left side, maps to right by correctMapExtra
+    const leftExtraRows = leftExtra.map((val,ei)=>{
+      const leIdx = pairsArr.length + ei;
+      const curRightIdx = (q.correctMapExtra&&q.correctMapExtra[ei]!==undefined) ? q.correctMapExtra[ei] : 0;
+      const opts = _rightOptsHtml(q.correctMapExtra&&q.correctMapExtra[ei]!==undefined?q.correctMapExtra[ei]:undefined, 0);
+      return `
+      <tr>
+        <td class="qe-match-num">${leIdx+1}</td>
+        <td class="qe-match-img-cell"><div class="qe-ans-img-btn" title="Изображение">🖼</div></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(val||'').replace(/"/g,'&quot;')}"
+          oninput="${pfx}[${i}].leftExtra[${ei}]=this.value;${rebuildFn}"></td>
+        <td class="qe-match-corr-cell">
+          <select class="qe-match-corr-select qe-match-corr-extra"
+            onchange="${pfx}[${i}].correctMapExtra=${pfx}[${i}].correctMapExtra||{};${pfx}[${i}].correctMapExtra[${ei}]=+this.value">
+            ${opts}
+          </select>
+        </td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${pfx}[${i}].leftExtra.splice(${ei},1);if(${pfx}[${i}].correctMapExtra){delete ${pfx}[${i}].correctMapExtra[${ei}]};${rebuildFn}">🗑</button></td>
       </tr>`;
     }).join('');
 
@@ -3853,7 +3883,7 @@ function buildQuestionHTML(q,i,ctx){
           <div class="qe-match-list-title">
             <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 1 (СЛЕВА)</text></svg>
           </div>
-          <button class="qe-add-link" onclick="${pfx}[${i}].pairs=[...(${pfx}[${i}].pairs||[]),['','']];${rebuildFn}">добавить</button>
+          <button class="qe-add-link" onclick="${pfx}[${i}].leftExtra=[...(${pfx}[${i}].leftExtra||[]),''];${rebuildFn}">добавить</button>
           <span class="qe-match-sort-icon" title="Сортировка">☰</span>
         </div>
         <div class="qe-match-list-name-row">
@@ -3869,7 +3899,7 @@ function buildQuestionHTML(q,i,ctx){
             <th style="text-align:center;width:60px;white-space:nowrap">Правильное<br>соответствие</th>
             <th style="width:32px"></th>
           </tr></thead>
-          <tbody>${leftRows}</tbody>
+          <tbody>${leftRows}${leftExtraRows}</tbody>
         </table>
       </div>
       <!-- RIGHT LIST -->
@@ -5180,6 +5210,7 @@ function _renderEditQuizBuilder(type){
       const _ePairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
       const _ePairsArr = _ePairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
       const _eRightExtra = q.rightExtra || [];
+      const _eLeftExtra = q.leftExtra || [];
       const _eAllowDrag = q.allowDrag !== false;
 
       const _eScoringBlock = `
@@ -5208,11 +5239,12 @@ function _renderEditQuizBuilder(type){
           </div>
         </div>`;
 
+      const _eRightOptsHtml = (curIdx, defaultIdx) => _ePairsArr.map((rp,ri)=>{
+        const sel = curIdx===ri||(curIdx===undefined&&defaultIdx===ri)?'selected':'';
+        return `<option value="${ri}" ${sel}>${ri+1}</option>`;
+      }).join('');
       const _eLeftRows = _ePairsArr.map((p,pi)=>{
-        const _eOpts = _ePairsArr.map((rp,ri)=>{
-          const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
-          return `<option value="${ri}" ${sel}>${ri+1}</option>`;
-        }).join('');
+        const _eOpts = _eRightOptsHtml(q.correctMap&&q.correctMap[pi]!==undefined?q.correctMap[pi]:undefined, pi);
         return `
         <tr>
           <td class="qe-match-num">${pi+1}</td>
@@ -5226,6 +5258,24 @@ function _renderEditQuizBuilder(type){
             </select>
           </td>
           <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].pairs.splice(${pi},1);_setDirty(true);${selfCall}">🗑</button></td>
+        </tr>`;
+      }).join('');
+      const _eLeftExtraRows = _eLeftExtra.map((val,ei)=>{
+        const _eOpts = _eRightOptsHtml(q.correctMapExtra&&q.correctMapExtra[ei]!==undefined?q.correctMapExtra[ei]:undefined, 0);
+        const leIdx = _ePairsArr.length + ei;
+        return `
+        <tr>
+          <td class="qe-match-num">${leIdx+1}</td>
+          <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
+          <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(val||'').replace(/"/g,'&quot;')}"
+            oninput="${arrStr}[${i}].leftExtra[${ei}]=this.value;_setDirty(true);${selfCall}"></td>
+          <td class="qe-match-corr-cell">
+            <select class="qe-match-corr-select qe-match-corr-extra"
+              onchange="${arrStr}[${i}].correctMapExtra=${arrStr}[${i}].correctMapExtra||{};${arrStr}[${i}].correctMapExtra[${ei}]=+this.value;_setDirty(true)">
+              ${_eOpts}
+            </select>
+          </td>
+          <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${arrStr}[${i}].leftExtra.splice(${ei},1);if(${arrStr}[${i}].correctMapExtra){delete ${arrStr}[${i}].correctMapExtra[${ei}]};_setDirty(true);${selfCall}">🗑</button></td>
         </tr>`;
       }).join('');
 
@@ -5254,7 +5304,7 @@ function _renderEditQuizBuilder(type){
             <div class="qe-match-list-title">
               <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 1 (СЛЕВА)</text></svg>
             </div>
-            <button class="qe-add-link" onclick="${arrStr}[${i}].pairs=[...(${arrStr}[${i}].pairs||[]),['','']];_setDirty(true);${selfCall}">добавить</button>
+            <button class="qe-add-link" onclick="${arrStr}[${i}].leftExtra=[...(${arrStr}[${i}].leftExtra||[]),''];_setDirty(true);${selfCall}">добавить</button>
             <span class="qe-match-sort-icon">☰</span>
           </div>
           <div class="qe-match-list-name-row">
@@ -5267,7 +5317,7 @@ function _renderEditQuizBuilder(type){
               <th style="text-align:center;width:60px;white-space:nowrap">Правильное<br>соответствие</th>
               <th style="width:32px"></th>
             </tr></thead>
-            <tbody>${_eLeftRows}</tbody>
+            <tbody>${_eLeftRows}${_eLeftExtraRows}</tbody>
           </table>
         </div>
         <div class="qe-match-list-wrap" style="margin-top:10px">
@@ -6188,6 +6238,7 @@ function trialQuestionBuilderHTML(si, qi, q){
     const _tPairs = (q.pairs||[]).length ? q.pairs : [['',''],['','']];
     const _tPairsArr = _tPairs.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     const _tRightExtra = q.rightExtra || [];
+    const _tLeftExtra = q.leftExtra || [];
     const _tAllowDrag = q.allowDrag !== false;
     const _tRef = `_trialSections[${si}].questions[${qi}]`;
 
@@ -6217,11 +6268,12 @@ function trialQuestionBuilderHTML(si, qi, q){
         </div>
       </div>`;
 
+    const _tRightOptsHtml = (curIdx, defaultIdx) => _tPairsArr.map((rp,ri)=>{
+      const sel = curIdx===ri||(curIdx===undefined&&defaultIdx===ri)?'selected':'';
+      return `<option value="${ri}" ${sel}>${ri+1}</option>`;
+    }).join('');
     const _tLeftRows = _tPairsArr.map((p,pi)=>{
-      const _tOpts = _tPairsArr.map((rp,ri)=>{
-        const sel = (q.correctMap&&q.correctMap[pi]===ri)||(!q.correctMap&&pi===ri)?'selected':'';
-        return `<option value="${ri}" ${sel}>${ri+1}</option>`;
-      }).join('');
+      const _tOpts = _tRightOptsHtml(q.correctMap&&q.correctMap[pi]!==undefined?q.correctMap[pi]:undefined, pi);
       return `
       <tr>
         <td class="qe-match-num">${pi+1}</td>
@@ -6235,6 +6287,24 @@ function trialQuestionBuilderHTML(si, qi, q){
           </select>
         </td>
         <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.pairs.splice(${pi},1);renderTrialBuilder()">🗑</button></td>
+      </tr>`;
+    }).join('');
+    const _tLeftExtraRows = _tLeftExtra.map((val,ei)=>{
+      const _tOpts = _tRightOptsHtml(q.correctMapExtra&&q.correctMapExtra[ei]!==undefined?q.correctMapExtra[ei]:undefined, 0);
+      const leIdx = _tPairsArr.length + ei;
+      return `
+      <tr>
+        <td class="qe-match-num">${leIdx+1}</td>
+        <td class="qe-match-img-cell"><div class="qe-ans-img-btn">🖼</div></td>
+        <td class="qe-match-text-cell"><input class="qe-ans-input" placeholder="Введите текст..." value="${(val||'').replace(/"/g,'&quot;')}"
+          oninput="${_tRef}.leftExtra[${ei}]=this.value;renderTrialBuilder()"></td>
+        <td class="qe-match-corr-cell">
+          <select class="qe-match-corr-select qe-match-corr-extra"
+            onchange="${_tRef}.correctMapExtra=${_tRef}.correctMapExtra||{};${_tRef}.correctMapExtra[${ei}]=+this.value">
+            ${_tOpts}
+          </select>
+        </td>
+        <td class="qe-match-del-cell"><button class="qe-del-btn" onclick="${_tRef}.leftExtra.splice(${ei},1);if(${_tRef}.correctMapExtra){delete ${_tRef}.correctMapExtra[${ei}]};renderTrialBuilder()">🗑</button></td>
       </tr>`;
     }).join('');
 
@@ -6263,7 +6333,7 @@ function trialQuestionBuilderHTML(si, qi, q){
           <div class="qe-match-list-title">
             <svg class="qe-match-arrow-svg" viewBox="0 0 160 36" xmlns="http://www.w3.org/2000/svg" width="160" height="36"><polygon points="0,0 145,0 160,18 145,36 0,36" fill="#5b7fa6"/><text x="12" y="24" font-family="Nunito,sans-serif" font-size="13" font-weight="700" fill="white" letter-spacing="0.5">СПИСОК 1 (СЛЕВА)</text></svg>
           </div>
-          <button class="qe-add-link" onclick="${_tRef}.pairs=[...(_tRef.pairs||[]),['','']];renderTrialBuilder()">добавить</button>
+          <button class="qe-add-link" onclick="${_tRef}.leftExtra=[...(_tRef.leftExtra||[]),''];renderTrialBuilder()">добавить</button>
           <span class="qe-match-sort-icon">☰</span>
         </div>
         <div class="qe-match-list-name-row">
@@ -6276,7 +6346,7 @@ function trialQuestionBuilderHTML(si, qi, q){
             <th style="text-align:center;width:60px;white-space:nowrap">Правильное<br>соответствие</th>
             <th style="width:32px"></th>
           </tr></thead>
-          <tbody>${_tLeftRows}</tbody>
+          <tbody>${_tLeftRows}${_tLeftExtraRows}</tbody>
         </table>
       </div>
       <div class="qe-match-list-wrap" style="margin-top:10px">
@@ -13886,7 +13956,7 @@ function clearEditAvail(){
 
 /** Create a blank question of any type */
 function initQuestion(id, type){
-  return {id, type, text:'', options:[], correct:'', pairs:[], rightExtra:[], points:1, imageUrl:'', hint:'', tags:''};
+  return {id, type, text:'', options:[], correct:'', pairs:[], rightExtra:[], leftExtra:[], points:1, imageUrl:'', hint:'', tags:''};
 }
 
 /** Auto-score a question (returns true/false) */
@@ -14109,9 +14179,17 @@ function scoreQuestion(q, ans){
     const pairs = (q.pairs||[]).map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     if(!pairs.length) return false;
     const cMap = q.correctMap || {};
+    const cMapExtra = q.correctMapExtra || {};
+    const leftExtra = q.leftExtra || [];
+    // Build all correct pairs: regular pairs + leftExtra items
     const correctPairs = pairs.map((p,i)=>[norm(p[0]), norm(pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'')]);
+    leftExtra.forEach((lv,ei)=>{
+      const ri = cMapExtra[ei]!==undefined ? cMapExtra[ei] : 0;
+      correctPairs.push([norm(lv), norm(pairs[ri]?.[1]||'')]);
+    });
+    const totalLeft = pairs.length + leftExtra.length;
     const givenPairs = (ans||'').split(',').map(s=>{ const ci=s.indexOf(':'); if(ci<0)return['','']; try{return[norm(decodeURIComponent(s.slice(0,ci).trim())),norm(decodeURIComponent(s.slice(ci+1).trim()))]}catch(e){const[a,b]=s.split(':');return[norm(a||''),norm(b||'')];} });
-    return givenPairs.length===pairs.length && correctPairs.every(([a,b])=>givenPairs.some(([ga,gb])=>ga===a&&gb===b));
+    return givenPairs.length===totalLeft && correctPairs.every(([a,b])=>givenPairs.some(([ga,gb])=>ga===a&&gb===b));
   } else if(q.type==='order'){
     const correct = (q.correct||'').split(',').map(s=>norm(s));
     const given   = (ans||'').split(',').map(s=>norm(s));
@@ -14134,7 +14212,13 @@ function calcQuestionScore(q, ans) {
   if (!pairs.length) return 0;
   const norm = s => (s||'').toString().trim().toLowerCase();
   const cMap = q.correctMap || {};
+  const cMapExtra = q.correctMapExtra || {};
+  const leftExtra = q.leftExtra || [];
   const correctPairs = pairs.map((p,i)=>[norm(p[0]), norm(pairs[cMap[i]!==undefined?cMap[i]:i]?.[1]||'')]);
+  leftExtra.forEach((lv,ei)=>{
+    const ri = cMapExtra[ei]!==undefined ? cMapExtra[ei] : 0;
+    correctPairs.push([norm(lv), norm(pairs[ri]?.[1]||'')]);
+  });
   const givenMap = {};
   (ans||'').split(',').forEach(s=>{
     const ci = s.indexOf(':'); if(ci<0) return;
@@ -14204,7 +14288,11 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
     const pairsRaw=q.pairs||[];
     const pairsN=pairsRaw.map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     const leftCol=pairsN.map(p=>p[0]);
+    // Add leftExtra items to left column
+    const _leftExtraSt = q.leftExtra || [];
+    _leftExtraSt.forEach(lv=>{ if(lv) leftCol.push(lv); });
     const cMapSt=q.correctMap||{};
+    const cMapExtraSt=q.correctMapExtra||{};
     const rightColCorrect=pairsN.map((_,i)=>pairsN[cMapSt[i]!==undefined?cMapSt[i]:i]?.[1]||'');
     const rightExtraItems=(q.rightExtra||[]).filter(Boolean);
     const allRightItems=[...rightColCorrect,...rightExtraItems];
@@ -14337,6 +14425,8 @@ function renderReviewQuestion(q, answers){
   } else if(q.type==='match'||q.type==='pairs'){
     const pairs=(q.pairs||[]).map(p=>Array.isArray(p)?p:[p.left||'',p.right||'']);
     const cMap = q.correctMap || {};
+    const cMapExtraRv = q.correctMapExtra || {};
+    const leftExtraRv = q.leftExtra || [];
     const givenMap={};
     (ans||'').split(',').forEach(s=>{
       const ci=s.indexOf(':'); if(ci<0) return;
@@ -14352,6 +14442,12 @@ function renderReviewQuestion(q, answers){
       const givenVal = givenMap[(p[0]||'').toLowerCase()]||'—';
       const ok = givenVal.toLowerCase()===(correctRight||'').toLowerCase();
       return `<div class="option-item ${ok?'correct':'wrong'}" style="margin-top:4px">${escHtml(p[0])} → ${escHtml(givenVal)} ${ok?'✅':'❌ Правильно: '+escHtml(correctRight)}</div>`;
+    }).join('') + leftExtraRv.map((lv,ei)=>{
+      const ri = cMapExtraRv[ei]!==undefined ? cMapExtraRv[ei] : 0;
+      const correctRight = pairs[ri]?.[1]||'';
+      const givenVal = givenMap[(lv||'').toLowerCase()]||'—';
+      const ok = givenVal.toLowerCase()===(correctRight||'').toLowerCase();
+      return `<div class="option-item ${ok?'correct':'wrong'}" style="margin-top:4px">${escHtml(lv)} → ${escHtml(givenVal)} ${ok?'✅':'❌ Правильно: '+escHtml(correctRight)}</div>`;
     }).join('');
     // Показываем частичный балл в заголовке
     const earnedPts = calcQuestionScore(q, ans);
