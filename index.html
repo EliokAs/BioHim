@@ -436,6 +436,19 @@ textarea.q-input{resize:vertical;min-height:70px}
 .trial-section-builder { background:var(--bg);border:1.5px solid var(--green-pale);border-radius:14px;padding:16px;margin-bottom:14px; }
 .trial-q-pts { width:70px;padding:6px 8px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;text-align:center;font-size:0.85rem;background:var(--white); }
 
+/* ─── TRIAL / TEST BUILDER LAYOUT ─── */
+.qb-layout { display:flex; gap:16px; align-items:flex-start; }
+.qb-main { flex:1; min-width:0; }
+.qb-empty { padding:22px 16px; text-align:center; color:var(--text3); font-size:0.88rem; border:1.5px dashed var(--green-pale); border-radius:10px; background:var(--white); line-height:1.7; }
+.qtype-panel { width:200px; flex-shrink:0; background:var(--white); border:1.5px solid var(--green-pale); border-radius:12px; padding:10px; position:sticky; top:10px; }
+.qtype-panel-title { font-size:0.7rem; font-weight:800; color:var(--text3); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; padding:0 4px; }
+.qtype-row { display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-radius:8px; cursor:pointer; transition:background 0.12s; gap:6px; }
+.qtype-row:hover { background:var(--green-xpale); }
+.qtype-row-label { font-size:0.78rem; font-weight:600; color:var(--text); flex:1; line-height:1.3; }
+.qtype-add-btn { width:22px; height:22px; border-radius:50%; border:1.5px solid var(--green-pale); background:var(--bg); color:var(--green-deep); font-size:1rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; flex-shrink:0; line-height:1; pointer-events:none; }
+.qtype-row:hover .qtype-add-btn { background:var(--green-deep); color:#fff; border-color:var(--green-deep); }
+@media(max-width:700px){ .qb-layout{flex-direction:column;} .qtype-panel{width:100%;position:static;} }
+
 
 /* Question points + image extras */
 .q-points-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
@@ -2552,7 +2565,22 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <input type="radio" name="ntask-type" value="choice" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> ⚡ Выбор из вариантов
         </label>
         <label class="chip-label">
+          <input type="radio" name="ntask-type" value="multi" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> ☑️ Множественный выбор
+        </label>
+        <label class="chip-label">
           <input type="radio" name="ntask-type" value="short" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔤 Точный ответ
+        </label>
+        <label class="chip-label">
+          <input type="radio" name="ntask-type" value="fill" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 📋 Заполнение пропусков
+        </label>
+        <label class="chip-label">
+          <input type="radio" name="ntask-type" value="match" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔗 Соответствие
+        </label>
+        <label class="chip-label">
+          <input type="radio" name="ntask-type" value="pairs" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🃏 Найти пары
+        </label>
+        <label class="chip-label">
+          <input type="radio" name="ntask-type" value="order" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔢 По порядку
         </label>
         <label class="chip-label">
           <input type="radio" name="ntask-type" value="number" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔢 Числовой ответ
@@ -2629,6 +2657,60 @@ body.dark-theme .drawer-footer { background: var(--card); }
           Данный тип вопроса предусматривает голосовой ответ через микрофон смартфона или компьютера.<br>
           После прохождения теста, вы можете прослушать ответ, провести проверку и выставить нужное количество баллов.
         </div>
+      </div>
+    </div>
+
+    <!-- Multi: multiple choice -->
+    <div id="ntask-ui-multi" style="display:none">
+      <div class="form-group">
+        <label>Варианты ответов <span style="color:var(--text3);font-weight:400">(каждый с новой строки)</span></label>
+        <textarea id="ntask-multi-options" rows="4" placeholder="Вариант А&#10;Вариант Б&#10;Вариант В&#10;Вариант Г"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Правильные варианты <span style="color:var(--text3);font-weight:400">(каждый с новой строки, точно как выше)</span></label>
+        <textarea id="ntask-multi-correct" rows="3" placeholder="Вариант А&#10;Вариант В"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Пояснение <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+        <textarea id="ntask-explanation-multi" rows="2" placeholder="Почему именно эти ответы..."></textarea>
+      </div>
+    </div>
+
+    <!-- Fill: fill in the blanks -->
+    <div id="ntask-ui-fill" style="display:none">
+      <div class="form-group">
+        <div style="background:var(--bg);border-radius:10px;padding:12px;font-size:0.82rem;color:var(--text2);line-height:1.6;margin-bottom:10px">
+          💡 В тексте задания используйте <b>___</b> (три подчёркивания) для каждого пропуска.
+        </div>
+        <label>Правильные слова <span style="color:var(--text3);font-weight:400">(через запятую, по порядку пропусков)</span></label>
+        <input id="ntask-fill-correct" placeholder="митоз, клетка, ДНК">
+      </div>
+    </div>
+
+    <!-- Match: correspondence -->
+    <div id="ntask-ui-match" style="display:none">
+      <div class="form-group">
+        <label>Пары соответствий <span style="color:var(--text3);font-weight:400">(левый столбец и правый через →)</span></label>
+        <textarea id="ntask-match-pairs" rows="5" placeholder="Митоз → 2 дочерних клетки&#10;Мейоз → 4 дочерних клетки&#10;Амитоз → прямое деление"></textarea>
+        <div style="font-size:0.76rem;color:var(--text3);margin-top:6px">Каждая пара с новой строки в формате: <b>Левый элемент → Правый элемент</b></div>
+      </div>
+    </div>
+
+    <!-- Pairs: find pairs (same as match but shuffled) -->
+    <div id="ntask-ui-pairs" style="display:none">
+      <div class="form-group">
+        <label>Пары <span style="color:var(--text3);font-weight:400">(левый и правый через →)</span></label>
+        <textarea id="ntask-pairs-pairs" rows="5" placeholder="Фотосинтез → образование органических веществ&#10;Дыхание → выделение энергии&#10;Брожение → анаэробный процесс"></textarea>
+        <div style="font-size:0.76rem;color:var(--text3);margin-top:6px">Каждая пара с новой строки в формате: <b>Элемент А → Элемент Б</b>. Правые элементы будут перемешаны.</div>
+      </div>
+    </div>
+
+    <!-- Order: arrange in order -->
+    <div id="ntask-ui-order" style="display:none">
+      <div class="form-group">
+        <label>Элементы в правильном порядке <span style="color:var(--text3);font-weight:400">(каждый с новой строки)</span></label>
+        <textarea id="ntask-order-items" rows="5" placeholder="Профаза&#10;Метафаза&#10;Анафаза&#10;Телофаза"></textarea>
+        <div style="font-size:0.76rem;color:var(--text3);margin-top:6px">Ученику они будут показаны в случайном порядке — нужно расставить правильно.</div>
       </div>
     </div>
 
