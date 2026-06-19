@@ -3331,9 +3331,9 @@ function renderTestsAdmin(){
 }
 function testItemHTML(t){
   const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-  const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+  const hasOpen=(t.questions||[]).some(q=>q.type==='open'||q.type==='voice');
   const openUnchecked = t.submitted
-    ? (t.questions||[]).filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
+    ? (t.questions||[]).filter(q=>q.type==='open'||q.type==='voice' && t.answers && t.answers[q.id] && !q.checked)
     : [];
   const needsReview = t.submitted && !t.openChecked && openUnchecked.length > 0;
   const fullyChecked = t.submitted && (!hasOpen || t.openChecked || openUnchecked.length === 0);
@@ -3393,7 +3393,7 @@ function renderOpenAnswers(){
   const el=document.getElementById('open-answers-list');
   let html='';
   tests.forEach(t=>{
-    const openQs=t.questions.filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked);
+    const openQs=t.questions.filter(q=>q.type==='open'||q.type==='voice' && t.answers && t.answers[q.id] && !q.checked);
     openQs.forEach(q=>{
       html+=`<div class="question-block">
         <div class="question-num">Тест: ${esc(t.title)}</div>
@@ -3437,12 +3437,12 @@ function submitCheck(itemId,qId,itemType){
   if(openPts!==null){ q.earnedPts=openPts; }
   if(examGrade!=='') q.examGrade=examGrade;
   const allQ=item.questions||[];
-  const allOpenChecked=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  const allOpenChecked=allQ.filter(q=>q.type==='open'||q.type==='voice').every(q=>q.checked);
   item.openChecked=allOpenChecked;
   // Recalculate overall score/grade if all open questions are now checked
   if(allOpenChecked && item.autoTotal){
     const base=item.autoScoreBase!=null?item.autoScoreBase:(item.autoScore||0);
-    const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
+    const openScore=allQ.filter(q=>q.type==='open'||q.type==='voice'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
     const total=base+openScore;
     item.autoScore=total;
     const pct=Math.round(total/item.autoTotal*100);
@@ -3673,7 +3673,7 @@ function buildQuestionHTML(q,i,ctx){
   const removeFn = ctx==='test'?`removeQ(${i})`:`removeHWQ(${i})`;
   const rebuildFn = ctx==='test'?'renderTestBuilder()':'renderHWBuilder()';
   const imgPreId = `img-pre-${ctx}-${i}`;
-  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fill:'Заполнение пропусков',match:'Соответствие',pairs:'Найти пары',order:'По порядку'};
+  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fill:'Заполнение пропусков',match:'Соответствие',pairs:'Найти пары',order:'По порядку',number:'Числовой ответ',voice:'Голосовой ответ'};
   const IS = s => q.type===s;
   const tabId = `qe-tab-${ctx}-${i}`;
 
@@ -3943,6 +3943,54 @@ function buildQuestionHTML(q,i,ctx){
           value="${(q.correct||'').replace(/"/g,'&quot;')}"
           oninput="${pfx}[${i}].correct=this.value;${pfx}[${i}].options=this.value.split(',').map(s=>s.trim())">
       </div>`;
+  } else if(IS('number')){
+    answersSection = `<div class="qe-section-header answers-hdr"><span>ПОДСЧЁТ БАЛЛОВ</span></div>
+      <div style="padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;cursor:pointer">
+            <input type="radio" name="num-scoring-${ctx}-${i}" value="per" ${(q.numberScoring||'per')==='per'?'checked':''} onchange="${pfx}[${i}].numberScoring='per'"> По ответам
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.84rem;cursor:pointer">
+            <input type="radio" name="num-scoring-${ctx}-${i}" value="whole" ${(q.numberScoring||'per')==='whole'?'checked':''} onchange="${pfx}[${i}].numberScoring='whole'"> Весь вопрос
+          </label>
+        </div>
+      </div>
+      <div class="qe-section-header answers-hdr"><span>ВАРИАНТЫ ОТВЕТОВ</span></div>
+      <div style="padding:12px 14px">
+        <table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+          <thead><tr>
+            <th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:600">#</th>
+            <th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:600">Правильный ответ</th>
+            <th style="padding:4px 8px;color:var(--text3);font-weight:600">Допустимая погрешность</th>
+            <th style="padding:4px 8px;color:var(--text3);font-weight:600">Кол-во баллов</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="num-rows-${ctx}-${i}">
+            ${(q.numberAnswers||[{value:'0',tolerance:'',pts:1}]).map((na,ni)=>`
+            <tr>
+              <td style="padding:4px 8px;color:var(--text3);font-weight:700">${ni+1}</td>
+              <td style="padding:4px 8px"><input class="qe-q-input" style="min-height:0;margin:0" type="text" inputmode="decimal" value="${(na.value||'').replace(/"/g,'&quot;')}" placeholder="0" oninput="(function(){${pfx}[${i}].numberAnswers=Array.from(document.querySelectorAll('#num-rows-${ctx}-${i} tr')).map(r=>{const ins=r.querySelectorAll('input');return{value:ins[0]?.value||'',tolerance:ins[1]?.value||'',pts:+ins[2]?.value||1}});})()" style="width:100%"></td>
+              <td style="padding:4px 8px;text-align:center"><span style="color:var(--text3);margin-right:4px">±</span><input class="qe-q-input" style="min-height:0;margin:0;width:70px" type="text" inputmode="decimal" value="${(na.tolerance||'').replace(/"/g,'&quot;')}" placeholder="" oninput="(function(){${pfx}[${i}].numberAnswers=Array.from(document.querySelectorAll('#num-rows-${ctx}-${i} tr')).map(r=>{const ins=r.querySelectorAll('input');return{value:ins[0]?.value||'',tolerance:ins[1]?.value||'',pts:+ins[2]?.value||1}});})()" ></td>
+              <td style="padding:4px 8px;text-align:center"><input class="qe-q-input" style="min-height:0;margin:0;width:60px" type="number" min="0" value="${na.pts||1}" oninput="(function(){${pfx}[${i}].numberAnswers=Array.from(document.querySelectorAll('#num-rows-${ctx}-${i} tr')).map(r=>{const ins=r.querySelectorAll('input');return{value:ins[0]?.value||'',tolerance:ins[1]?.value||'',pts:+ins[2]?.value||1}});})()" ></td>
+              <td style="padding:4px 4px"><button onclick="(function(){${pfx}[${i}].numberAnswers=(${pfx}[${i}].numberAnswers||[]).filter((_,xi)=>xi!==${ni});${rebuildFn}})()" style="background:none;border:none;cursor:pointer;color:#e57373;font-size:1rem">🗑</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <button onclick="(function(){if(!${pfx}[${i}].numberAnswers)${pfx}[${i}].numberAnswers=[{value:'0',tolerance:'',pts:1}];${pfx}[${i}].numberAnswers.push({value:'',tolerance:'',pts:1});${rebuildFn}})()" style="margin-top:8px;background:none;border:1.5px dashed var(--green-pale);border-radius:8px;padding:6px 16px;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.82rem;color:var(--green-deep)">+ добавить</button>
+        <div style="margin-top:10px;font-size:0.76rem;color:var(--text3)">ℹ️ Для разделения десятичной части используйте точку. При прохождении теста допускается и точка и запятая.</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.82rem;color:var(--text2);cursor:pointer">
+          <input type="checkbox" ${q.numberAnyOrder?'checked':''} onchange="${pfx}[${i}].numberAnyOrder=this.checked" style="accent-color:var(--green-deep)"> или любая другая последовательность из этих цифр
+        </label>
+      </div>`;
+  } else if(IS('voice')){
+    answersSection = `<div class="qe-section-header answers-hdr"><span>ВАРИАНТЫ ОТВЕТОВ</span></div>
+      <div style="padding:14px">
+        <div style="font-size:0.84rem;color:var(--text2);line-height:1.6;margin-bottom:12px">Данный тип вопроса предусматривает голосовой ответ через микрофон смартфона или компьютера.<br>После прохождения теста, вы можете прослушать ответ, провести проверку и выставить нужное количество баллов.</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:0.84rem;color:var(--text2);font-weight:600">Максимальное кол-во баллов:</span>
+          <input class="qe-pts-inline" type="number" min="0" value="${+q.points||1}" oninput="${pfx}[${i}].points=+this.value||1;${rebuildFn}" style="width:70px">
+        </div>
+      </div>`;
   }
 
   // ── params tab ──
@@ -4208,13 +4256,13 @@ function renderPendingReviewBanner(type, containerId){
   let items = [];
   if(type==='hw'){
     items = (load('hw')||[]).filter(h=>h.studentId && h.submitted && !h.openChecked &&
-      (h.questions||[]).some(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked));
+      (h.questions||[]).some(q=>q.type==='open'||q.type==='voice' && h.answers && h.answers[q.id] && !q.checked));
   } else if(type==='test'){
     items = (load('tests')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked &&
-      (t.questions||[]).some(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked));
+      (t.questions||[]).some(q=>q.type==='open'||q.type==='voice' && t.answers && t.answers[q.id] && !q.checked));
   } else if(type==='trial'){
     items = (load('trials')||[]).filter(t=>t.studentId && t.submitted && !t.openChecked &&
-      (t.sections||[]).flatMap(s=>s.questions).some(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked));
+      (t.sections||[]).flatMap(s=>s.questions).some(q=>q.type==='open'||q.type==='voice' && t.answers && t.answers[q.id] && !q.checked));
   }
   const users = load('users')||[];
   if(!items.length){ el.innerHTML=''; el.style.display='none'; return; }
@@ -4229,7 +4277,7 @@ function renderPendingReviewBanner(type, containerId){
       const u = users.find(u=>u.id===item.studentId);
       const uname = u ? u.name : '—';
       const allQ = type==='trial' ? (item.sections||[]).flatMap(s=>s.questions) : (item.questions||[]);
-      const openCount = allQ.filter(q=>q.type==='open' && item.answers && item.answers[q.id] && !q.checked).length;
+      const openCount = allQ.filter(q=>q.type==='open'||q.type==='voice' && item.answers && item.answers[q.id] && !q.checked).length;
       const panelId = `${type}-review-panel-${item.id}`;
       return `<div style="background:var(--white);border-radius:10px;padding:10px 14px;margin-bottom:8px;border:1px solid #f5c6c1;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <div style="font-size:1rem">✏️</div>
@@ -4318,9 +4366,9 @@ function renderHWAdmin(){
 }
 function hwItemHTML(h){
   const pct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : 0;
-  const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+  const hasOpen=(h.questions||[]).some(q=>q.type==='open'||q.type==='voice');
   const openUnchecked = h.submitted
-    ? (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked)
+    ? (h.questions||[]).filter(q=>q.type==='open'||q.type==='voice' && h.answers && h.answers[q.id] && !q.checked)
     : [];
   const needsReview = h.submitted && !h.openChecked && openUnchecked.length > 0;
   const fullyChecked = h.submitted && (!hasOpen || h.openChecked || openUnchecked.length === 0);
@@ -4392,7 +4440,7 @@ function renderHWOpenAnswers(){
   const el=document.getElementById('hw-open-answers-list');
   let html='';
   hws.forEach(h=>{
-    (h.questions||[]).filter(q=>q.type==='open' && h.answers && h.answers[q.id] && !q.checked).forEach(q=>{
+    (h.questions||[]).filter(q=>q.type==='open'||q.type==='voice' && h.answers && h.answers[q.id] && !q.checked).forEach(q=>{
       html+=`<div class="question-block">
         <div class="question-num">ДЗ: ${esc(h.title)}</div>
         <div class="question-text">${escHtml(q.text)}</div>
@@ -5067,7 +5115,7 @@ function openEditTest(id){
 function qTypeLabel(type){
   return {auto:'⚡ Выбор ответа',multi:'☑️ Несколько ответов',open:'📝 Открытый',fillin:'✏️ Вставить слово',match:'🔗 Соответствие',order:'🔢 Порядок'}[type]||type;
 }
-function isAutoScored(type){ return ['auto','multi','fillin','match','order'].includes(type); }
+function isAutoScored(type){ return ['auto','multi','fillin','match','order','number'].includes(type); }
 
 function editQTypeBody(q, store, idx, reRender){
   // store: JS expression like '_editTestQuestions' or '_editHWQuestions'
@@ -5134,7 +5182,7 @@ function _renderEditQuizBuilder(type){
     if(maxEl) maxEl.value = totalPts||0;
   }
 
-  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fillin:'Заполнение пропусков',match:'Соответствие',order:'По порядку'};
+  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fillin:'Заполнение пропусков',match:'Соответствие',order:'По порядку',number:'Числовой ответ',voice:'Голосовой ответ'};
   const toolbar = `<div class="qe-toolbar">
     <button class="qe-tb-btn"><i>T̲ₓ</i></button><div class="qe-tb-sep"></div>
     <button class="qe-tb-btn"><b>B</b></button>
@@ -5192,7 +5240,7 @@ function _renderEditQuizBuilder(type){
           <thead><tr><th>#</th><th>Текст вариантов ответов</th><th style="text-align:center">+ панель инструментов</th><th style="text-align:center">Правильный<br>ответ</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
-    } else if(q.type==='open'){
+    } else if(q.type==='open'||q.type==='voice'){
       answersSection = `<div class="qe-section-header answers-hdr"><span>Эталонный ответ (необязательно)</span></div>
         <div style="padding:12px 14px"><textarea class="qe-free-input" placeholder="Образцовый ответ..."
           oninput="${arrStr}[${i}].correct=this.value">${(q.correct||'').replace(/</g,'&lt;')}</textarea></div>`;
@@ -6170,6 +6218,8 @@ function renderTrialBuilder(){
         <div class="qtype-row" onclick="addTrialQuestion(${si},'match')"><span class="qtype-row-label">Установление соответствий</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
         <div class="qtype-row" onclick="addTrialQuestion(${si},'pairs')"><span class="qtype-row-label">Найти пары</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
         <div class="qtype-row" onclick="addTrialQuestion(${si},'order')"><span class="qtype-row-label">Расставить по порядку</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'number')"><span class="qtype-row-label">🔢 Числовой ответ</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
+        <div class="qtype-row" onclick="addTrialQuestion(${si},'voice')"><span class="qtype-row-label">🎤 Голосовой ответ</span><button class="qtype-add-btn" tabindex="-1">+</button></div>
         </div>
       </div>
     </div>`;
@@ -6178,7 +6228,7 @@ function renderTrialBuilder(){
 function trialQuestionBuilderHTML(si, qi, q){
   const imgPreId = `tr-img-${si}-${qi}-preview`;
   const imgSrc = q.imageUrl ? safeUrl(q.imageUrl) : '';
-  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fill:'Заполнение пропусков',match:'Соответствие',pairs:'Найти пары',order:'По порядку'};
+  const typeLabels={auto:'Одиночный выбор',multi:'Множественный выбор',open:'Свободный ответ',fill:'Заполнение пропусков',match:'Соответствие',pairs:'Найти пары',order:'По порядку',number:'Числовой ответ',voice:'Голосовой ответ'};
   const tabId = `trq-tab-${si}-${qi}`;
   const toolbar = `<div class="qe-toolbar">
     <button class="qe-tb-btn"><b>B</b></button><button class="qe-tb-btn"><i>I</i></button>
@@ -6223,7 +6273,7 @@ function trialQuestionBuilderHTML(si, qi, q){
         <thead><tr><th>#</th><th>Текст вариантов ответов</th><th style="text-align:center">+ панель</th><th style="text-align:center">Правильный</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
-  } else if(q.type==='open'){
+  } else if(q.type==='open'||q.type==='voice'){
     answersSection=`<div class="qe-section-header answers-hdr"><span>Эталонный ответ</span></div>
       <div style="padding:12px 14px"><textarea class="qe-free-input" placeholder="Образцовый ответ..."
         oninput="_trialSections[${si}].questions[${qi}].correct=this.value">${(q.correct||'').replace(/</g,'&lt;')}</textarea></div>`;
@@ -6385,6 +6435,39 @@ function trialQuestionBuilderHTML(si, qi, q){
           value="${(q.correct||'').replace(/"/g,'&quot;')}"
           oninput="_trialSections[${si}].questions[${qi}].correct=this.value;_trialSections[${si}].questions[${qi}].options=this.value.split(',').map(s=>s.trim())">
       </div>`;
+  } else if(q.type==='number'){
+    const numAnswers = q.numberAnswers||[{value:'0',tolerance:'',pts:1}];
+    answersSection=`<div class="qe-section-header answers-hdr"><span>ВАРИАНТЫ ОТВЕТОВ</span></div>
+      <div style="padding:12px 14px">
+        <table style="width:100%;border-collapse:collapse;font-size:0.84rem">
+          <thead><tr>
+            <th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:600">#</th>
+            <th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:600">Правильный ответ</th>
+            <th style="padding:4px 8px;color:var(--text3);font-weight:600">Погрешность</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="trnum-rows-${si}-${qi}">
+            ${numAnswers.map((na,ni)=>`
+            <tr>
+              <td style="padding:4px 8px;color:var(--text3);font-weight:700">${ni+1}</td>
+              <td style="padding:4px 8px"><input class="qe-q-input" style="min-height:0;margin:0" type="text" inputmode="decimal" value="${(na.value||'').replace(/"/g,'&quot;')}" placeholder="0" oninput="(function(){_trialSections[${si}].questions[${qi}].numberAnswers=Array.from(document.querySelectorAll('#trnum-rows-${si}-${qi} tr')).map(r=>{const ins=r.querySelectorAll('input');return{value:ins[0]?.value||'',tolerance:ins[1]?.value||'',pts:1}});})()" style="width:100%"></td>
+              <td style="padding:4px 8px;text-align:center"><span style="color:var(--text3);margin-right:4px">±</span><input class="qe-q-input" style="min-height:0;margin:0;width:70px" type="text" inputmode="decimal" value="${(na.tolerance||'').replace(/"/g,'&quot;')}" oninput="(function(){_trialSections[${si}].questions[${qi}].numberAnswers=Array.from(document.querySelectorAll('#trnum-rows-${si}-${qi} tr')).map(r=>{const ins=r.querySelectorAll('input');return{value:ins[0]?.value||'',tolerance:ins[1]?.value||'',pts:1}});})()" ></td>
+              <td style="padding:4px 4px"><button onclick="(function(){_trialSections[${si}].questions[${qi}].numberAnswers=(_trialSections[${si}].questions[${qi}].numberAnswers||[]).filter((_,xi)=>xi!==${ni});renderTrialBuilder()})()" style="background:none;border:none;cursor:pointer;color:#e57373;font-size:1rem">🗑</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <button onclick="(function(){if(!_trialSections[${si}].questions[${qi}].numberAnswers)_trialSections[${si}].questions[${qi}].numberAnswers=[{value:'0',tolerance:'',pts:1}];_trialSections[${si}].questions[${qi}].numberAnswers.push({value:'',tolerance:'',pts:1});renderTrialBuilder()})()" style="margin-top:8px;background:none;border:1.5px dashed var(--green-pale);border-radius:8px;padding:6px 16px;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.82rem;color:var(--green-deep)">+ добавить</button>
+        <div style="margin-top:8px;font-size:0.76rem;color:var(--text3)">ℹ️ Используйте точку для десятичной части. Допускается точка и запятая.</div>
+      </div>`;
+  } else if(q.type==='voice'){
+    answersSection=`<div class="qe-section-header answers-hdr"><span>ГОЛОСОВОЙ ОТВЕТ</span></div>
+      <div style="padding:14px">
+        <div style="font-size:0.84rem;color:var(--text2);line-height:1.6">Данный тип вопроса предусматривает голосовой ответ через микрофон смартфона или компьютера.<br>После прохождения теста, вы можете прослушать ответ, провести проверку и выставить нужное количество баллов.</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+          <span style="font-size:0.84rem;color:var(--text2);font-weight:600">Максимальное кол-во баллов:</span>
+          <input class="qe-pts-inline" type="number" min="0" value="${+q.points||1}" oninput="_trialSections[${si}].questions[${qi}].points=+this.value||1;renderTrialBuilder()" style="width:70px">
+        </div>
+      </div>`;
   }
 
   return `<div class="question-block" style="margin-bottom:8px">
@@ -6511,9 +6594,9 @@ function renderTrialAdmin(){
 function trialAdminItemHTML(t){
   const pct = t.autoTotal ? Math.round(t.autoScore/t.autoTotal*100) : 0;
   const allQ = (t.sections||[]).flatMap(s=>s.questions);
-  const hasOpen = allQ.some(q=>q.type==='open');
+  const hasOpen = allQ.some(q=>q.type==='open'||q.type==='voice');
   const openUnchecked = t.submitted
-    ? allQ.filter(q=>q.type==='open' && t.answers && t.answers[q.id] && !q.checked)
+    ? allQ.filter(q=>q.type==='open'||q.type==='voice' && t.answers && t.answers[q.id] && !q.checked)
     : [];
   const needsReview = t.submitted && !t.openChecked && openUnchecked.length > 0;
   const fullyChecked = t.submitted && (!hasOpen || t.openChecked || openUnchecked.length === 0);
@@ -6811,7 +6894,7 @@ function renderTrialOpenAnswers(){
   let html='';
   trials.forEach(t=>{
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
-    allQ.filter(q=>q.type==='open'&&t.answers&&t.answers[q.id]&&!q.checked).forEach(q=>{
+    allQ.filter(q=>q.type==='open'||q.type==='voice'&&t.answers&&t.answers[q.id]&&!q.checked).forEach(q=>{
       html+=`<div class="question-block">
         <div class="question-num">Пробник: ${esc(t.title)}</div>
         <div class="question-text">${escHtml(q.text)}</div>
@@ -6834,11 +6917,11 @@ function checkTrialOpenAnswer(tid,qid){
   const allQ=(t.sections||[]).flatMap(s=>s.questions);
   // Mark this question checked
   allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; q.grade=pts; } });
-  const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  const openDone=allQ.filter(q=>q.type==='open'||q.type==='voice').every(q=>q.checked);
   t.openChecked=openDone;
   // Recalculate total score from scratch: auto + all checked open
   const autoBaseScore=allQ.filter(q=>q.type!=='open').reduce((a,q)=>a+(+q.earnedPts||0),0);
-  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
+  const openScore=allQ.filter(q=>q.type==='open'||q.type==='voice'&&q.checked).reduce((a,q)=>a+(q.earnedPts||0),0);
   // t.autoScore was set at submit time for auto questions — keep it, just add open
   // Recompute: store openScore separately to avoid double-adding
   t.openScore=openScore;
@@ -6856,9 +6939,9 @@ function checkTestOpenAnswerInline(tid,qid){
   const pts=+(document.getElementById(`pts-test-${tid}-${qid}`)?.value)||0;
   const allQ=t.questions||[];
   allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; q.grade=pts; } });
-  const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  const openDone=allQ.filter(q=>q.type==='open'||q.type==='voice').every(q=>q.checked);
   t.openChecked=openDone;
-  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
+  const openScore=allQ.filter(q=>q.type==='open'||q.type==='voice'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
   t.openScore=openScore;
   const base=t.autoScoreBase!=null?t.autoScoreBase:(t.autoScore||0);
   const totalScore=base+openScore;
@@ -6874,9 +6957,9 @@ function checkHWOpenAnswerInline(hwid,qid){
   const pts=+(document.getElementById(`pts-hw-${hwid}-${qid}`)?.value)||0;
   const allQ=h.questions||[];
   allQ.forEach(q=>{ if(q.id===qid){ q.checked=true; q.earnedPts=pts; q.grade=pts; } });
-  const openDone=allQ.filter(q=>q.type==='open').every(q=>q.checked);
+  const openDone=allQ.filter(q=>q.type==='open'||q.type==='voice').every(q=>q.checked);
   h.openChecked=openDone;
-  const openScore=allQ.filter(q=>q.type==='open'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
+  const openScore=allQ.filter(q=>q.type==='open'||q.type==='voice'&&q.checked).reduce((s,q)=>s+(+q.earnedPts||0),0);
   h.openScore=openScore;
   const base=h.autoScoreBase!=null?h.autoScoreBase:(h.autoScore||0);
   const totalScore=base+openScore;
@@ -6955,7 +7038,7 @@ function renderStudentTrial(){
   el.innerHTML=trials.map(t=>{
     const pct=t.autoTotal?Math.round(t.autoScore/t.autoTotal*100):0;
     const allQ=(t.sections||[]).flatMap(s=>s.questions);
-    const hasOpen=allQ.some(q=>q.type==='open');
+    const hasOpen=allQ.some(q=>q.type==='open'||q.type==='voice');
     const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
     const statusIcon=!t.submitted?'⏳':fullyChecked?'✅':'🔍';
     const statusBadge=!t.submitted
@@ -7109,7 +7192,7 @@ function renderTaskBankAdmin(){
   if(label) label.textContent = `${tasks.length} заданий в базе`;
   if(!el) return;
   if(!tasks.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
-  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ',number:'🔢 Числовой',voice:'🎤 Голосовой'};
   el.innerHTML = tasks.map((t,i)=>`
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
@@ -7130,6 +7213,12 @@ function renderTaskBankAdmin(){
           ${t.answerType==='short'?`
             <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctShort}</b>${t.explanation?` — ${t.explanation}`:''}</div>
           `:''}
+          ${t.answerType==='number'?`
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильный ответ: <b>${t.correctNumber}</b>${t.toleranceNumber?` ±${t.toleranceNumber}`:''}${t.explanation?` — ${t.explanation}`:''}</div>
+          `:''}
+          ${t.answerType==='voice'?`
+            <div style="font-size:0.8rem;color:var(--text3);background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">🎤 Голосовой ответ проверяется вручную</div>
+          `:''}
           ${t.answerType==='open'&&t.answer?`<div style="font-size:0.8rem;color:var(--text3);background:var(--bg);padding:8px 12px;border-radius:8px;border-left:3px solid var(--green-mid)">💡 ${escHtml(t.answer)}</div>`:''}
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
@@ -7145,6 +7234,8 @@ function updateTaskTypeUI(){
   document.getElementById('ntask-ui-open').style.display   = type==='open'   ?'block':'none';
   document.getElementById('ntask-ui-choice').style.display = type==='choice' ?'block':'none';
   document.getElementById('ntask-ui-short').style.display  = type==='short'  ?'block':'none';
+  document.getElementById('ntask-ui-number').style.display = type==='number' ?'block':'none';
+  document.getElementById('ntask-ui-voice').style.display  = type==='voice'  ?'block':'none';
 }
 
 let _ntaskImgData = '';
@@ -7181,6 +7272,15 @@ function saveTask(){
     if(!correct){ showNotif('Укажите правильный ответ'); return; }
     taskData.correctShort = correct;
     taskData.explanation = document.getElementById('ntask-explanation-short').value.trim();
+  } else if(type==='number'){
+    const val = document.getElementById('ntask-correct-number').value.trim();
+    if(!val){ showNotif('Укажите числовой ответ'); return; }
+    const tol = document.getElementById('ntask-tolerance-number').value.trim();
+    taskData.numberAnswers = [{value:val, tolerance:tol, pts:1}];
+    taskData.correctNumber = val;
+    taskData.toleranceNumber = tol;
+  } else if(type==='voice'){
+    taskData.answer = '';
   }
 
   const tasks = load('taskbank')||[];
@@ -7211,6 +7311,8 @@ function openEditTask(id){
   document.getElementById('ntask-explanation-choice').value=t.explanation||'';
   document.getElementById('ntask-correct-short').value=t.correctShort||'';
   document.getElementById('ntask-explanation-short').value=t.explanation||'';
+  document.getElementById('ntask-correct-number').value=t.correctNumber||'';
+  document.getElementById('ntask-tolerance-number').value=t.toleranceNumber||'';
   // Set radio
   const type = t.answerType||'open';
   document.querySelectorAll('input[name="ntask-type"]').forEach(r=>r.checked=(r.value===type));
@@ -7283,7 +7385,7 @@ function renderStudentTaskBank(){
     ).join('');
   }
 
-  const typeLabels = {all:'🗂 Все типы', open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  const typeLabels = {all:'🗂 Все типы', open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ',number:'🔢 Числовой',voice:'🎤 Голосовой'};
   const typePills = document.getElementById('tb-type-pills');
   if(typePills){
     typePills.innerHTML = Object.keys(typeLabels).map(t =>
@@ -7323,7 +7425,7 @@ function _tbRenderList(){
   }
   emptyEl.style.display = 'none';
 
-  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ',number:'🔢 Числовой',voice:'🎤 Голосовой'};
   listEl.innerHTML = filtered.map((t,i)=>`
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
@@ -7400,7 +7502,7 @@ function _tbRenderCurrentQuestion(){
   document.getElementById('tb-correct-count').textContent  = _tbCorrect;
   document.getElementById('tb-wrong-count').textContent    = _tbWrong;
 
-  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ'};
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ',number:'🔢 Числовой',voice:'🎤 Голосовой'};
   document.getElementById('tb-question-card').innerHTML = `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
       ${q.subject?`<span class="badge badge-green">${esc(q.subject)}</span>`:''}
@@ -8827,7 +8929,7 @@ function _buildParentGrades(sid){
   hws.forEach(h=>{
     const attempts = h.attempts||[];
     if(attempts.length) attempts.forEach(a=>items.push({icon:'✏️',title:h.title,date:a.date,pct:a.pct,grade:a.grade}));
-    else if(h.submitted){ const _hcp=h.openChecked||!(h.questions||[]).some(q=>q.type==='open'); const _hpp=h.autoTotal?Math.round((h.autoScore||0)/h.autoTotal*100):(h.autoPct||null); items.push({icon:'✏️',title:h.title,date:h.date,pct:_hcp?_hpp:null,grade:_hcp?(h.finalGrade||h.autoGrade||null):null,pending:!_hcp}); }
+    else if(h.submitted){ const _hcp=h.openChecked||!(h.questions||[]).some(q=>q.type==='open'||q.type==='voice'); const _hpp=h.autoTotal?Math.round((h.autoScore||0)/h.autoTotal*100):(h.autoPct||null); items.push({icon:'✏️',title:h.title,date:h.date,pct:_hcp?_hpp:null,grade:_hcp?(h.finalGrade||h.autoGrade||null):null,pending:!_hcp}); }
   });
   trials.forEach(t=>{
     if(t.submitted){ const pct=t.autoTotal?Math.round((t.autoScore||0)/t.autoTotal*100):null; items.push({icon:'🎯',title:t.title,date:t.date,pct,grade:t.autoGrade||(pct!=null?calcGrade(pct,t.gradeConfig):null)}); }
@@ -9493,8 +9595,8 @@ function renderStudentTests(){
   if(!tests.length){ el.innerHTML=emptyHTML(); return; }
 
   if(_testFilter==='pending') tests=tests.filter(t=>!t.submitted);
-  if(_testFilter==='done')    tests=tests.filter(t=>t.submitted && !(t.openChecked || !(t.questions||[]).some(q=>q.type==='open')));
-  if(_testFilter==='checked') tests=tests.filter(t=>t.submitted && (t.openChecked || !(t.questions||[]).some(q=>q.type==='open')));
+  if(_testFilter==='done')    tests=tests.filter(t=>t.submitted && !(t.openChecked || !(t.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
+  if(_testFilter==='checked') tests=tests.filter(t=>t.submitted && (t.openChecked || !(t.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
   tests = tests.slice().reverse();
 
   if(!tests.length){
@@ -9510,7 +9612,7 @@ function renderStudentTests(){
   }
   el.innerHTML=tests.map(t=>{
     const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
-    const hasOpen=(t.questions||[]).some(q=>q.type==='open');
+    const hasOpen=(t.questions||[]).some(q=>q.type==='open'||q.type==='voice');
     const fullyChecked=t.submitted&&(!hasOpen||t.openChecked);
     const statusIcon=!t.submitted?'⏳':fullyChecked?'✅':'🔍';
     const statusBadge=!t.submitted
@@ -9695,8 +9797,8 @@ function renderStudentHW(){
   if(!hws.length){ el.innerHTML=emptyHTML(); return; }
 
   if(_hwFilter==='pending') hws=hws.filter(h=>!h.submitted);
-  if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted && !(h.openChecked || !(h.questions||[]).some(q=>q.type==='open')));
-  if(_hwFilter==='checked') hws=hws.filter(h=>h.submitted && (h.openChecked || !(h.questions||[]).some(q=>q.type==='open')));
+  if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted && !(h.openChecked || !(h.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
+  if(_hwFilter==='checked') hws=hws.filter(h=>h.submitted && (h.openChecked || !(h.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
   hws = hws.slice().reverse(); // новые сверху
 
   if(!hws.length){
@@ -9712,7 +9814,7 @@ function renderStudentHW(){
   }
   el.innerHTML=hws.map(h=>{
     const pct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : 0;
-    const hasOpen=(h.questions||[]).some(q=>q.type==='open');
+    const hasOpen=(h.questions||[]).some(q=>q.type==='open'||q.type==='voice');
     const fullyChecked=h.submitted&&(!hasOpen||h.openChecked);
     const statusIcon=!h.submitted?'⏳':fullyChecked?'✅':'🔍';
     const statusBadge=!h.submitted
@@ -9867,7 +9969,7 @@ function renderStudentGrades(el){
           isFinal: h.gradeMode==='last' ? a.n===attempts.length : a.pct===Math.max(...attempts.map(x=>x.pct))});
       });
     } else if(h.submitted){
-      const _hc1 = h.openChecked || !(h.questions||[]).some(q=>q.type==='open');
+      const _hc1 = h.openChecked || !(h.questions||[]).some(q=>q.type==='open'||q.type==='voice');
       const _hp1 = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : (h.autoPct||null);
       items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
         score: _hc1 ? (h.autoScore!=null ? h.autoScore : null) : null,
@@ -10046,7 +10148,7 @@ function renderGradesAdmin(){
           maxAttempts:h.maxAttempts||0, gradeMode:h.gradeMode||'best'});
       });
     } else if(h.submitted){
-      const _hc2 = h.openChecked || !(h.questions||[]).some(q=>q.type==='open');
+      const _hc2 = h.openChecked || !(h.questions||[]).some(q=>q.type==='open'||q.type==='voice');
       const _hp2 = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : (h.autoPct||null);
       items.push({type:'hw', icon:'✏️', title:h.title, date:h.date, time:'',
         score: _hc2 ? (h.autoScore!=null ? h.autoScore : null) : null,
@@ -13975,7 +14077,7 @@ function _collectAndSaveWrongAnswers(sourceType, item, answers) {
   const mistakes = load('mistakes') || [];
   const date = new Date().toLocaleDateString('ru');
   (item.questions || []).forEach(q => {
-    if (q.type === 'open') return; // open questions are manually checked
+    if (q.type === 'open' || q.type === 'voice') return; // open questions are manually checked
     const ans = answers[q.id] || '';
     if (scoreQuestion(q, ans)) return; // correct — skip
     // Check if already exists for this student+question+source
@@ -14016,7 +14118,7 @@ function _collectAndSaveWrongAnswersTrial(trial, answers) {
   const date = new Date().toLocaleDateString('ru');
   (trial.sections || []).forEach(sec => {
     (sec.questions || []).forEach(q => {
-      if (q.type === 'open') return;
+      if (q.type === 'open' || q.type === 'voice') return;
       const ans = answers[q.id] || '';
       if (scoreQuestion(q, ans)) return;
       const existingIdx = mistakes.findIndex(m =>
@@ -14194,6 +14296,16 @@ function scoreQuestion(q, ans){
     const correct = (q.correct||'').split(',').map(s=>norm(s));
     const given   = (ans||'').split(',').map(s=>norm(s));
     return JSON.stringify(correct)===JSON.stringify(given);
+  } else if(q.type==='number'){
+    const numAnswers = q.numberAnswers||[{value:q.correct||'0',tolerance:'',pts:1}];
+    const givenNum = parseFloat((ans||'').toString().replace(',','.'));
+    if(isNaN(givenNum)) return false;
+    return numAnswers.some(na=>{
+      const correct = parseFloat((na.value||'').toString().replace(',','.'));
+      if(isNaN(correct)) return false;
+      const tol = parseFloat((na.tolerance||'0').toString().replace(',','.')) || 0;
+      return Math.abs(givenNum - correct) <= tol;
+    });
   }
   return false;
 }
@@ -14247,7 +14359,7 @@ function calcQuestionScore(q, ans) {
 function renderStudentQuestion(q, idx, answerObj, selectFn){
   const ans = getAnswer(answerObj, q.id) || '';
   const pts = +q.points||1;
-  const typeLabels={auto:'⚡ Авто',multi:'☑️ Несколько правильных',open:'📝 Открытый',fill:'🔤 Вставка слова',match:'🔗 Соответствие',pairs:'🧩 Найти пары',order:'📊 По порядку'};
+  const typeLabels={auto:'⚡ Авто',multi:'☑️ Несколько правильных',open:'📝 Открытый',fill:'🔤 Вставка слова',match:'🔗 Соответствие',pairs:'🧩 Найти пары',order:'📊 По порядку',number:'🔢 Числовой',voice:'🎤 Голосовой'};
 
   let body='';
 
@@ -14265,7 +14377,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
         <span style="width:18px;height:18px;border-radius:4px;border:2px solid var(--green-mid);display:inline-flex;align-items:center;justify-content:center;font-size:0.65rem;flex-shrink:0">${sel.includes(o)?'✓':''}</span>${o}
       </div>`).join('')}</div>`;
 
-  } else if(q.type==='open'){
+  } else if(q.type==='open'||q.type==='voice'){
     body=`<textarea style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;min-height:80px;resize:vertical;box-sizing:border-box"
       placeholder="Ваш ответ..." oninput="${answerObj}['${q.id}']=this.value">${ans}</textarea>`;
 
@@ -14351,6 +14463,19 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
           </div>
         </div>`).join('')}
     </div>`;
+
+  } else if(q.type==='number'){
+    body=`<div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Введите числовой ответ (используйте точку или запятую для десятичной части)</div>
+      <input type="text" inputmode="decimal" style="width:100%;max-width:260px;padding:10px 14px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:1rem" placeholder="0" value="${(ans||'').replace(/"/g,'&quot;')}" oninput="${answerObj}['${q.id}']=this.value">`;
+
+  } else if(q.type==='voice'){
+    const voiceKey='_vrec_'+q.id;
+    body=`<div style="font-size:0.84rem;color:var(--text2);margin-bottom:12px;line-height:1.6">Запишите голосовой ответ через микрофон</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button id="vbtn-${q.id}" onclick="toggleVoiceRecord('${q.id}','${answerObj}')" style="display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:10px;border:none;background:var(--green-deep);color:#fff;font-family:Nunito,sans-serif;font-size:0.88rem;font-weight:700;cursor:pointer">🎤 Начать запись</button>
+        <span id="vtimer-${q.id}" style="font-size:0.82rem;color:var(--text3);display:none">00:00</span>
+      </div>
+      ${ans?`<div style="margin-top:10px"><audio controls src="${ans}" style="width:100%;border-radius:8px"></audio><button onclick="${answerObj}['${q.id}']='';this.closest('div').remove()" style="margin-top:6px;background:none;border:none;cursor:pointer;font-size:0.78rem;color:#e57373">✕ Удалить запись</button></div>`:'<div id="vaudio-${q.id}"></div>'}`;
   }
 
   return `<div class="question-block" style="border-left:3.5px solid var(--green-mid);padding:0;overflow:hidden">
@@ -14400,13 +14525,64 @@ function moveOrderItem(qId, idx, dir, answerObj){
   else if(answerObj==='_trialAnswers') renderTrialTakeBody();
 }
 
+// ── Voice recording helpers ──
+const _voiceState = {};
+function toggleVoiceRecord(qId, answerObj){
+  const state = _voiceState[qId];
+  if(state && state.recording){
+    // Stop
+    state.recorder.stop();
+    state.stream.getTracks().forEach(t=>t.stop());
+    clearInterval(state.timer);
+    _voiceState[qId].recording = false;
+    const btn = document.getElementById('vbtn-'+qId);
+    if(btn) btn.innerHTML='🎤 Начать запись';
+    const timerEl = document.getElementById('vtimer-'+qId);
+    if(timerEl) timerEl.style.display='none';
+  } else {
+    // Start
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showNotif('⚠️ Микрофон не поддерживается'); return; }
+    navigator.mediaDevices.getUserMedia({audio:true}).then(stream=>{
+      const chunks=[];
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+      recorder.onstop = ()=>{
+        const blob = new Blob(chunks, {type:'audio/webm'});
+        const reader = new FileReader();
+        reader.onload = function(ev){
+          setAnswer(answerObj, qId, ev.target.result);
+          // Update audio player
+          const audioDiv = document.getElementById('vaudio-'+qId);
+          if(audioDiv) audioDiv.innerHTML=`<audio controls src="${ev.target.result}" style="width:100%;border-radius:8px;margin-top:8px"></audio>`;
+        };
+        reader.readAsDataURL(blob);
+      };
+      recorder.start();
+      let sec=0;
+      const timer = setInterval(()=>{
+        sec++;
+        const mm=String(Math.floor(sec/60)).padStart(2,'0');
+        const ss=String(sec%60).padStart(2,'0');
+        const timerEl=document.getElementById('vtimer-'+qId);
+        if(timerEl) timerEl.textContent=mm+':'+ss;
+        if(sec>=300){ clearInterval(timer); recorder.stop(); stream.getTracks().forEach(t=>t.stop()); }
+      },1000);
+      _voiceState[qId]={recorder, stream, recording:true, timer};
+      const btn=document.getElementById('vbtn-'+qId);
+      if(btn) btn.innerHTML='⏹ Остановить';
+      const timerEl=document.getElementById('vtimer-'+qId);
+      if(timerEl) timerEl.style.display='inline';
+    }).catch(()=>showNotif('⚠️ Нет доступа к микрофону'));
+  }
+}
+
 /** Render a review (results) block for a question */
 function renderReviewQuestion(q, answers){
   const pts=+q.points||1;
   const ans=answers[q.id]||'';
-  const typeLabels={auto:'⚡ Авто',multi:'☑️ Несколько',open:'📝 Открытый',fill:'🔤 Вставка',match:'🔗 Соответствие',pairs:'🧩 Пары',order:'📊 Порядок'};
+  const typeLabels={auto:'⚡ Авто',multi:'☑️ Несколько',open:'📝 Открытый',fill:'🔤 Вставка',match:'🔗 Соответствие',pairs:'🧩 Пары',order:'📊 Порядок',number:'🔢 Числовой',voice:'🎤 Голосовой'};
 
-  if(q.type==='open'){
+  if(q.type==='open'||q.type==='voice'){
     return `<div class="question-block">
       <div class="question-num">📝 Открытый · <span style="font-size:0.75rem;color:var(--text3)">⭐ ${pts} б.</span></div>
       <div class="question-text">${escHtml(q.text)}</div>
@@ -14416,10 +14592,24 @@ function renderReviewQuestion(q, answers){
     </div>`;
   }
 
+  if(q.type==='voice'){
+    return `<div class="question-block">
+      <div class="question-num">🎤 Голосовой · <span style="font-size:0.75rem;color:var(--text3)">⭐ ${pts} б.</span></div>
+      <div class="question-text">${escHtml(q.text)}</div>
+      ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:8px" alt="">`:''}
+      ${ans?`<div style="margin-top:8px"><audio controls src="${ans}" style="width:100%;border-radius:8px"></audio></div>`:`<div class="feedback-box">Нет записи</div>`}
+      ${q.checked?`<div class="feedback-box" style="border-left-color:var(--gold);margin-top:8px"><strong>Баллы: ${q.grade!=null?q.grade:q.earnedPts!=null?q.earnedPts:'—'}</strong><br>${q.comment||''}</div>`:`<div style="color:var(--text3);font-size:0.8rem;margin-top:6px">⏳ Ожидает проверки</div>`}
+    </div>`;
+  }
+
   const correct = scoreQuestion(q, ans);
   let detail='';
   if(q.type==='auto'||q.type==='fill'||q.type==='order'){
     detail=`<div class="option-item ${correct?'correct':'wrong'}" style="margin-top:4px">${ans||'—'} ${correct?'✅':'❌ Правильно: '+q.correct}</div>`;
+  } else if(q.type==='number'){
+    const numAnswers = q.numberAnswers||[{value:q.correct||'',tolerance:'',pts:1}];
+    const correctStr = numAnswers.map(na=>na.value+(na.tolerance?` ±${na.tolerance}`:'')).join(' или ');
+    detail=`<div class="option-item ${correct?'correct':'wrong'}" style="margin-top:4px">${ans||'—'} ${correct?'✅':'❌ Правильно: '+correctStr}</div>`;
   } else if(q.type==='multi'){
     detail=`<div class="option-item ${correct?'correct':'wrong'}" style="margin-top:4px">${ans||'—'} ${correct?'✅':'❌ Правильно: '+q.correct}</div>`;
   } else if(q.type==='match'||q.type==='pairs'){
