@@ -2554,6 +2554,12 @@ body.dark-theme .drawer-footer { background: var(--card); }
         <label class="chip-label">
           <input type="radio" name="ntask-type" value="short" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔤 Точный ответ
         </label>
+        <label class="chip-label">
+          <input type="radio" name="ntask-type" value="number" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🔢 Числовой ответ
+        </label>
+        <label class="chip-label">
+          <input type="radio" name="ntask-type" value="voice" onchange="updateTaskTypeUI()" style="accent-color:var(--green-deep);flex-shrink:0"> 🎤 Голосовой ответ
+        </label>
       </div>
     </div>
 
@@ -2600,6 +2606,32 @@ body.dark-theme .drawer-footer { background: var(--card); }
       </div>
     </div>
 
+    <!-- Number: numeric answer with tolerance -->
+    <div id="ntask-ui-number" style="display:none">
+      <div class="form-group">
+        <label>Правильный числовой ответ</label>
+        <input id="ntask-correct-number" type="text" inputmode="decimal" placeholder="0" style="width:160px">
+      </div>
+      <div class="form-group">
+        <label>Допустимая погрешность <span style="color:var(--text3);font-weight:400">(необязательно)</span></label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--text3);font-size:1rem">±</span>
+          <input id="ntask-tolerance-number" type="text" inputmode="decimal" placeholder="" style="width:100px">
+        </div>
+        <div style="font-size:0.76rem;color:var(--text3);margin-top:6px">ℹ️ Для десятичной части используйте точку. Допускается и точка и запятая.</div>
+      </div>
+    </div>
+
+    <!-- Voice: manual check -->
+    <div id="ntask-ui-voice" style="display:none">
+      <div class="form-group">
+        <div style="background:var(--bg);border-radius:10px;padding:14px;font-size:0.84rem;color:var(--text2);line-height:1.6">
+          Данный тип вопроса предусматривает голосовой ответ через микрофон смартфона или компьютера.<br>
+          После прохождения теста, вы можете прослушать ответ, провести проверку и выставить нужное количество баллов.
+        </div>
+      </div>
+    </div>
+
     <input type="hidden" id="ntask-edit-id">
     </div>
     <div class="drawer-footer">
@@ -2630,6 +2662,8 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <button class="qtype-card" onclick="addTestQuestion('match')"><span class="qtype-card-icon">🔗</span><span class="qtype-card-label">Соответствие</span></button>
           <button class="qtype-card" onclick="addTestQuestion('pairs')"><span class="qtype-card-icon">🧩</span><span class="qtype-card-label">Найти пары</span></button>
           <button class="qtype-card" onclick="addTestQuestion('order')"><span class="qtype-card-icon">📊</span><span class="qtype-card-label">По порядку</span></button>
+          <button class="qtype-card" onclick="addTestQuestion('number')"><span class="qtype-card-icon">🔢</span><span class="qtype-card-label">Числовой ответ</span></button>
+          <button class="qtype-card" onclick="addTestQuestion('voice')"><span class="qtype-card-icon">🎤</span><span class="qtype-card-label">Голосовой ответ</span></button>
         </div>
         <span id="nt-total-pts" style="font-size:0.78rem;color:var(--text3);display:block;margin-top:6px"></span>
       </div>
@@ -2728,6 +2762,8 @@ body.dark-theme .drawer-footer { background: var(--card); }
           <button class="qtype-card" onclick="addHWQuestion('match')"><span class="qtype-card-icon">🔗</span><span class="qtype-card-label">Соответствие</span></button>
           <button class="qtype-card" onclick="addHWQuestion('pairs')"><span class="qtype-card-icon">🧩</span><span class="qtype-card-label">Найти пары</span></button>
           <button class="qtype-card" onclick="addHWQuestion('order')"><span class="qtype-card-icon">📊</span><span class="qtype-card-label">По порядку</span></button>
+          <button class="qtype-card" onclick="addHWQuestion('number')"><span class="qtype-card-icon">🔢</span><span class="qtype-card-label">Числовой ответ</span></button>
+          <button class="qtype-card" onclick="addHWQuestion('voice')"><span class="qtype-card-icon">🎤</span><span class="qtype-card-label">Голосовой ответ</span></button>
         </div>
         <span id="nhw-total-pts" style="font-size:0.78rem;color:var(--text3);display:block;margin-top:6px"></span>
       </div>
