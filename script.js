@@ -2709,8 +2709,17 @@ function openModal(id, extra){
       document.getElementById('ntask-options').value='';
       document.getElementById('ntask-correct-choice').value='';
       document.getElementById('ntask-explanation-choice').value='';
+      document.getElementById('ntask-multi-options').value='';
+      document.getElementById('ntask-multi-correct').value='';
+      document.getElementById('ntask-explanation-multi').value='';
       document.getElementById('ntask-correct-short').value='';
       document.getElementById('ntask-explanation-short').value='';
+      document.getElementById('ntask-fill-correct').value='';
+      document.getElementById('ntask-match-pairs').value='';
+      document.getElementById('ntask-pairs-pairs').value='';
+      document.getElementById('ntask-order-items').value='';
+      document.getElementById('ntask-correct-number').value='';
+      document.getElementById('ntask-tolerance-number').value='';
       document.querySelector('input[name="ntask-type"][value="open"]').checked=true;
       updateTaskTypeUI();
       document.getElementById('ntask-points').value='1';
@@ -7192,7 +7201,7 @@ function renderTaskBankAdmin(){
   if(label) label.textContent = `${tasks.length} заданий в базе`;
   if(!el) return;
   if(!tasks.length){ el.innerHTML=`<div class="card">${emptyHTML()}</div>`; return; }
-  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', short:'🔤 Точный ответ',number:'🔢 Числовой',voice:'🎤 Голосовой'};
+  const typeLabel = {open:'📝 Открытый', choice:'⚡ Выбор', multi:'☑️ Мн. выбор', short:'🔤 Точный ответ',fill:'📋 Пропуски',match:'🔗 Соответствие',pairs:'🃏 Найти пары',order:'🔢 По порядку',number:'🔢 Числовой',voice:'🎤 Голосовой'};
   el.innerHTML = tasks.map((t,i)=>`
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
@@ -7210,8 +7219,23 @@ function renderTaskBankAdmin(){
             <div style="font-size:0.8rem;color:var(--text3);margin-bottom:4px">Варианты: ${t.options.join(' · ')}</div>
             <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctOption}</b>${t.explanation?` — ${t.explanation}`:''}</div>
           `:''}
+          ${t.answerType==='multi'&&t.options?.length?`
+            <div style="font-size:0.8rem;color:var(--text3);margin-bottom:4px">Варианты: ${t.options.join(' · ')}</div>
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${(t.correctOptions||[]).join(', ')}</b>${t.explanation?` — ${t.explanation}`:''}</div>
+          `:''}
           ${t.answerType==='short'?`
             <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильно: <b>${t.correctShort}</b>${t.explanation?` — ${t.explanation}`:''}</div>
+          `:''}
+          ${t.answerType==='fill'?`
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Пропуски: <b>${t.correct}</b></div>
+          `:''}
+          ${(t.answerType==='match'||t.answerType==='pairs')&&t.pairs?.length?`
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">
+              ${t.pairs.map(p=>`<div>${escHtml(p[0])} <span style="color:var(--green-mid)">→</span> ${escHtml(p[1])}</div>`).join('')}
+            </div>
+          `:''}
+          ${t.answerType==='order'&&t.options?.length?`
+            <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Порядок: <b>${t.options.join(' → ')}</b></div>
           `:''}
           ${t.answerType==='number'?`
             <div style="font-size:0.8rem;background:var(--bg);padding:6px 10px;border-radius:8px;border-left:3px solid var(--green-mid)">✅ Правильный ответ: <b>${t.correctNumber}</b>${t.toleranceNumber?` ±${t.toleranceNumber}`:''}${t.explanation?` — ${t.explanation}`:''}</div>
@@ -7231,11 +7255,11 @@ function renderTaskBankAdmin(){
 
 function updateTaskTypeUI(){
   const type = document.querySelector('input[name="ntask-type"]:checked')?.value||'open';
-  document.getElementById('ntask-ui-open').style.display   = type==='open'   ?'block':'none';
-  document.getElementById('ntask-ui-choice').style.display = type==='choice' ?'block':'none';
-  document.getElementById('ntask-ui-short').style.display  = type==='short'  ?'block':'none';
-  document.getElementById('ntask-ui-number').style.display = type==='number' ?'block':'none';
-  document.getElementById('ntask-ui-voice').style.display  = type==='voice'  ?'block':'none';
+  const allUIs = ['open','choice','multi','short','fill','match','pairs','order','number','voice'];
+  allUIs.forEach(t => {
+    const el = document.getElementById('ntask-ui-'+t);
+    if(el) el.style.display = (t===type)?'block':'none';
+  });
 }
 
 let _ntaskImgData = '';
@@ -7267,11 +7291,40 @@ function saveTask(){
     taskData.options = opts;
     taskData.correctOption = correct;
     taskData.explanation = document.getElementById('ntask-explanation-choice').value.trim();
+  } else if(type==='multi'){
+    const opts = document.getElementById('ntask-multi-options').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!opts.length){ showNotif('Добавьте варианты ответов'); return; }
+    const corrLines = document.getElementById('ntask-multi-correct').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(!corrLines.length){ showNotif('Укажите правильные варианты'); return; }
+    taskData.options = opts;
+    taskData.correctOptions = corrLines;
+    taskData.correct = corrLines.join(',');
+    taskData.explanation = document.getElementById('ntask-explanation-multi').value.trim();
   } else if(type==='short'){
     const correct = document.getElementById('ntask-correct-short').value.trim();
     if(!correct){ showNotif('Укажите правильный ответ'); return; }
     taskData.correctShort = correct;
     taskData.explanation = document.getElementById('ntask-explanation-short').value.trim();
+  } else if(type==='fill'){
+    const correct = document.getElementById('ntask-fill-correct').value.trim();
+    if(!correct){ showNotif('Укажите правильные слова для пропусков'); return; }
+    taskData.correct = correct;
+    taskData.correctFill = correct.split(',').map(s=>s.trim());
+  } else if(type==='match'){
+    const lines = document.getElementById('ntask-match-pairs').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(lines.length<2){ showNotif('Добавьте минимум 2 пары соответствий'); return; }
+    const pairs = lines.map(l=>{ const p=l.split('→'); return [p[0]?.trim()||'', p[1]?.trim()||'']; });
+    taskData.pairs = pairs;
+  } else if(type==='pairs'){
+    const lines = document.getElementById('ntask-pairs-pairs').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(lines.length<2){ showNotif('Добавьте минимум 2 пары'); return; }
+    const pairs = lines.map(l=>{ const p=l.split('→'); return [p[0]?.trim()||'', p[1]?.trim()||'']; });
+    taskData.pairs = pairs;
+  } else if(type==='order'){
+    const items = document.getElementById('ntask-order-items').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(items.length<2){ showNotif('Добавьте минимум 2 элемента'); return; }
+    taskData.options = items;
+    taskData.correct = items.join(',');
   } else if(type==='number'){
     const val = document.getElementById('ntask-correct-number').value.trim();
     if(!val){ showNotif('Укажите числовой ответ'); return; }
@@ -7309,8 +7362,15 @@ function openEditTask(id){
   document.getElementById('ntask-options').value=(t.options||[]).join('\n');
   document.getElementById('ntask-correct-choice').value=t.correctOption||'';
   document.getElementById('ntask-explanation-choice').value=t.explanation||'';
+  document.getElementById('ntask-multi-options').value=(t.options||[]).join('\n');
+  document.getElementById('ntask-multi-correct').value=(t.correctOptions||[]).join('\n');
+  document.getElementById('ntask-explanation-multi').value=t.explanation||'';
   document.getElementById('ntask-correct-short').value=t.correctShort||'';
   document.getElementById('ntask-explanation-short').value=t.explanation||'';
+  document.getElementById('ntask-fill-correct').value=t.correct||'';
+  document.getElementById('ntask-match-pairs').value=(t.pairs||[]).map(p=>p[0]+' → '+p[1]).join('\n');
+  document.getElementById('ntask-pairs-pairs').value=(t.pairs||[]).map(p=>p[0]+' → '+p[1]).join('\n');
+  document.getElementById('ntask-order-items').value=(t.options||[]).join('\n');
   document.getElementById('ntask-correct-number').value=t.correctNumber||'';
   document.getElementById('ntask-tolerance-number').value=t.toleranceNumber||'';
   // Set radio
