@@ -1288,7 +1288,7 @@ async function preloadCache(){
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
-    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
       // Firebase хранит массивы как объекты — конвертируем
@@ -1610,7 +1610,7 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем обратно
-      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val);
       } else {
@@ -8261,6 +8261,24 @@ function renderContractEditor(){
   const contracts = load('contracts') || {};
   const privacyText = contracts.privacy || '';
   const rulesText   = contracts.rules   || '';
+
+  // Статусы подписей учеников
+  const users = load('users') || [];
+  const students = users.filter(u => u.role === 'student');
+  const signedPrivacyList = students.filter(u => u.signedPrivacy);
+  const signedRulesList   = students.filter(u => u.signedRules);
+  const unsignedPrivacy   = students.filter(u => !u.signedPrivacy);
+  const unsignedRules     = students.filter(u => !u.signedRules);
+
+  function signedBadges(list){
+    if(!list.length) return '<span style="color:var(--text3);font-size:0.82rem">—</span>';
+    return list.map(u => `<span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px;margin:2px">${esc(u.name)} · ${esc(u.signedPrivacy&&u.signedPrivacyDate||u.signedRulesDate||'')}</span>`).join('');
+  }
+  function unsignedBadges(list){
+    if(!list.length) return '<span style="color:var(--text3);font-size:0.82rem">—</span>';
+    return list.map(u => `<span style="display:inline-flex;align-items:center;gap:4px;background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px;margin:2px">${esc(u.name)}</span>`).join('');
+  }
+
   el.innerHTML = `
     <div class="card" style="margin-bottom:16px">
       <div class="card-title"><span class="dot"></span>🔒 Договор о персональных данных</div>
@@ -8268,6 +8286,13 @@ function renderContractEditor(){
       <textarea id="contract-privacy-text" rows="10" style="width:100%;box-sizing:border-box;font-size:0.87rem;line-height:1.6;padding:12px;border:1px solid var(--green-xpale);border-radius:10px;background:var(--bg);color:var(--text1);resize:vertical;font-family:inherit">${esc(privacyText)}</textarea>
       <button class="btn btn-green" style="margin-top:10px" onclick="saveContractText('privacy')">💾 Сохранить договор</button>
       <span id="contract-privacy-status" style="font-size:0.82rem;color:var(--green-mid);margin-left:12px"></span>
+      ${students.length ? `
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--green-xpale)">
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">✅ Подписали (${signedPrivacyList.length}):</div>
+        <div style="margin-bottom:10px;flex-wrap:wrap;display:flex;gap:4px">${signedPrivacyList.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}${u.signedPrivacyDate?' · '+esc(u.signedPrivacyDate):''}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">❌ Не подписали (${unsignedPrivacy.length}):</div>
+        <div style="flex-wrap:wrap;display:flex;gap:4px">${unsignedPrivacy.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
+      </div>` : ''}
     </div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>📋 Правила занятий</div>
@@ -8275,6 +8300,13 @@ function renderContractEditor(){
       <textarea id="contract-rules-text" rows="10" style="width:100%;box-sizing:border-box;font-size:0.87rem;line-height:1.6;padding:12px;border:1px solid var(--green-xpale);border-radius:10px;background:var(--bg);color:var(--text1);resize:vertical;font-family:inherit">${esc(rulesText)}</textarea>
       <button class="btn btn-green" style="margin-top:10px" onclick="saveContractText('rules')">💾 Сохранить правила</button>
       <span id="contract-rules-status" style="font-size:0.82rem;color:var(--green-mid);margin-left:12px"></span>
+      ${students.length ? `
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--green-xpale)">
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">✅ Подписали (${signedRulesList.length}):</div>
+        <div style="margin-bottom:10px;flex-wrap:wrap;display:flex;gap:4px">${signedRulesList.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}${u.signedRulesDate?' · '+esc(u.signedRulesDate):''}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">❌ Не подписали (${unsignedRules.length}):</div>
+        <div style="flex-wrap:wrap;display:flex;gap:4px">${unsignedRules.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
+      </div>` : ''}
     </div>`;
 }
 
