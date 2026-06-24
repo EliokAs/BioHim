@@ -1288,7 +1288,7 @@ async function preloadCache(){
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
-    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
       // Firebase хранит массивы как объекты — конвертируем
@@ -1610,7 +1610,7 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем обратно
-      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val);
       } else {
@@ -3112,10 +3112,12 @@ function addTheory(){
   const content=load('content')||[];
   const newItems=[];
   const base={type:'theory',title,...legacy,attachmentUrl:'',date:new Date().toLocaleDateString('ru'),openAt,closeAt,linkedTestId};
+  // Всегда сохраняем копию в библиотеку (если ещё нет с таким названием)
+  if(!content.some(c=>c.isLibrary&&c.type==='theory'&&c.title===title)){
+    const libItem={...base,id:'ct_'+Date.now()+'_lib',studentId:null,isLibrary:true}; content.push(libItem);
+  }
   if(sids.length){
     sids.forEach(sid=>{ const item={...base,id:'ct_'+Date.now()+'_'+sid,studentId:sid}; content.push(item); newItems.push(item); });
-  } else {
-    const item={...base,id:'ct_'+Date.now()+'_lib',studentId:null,isLibrary:true}; content.push(item); newItems.push(item);
   }
   save('content',content);
   newItems.filter(i=>i.studentId).forEach(item=>{ try{srScheduleItem(item.studentId,item.id);}catch{} });
@@ -4111,10 +4113,12 @@ function saveTest(){
   const maxPtsInput = +(document.getElementById('nt-maxpts')?.value)||0;
   const maxPts = _testMaxPtsManual && maxPtsInput > 0 ? maxPtsInput : allTotal || autoTotal;
   const tests=load('tests')||[];
+  // Всегда сохраняем копию в библиотеку (если ещё нет с таким названием)
+  if(!tests.some(t=>t.isLibrary&&t.title===title)){
+    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,maxPts,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
+  }
   if(sids.length){
     sids.forEach(sid=>tests.push({id:'t'+Date.now()+'_'+sid,studentId:sid,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,maxPts,gradeConfig,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]}));
-  } else {
-    tests.push({id:'t'+Date.now()+'_lib',studentId:null,title,questions:[..._tempQuestions],date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,maxPts,gradeConfig,isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,timeLimit,attempts:[]});
   }
   save('tests',tests);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'test',text:`📝 Новый тест: ${title}`,nav:'student-tests'}));
@@ -4516,10 +4520,12 @@ function saveHW(){
   const hwAllTotal=_tempHWQuestions.reduce((s,q)=>s+(+q.points||1),0);
   const hwMaxPtsInput=+(document.getElementById('nhw-maxpts')?.value)||0;
   const hwMaxPts = _hwMaxPtsManual && hwMaxPtsInput > 0 ? hwMaxPtsInput : hwAllTotal || hwAutoTotal;
+  // Всегда сохраняем копию в библиотеку (если ещё нет с таким названием)
+  if(!hws.some(h=>h.isLibrary&&h.title===title)){
+    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,maxPts:hwMaxPts,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
+  }
   if(sids.length){
     sids.forEach(sid=>hws.push({id:'hw'+Date.now()+'_'+sid,studentId:sid,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,maxPts:hwMaxPts,date:new Date().toLocaleDateString('ru'),openAt,closeAt,maxAttempts,gradeMode,attempts:[]}));
-  } else {
-    hws.push({id:'hw'+Date.now()+'_lib',studentId:null,title,desc,due,fileUrl,questions:[..._tempHWQuestions],submitted:false,answers:{},autoScore:0,autoTotal:hwMaxPts,maxPts:hwMaxPts,date:new Date().toLocaleDateString('ru'),isLibrary:true,openAt,closeAt,maxAttempts,gradeMode,attempts:[]});
   }
   save('hw',hws);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'hw',text:`✏️ Новое домашнее задание: ${title}`,nav:'student-hw'}));
@@ -6543,10 +6549,12 @@ function saveTrial(){
   const maxPts=allQ.reduce((a,q)=>a+(+q.points||1),0);
   const trials=load('trials')||[];
   const tBase={title,subject,timeMins,passThresh,instruction,sections:[..._trialSections.map(s=>({...s,questions:[...s.questions]}))],maxPts,gradeConfig,date:new Date().toLocaleDateString('ru'),submitted:false,answers:{},autoScore:0,autoTotal:maxPts,openAt,closeAt};
+  // Всегда сохраняем копию в библиотеку (если ещё нет с таким названием)
+  if(!trials.some(t=>t.isLibrary&&t.title===title)){
+    trials.push({...tBase,id:'tr_'+Date.now()+'_lib',studentId:null,isLibrary:true});
+  }
   if(sids.length){
     sids.forEach(sid=>trials.push({...tBase,id:'tr_'+Date.now()+'_'+sid,studentId:sid,isLibrary:false}));
-  } else {
-    trials.push({...tBase,id:'tr_'+Date.now()+'_lib',studentId:null,isLibrary:true});
   }
   save('trials',trials);
   if(sids.length) sids.forEach(sid=>addNotif(sid,{type:'trial',text:`🧪 Новый пробник: ${title}`,nav:'student-trial'}));
@@ -8261,24 +8269,6 @@ function renderContractEditor(){
   const contracts = load('contracts') || {};
   const privacyText = contracts.privacy || '';
   const rulesText   = contracts.rules   || '';
-
-  // Статусы подписей учеников
-  const users = load('users') || [];
-  const students = users.filter(u => u.role === 'student');
-  const signedPrivacyList = students.filter(u => u.signedPrivacy);
-  const signedRulesList   = students.filter(u => u.signedRules);
-  const unsignedPrivacy   = students.filter(u => !u.signedPrivacy);
-  const unsignedRules     = students.filter(u => !u.signedRules);
-
-  function signedBadges(list){
-    if(!list.length) return '<span style="color:var(--text3);font-size:0.82rem">—</span>';
-    return list.map(u => `<span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px;margin:2px">${esc(u.name)} · ${esc(u.signedPrivacy&&u.signedPrivacyDate||u.signedRulesDate||'')}</span>`).join('');
-  }
-  function unsignedBadges(list){
-    if(!list.length) return '<span style="color:var(--text3);font-size:0.82rem">—</span>';
-    return list.map(u => `<span style="display:inline-flex;align-items:center;gap:4px;background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px;margin:2px">${esc(u.name)}</span>`).join('');
-  }
-
   el.innerHTML = `
     <div class="card" style="margin-bottom:16px">
       <div class="card-title"><span class="dot"></span>🔒 Договор о персональных данных</div>
@@ -8286,13 +8276,6 @@ function renderContractEditor(){
       <textarea id="contract-privacy-text" rows="10" style="width:100%;box-sizing:border-box;font-size:0.87rem;line-height:1.6;padding:12px;border:1px solid var(--green-xpale);border-radius:10px;background:var(--bg);color:var(--text1);resize:vertical;font-family:inherit">${esc(privacyText)}</textarea>
       <button class="btn btn-green" style="margin-top:10px" onclick="saveContractText('privacy')">💾 Сохранить договор</button>
       <span id="contract-privacy-status" style="font-size:0.82rem;color:var(--green-mid);margin-left:12px"></span>
-      ${students.length ? `
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--green-xpale)">
-        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">✅ Подписали (${signedPrivacyList.length}):</div>
-        <div style="margin-bottom:10px;flex-wrap:wrap;display:flex;gap:4px">${signedPrivacyList.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}${u.signedPrivacyDate?' · '+esc(u.signedPrivacyDate):''}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
-        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">❌ Не подписали (${unsignedPrivacy.length}):</div>
-        <div style="flex-wrap:wrap;display:flex;gap:4px">${unsignedPrivacy.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
-      </div>` : ''}
     </div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>📋 Правила занятий</div>
@@ -8300,13 +8283,6 @@ function renderContractEditor(){
       <textarea id="contract-rules-text" rows="10" style="width:100%;box-sizing:border-box;font-size:0.87rem;line-height:1.6;padding:12px;border:1px solid var(--green-xpale);border-radius:10px;background:var(--bg);color:var(--text1);resize:vertical;font-family:inherit">${esc(rulesText)}</textarea>
       <button class="btn btn-green" style="margin-top:10px" onclick="saveContractText('rules')">💾 Сохранить правила</button>
       <span id="contract-rules-status" style="font-size:0.82rem;color:var(--green-mid);margin-left:12px"></span>
-      ${students.length ? `
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--green-xpale)">
-        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">✅ Подписали (${signedRulesList.length}):</div>
-        <div style="margin-bottom:10px;flex-wrap:wrap;display:flex;gap:4px">${signedRulesList.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#e8f8f0;color:#27ae60;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}${u.signedRulesDate?' · '+esc(u.signedRulesDate):''}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
-        <div style="font-size:0.78rem;font-weight:700;color:var(--text2);margin-bottom:6px">❌ Не подписали (${unsignedRules.length}):</div>
-        <div style="flex-wrap:wrap;display:flex;gap:4px">${unsignedRules.map(u=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#fdecea;color:#c0392b;font-size:0.78rem;font-weight:700;padding:3px 10px;border-radius:8px">${esc(u.name)}</span>`).join('')||'<span style="color:var(--text3);font-size:0.82rem">—</span>'}</div>
-      </div>` : ''}
     </div>`;
 }
 
