@@ -1193,6 +1193,27 @@ const _cache = {};
 // Сообщение об ошибке preloadCache (null = всё ок); показывается после входа
 let _preloadWarning = null;
 
+/**
+ * Рекурсивно конвертирует Firebase-объекты с числовыми ключами обратно в массивы.
+ * Firebase хранит JS-массивы как объекты {0: ..., 1: ...} — при чтении нужно
+ * восстанавливать массивы на всех уровнях вложенности, иначе blocks/files/timestamps
+ * внутри материалов остаются объектами и рендер ломается после перезагрузки.
+ */
+function _fbRestoreArrays(val) {
+  if (val === null || val === undefined) return val;
+  if (Array.isArray(val)) return val.map(_fbRestoreArrays);
+  if (typeof val !== 'object') return val;
+  const keys = Object.keys(val);
+  // Числовые ключи подряд от 0 — это бывший массив
+  if (keys.length > 0 && keys.every(k => /^\d+$/.test(k)) &&
+      keys.map(Number).sort((a,b)=>a-b).every((v,i)=>v===i)) {
+    return keys.map(Number).sort((a,b)=>a-b).map(i => _fbRestoreArrays(val[i]));
+  }
+  const out = {};
+  for (const k of keys) out[k] = _fbRestoreArrays(val[k]);
+  return out;
+}
+
 // ── Сворачиваемые карточки ──
 function toggleCollapse(id, btn){
   const body = document.getElementById('cb-' + id);
@@ -1294,11 +1315,11 @@ async function preloadCache(){
     const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
-      // Firebase хранит массивы как объекты — конвертируем
+      // Firebase хранит массивы как объекты — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
       if (raw !== null && !Array.isArray(raw) && typeof raw === 'object' && ARRAY_COLLECTIONS.includes(k)) {
-        _cache[k] = Object.values(raw);
+        _cache[k] = Object.values(raw).map(_fbRestoreArrays);
       } else {
-        _cache[k] = raw;
+        _cache[k] = _fbRestoreArrays(raw);
       }
       const count = Array.isArray(_cache[k]) ? _cache[k].length : (_cache[k] ? 'объект' : 'null');
     });
@@ -1615,12 +1636,12 @@ function subscribeRealtime(){
     db.ref('db/' + k).on('value', snap => {
       const val = snap.val();
       const oldVal = _cache[k];
-      // Firebase возвращает объект вместо массива — конвертируем обратно
+      // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
       const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
-        _cache[k] = Object.values(val);
+        _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
-        _cache[k] = val !== undefined ? val : null;
+        _cache[k] = _fbRestoreArrays(val !== undefined ? val : null);
       }
       
       // Логируем только если данные изменились
