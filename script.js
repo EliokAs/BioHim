@@ -1225,16 +1225,19 @@ function renderNow(k) {
   if (!entry) return;
   const m = entry[currentUser.role] || entry['admin'];
   if (!m) return;
-  if (curPage !== m.pageId) return;
-  const key = m.pageId + '|' + m.fn;
-  if (_renderNowQueue[key]) return; // уже запланирован
-  _renderNowQueue[key] = true;
-  setTimeout(() => {
-    delete _renderNowQueue[key];
-    if (currentUser && curPage === m.pageId && typeof window[m.fn] === 'function') {
-      window[m.fn]();
-    }
-  }, 0);
+  // m может быть массивом (несколько страниц) или одним объектом
+  (Array.isArray(m) ? m : [m]).forEach(item => {
+    if (curPage !== item.pageId) return;
+    const key = item.pageId + '|' + item.fn;
+    if (_renderNowQueue[key]) return;
+    _renderNowQueue[key] = true;
+    setTimeout(() => {
+      delete _renderNowQueue[key];
+      if (currentUser && curPage === item.pageId && typeof window[item.fn] === 'function') {
+        window[item.fn]();
+      }
+    }, 0);
+  });
 }
 
 function save(k, v){
@@ -1556,11 +1559,14 @@ function subscribeRealtime(){
   const PAGE_MAP = {
     content:        { student: { pageId: 'student-library',  fn: 'renderStudentLibrary' },
                       admin:   { pageId: 'content-admin',    fn: 'renderContentAdmin'   } },
-    tests:          { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
+    tests:          { student: [{ pageId: 'student-works', fn: 'renderStudentWorks' },
+                                { pageId: 'student-tests', fn: 'renderStudentTests' }],
                       admin:   { pageId: 'tests-admin',      fn: 'renderTestsAdmin'     } },
-    hw:             { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
+    hw:             { student: [{ pageId: 'student-works',   fn: 'renderStudentWorks' },
+                                { pageId: 'student-hw',      fn: 'renderStudentHW'    }],
                       admin:   { pageId: 'hw-admin',         fn: 'renderHWAdmin'        } },
-    trials:         { student: { pageId: 'student-works',    fn: 'renderStudentWorks'   },
+    trials:         { student: [{ pageId: 'student-works',   fn: 'renderStudentWorks' },
+                                { pageId: 'student-trial',   fn: 'renderStudentTrial' }],
                       admin:   { pageId: 'trial-admin',      fn: 'renderTrialAdmin'     } },
     users:          { admin:   { pageId: 'students',         fn: 'renderStudents'       } },
     payments:       { admin:   { pageId: 'students',         fn: 'renderStudents'       },
@@ -1627,7 +1633,9 @@ function subscribeRealtime(){
       const entry = PAGE_MAP[k];
       if (!entry) return;
       const m = entry[currentUser.role] || entry['admin'];
-      if (m) _scheduleRender(m.pageId, m.fn);
+      if (!m) return;
+      // m может быть массивом (несколько страниц) или одним объектом
+      (Array.isArray(m) ? m : [m]).forEach(item => _scheduleRender(item.pageId, item.fn));
     });
   });
 
@@ -2070,8 +2078,8 @@ function renderPage(p){
   else if(p==='student-dashboard') renderStudentDashboard();
   else if(p==='student-materials'){ if(currentUser&&currentUser.role==='student') renderStudentMaterials(); }
   else if(p==='student-repeat') renderRepeatPage();
-  else if(p==='student-tests'){ if(currentUser&&currentUser.role==='student') renderStudentTests(); }
-  else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student') renderStudentHW(); }
+  else if(p==='student-tests'){ if(currentUser&&currentUser.role==='student'){ _worksTab='tests'; renderStudentWorks(); } }
+  else if(p==='student-hw'){ if(currentUser&&currentUser.role==='student'){ _worksTab='hw'; renderStudentWorks(); } }
   else if(p==='student-grades') renderStudentGrades();
   else if(p==='student-mistakes') renderStudentMistakes();
   else if(p==='student-goals') renderStudentGoals();
@@ -9660,7 +9668,7 @@ function renderStudentTests(){
   const sid=currentUser.id;
   let tests=(load('tests')||[]).filter(t=>t.studentId===sid);
   const el=document.getElementById('student-tests-list');
-  if(!tests.length){ el.innerHTML=emptyHTML(); return; }
+  if(!tests.length){ if(el) el.innerHTML=emptyHTML(); return; }
 
   if(_testFilter==='pending') tests=tests.filter(t=>!t.submitted);
   if(_testFilter==='done')    tests=tests.filter(t=>t.submitted && !(t.openChecked || !(t.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
@@ -9862,7 +9870,7 @@ function renderStudentHW(){
   const sid=currentUser.id;
   let hws=(load('hw')||[]).filter(h=>h.studentId===sid);
   const el=document.getElementById('student-hw-list');
-  if(!hws.length){ el.innerHTML=emptyHTML(); return; }
+  if(!hws.length){ if(el) el.innerHTML=emptyHTML(); return; }
 
   if(_hwFilter==='pending') hws=hws.filter(h=>!h.submitted);
   if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted && !(h.openChecked || !(h.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
