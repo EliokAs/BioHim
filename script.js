@@ -1312,7 +1312,7 @@ async function preloadCache(){
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
-    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
       // Firebase хранит массивы как объекты — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
@@ -1637,7 +1637,7 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
-      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
@@ -8298,7 +8298,7 @@ function clearZoomLink(){
 function renderContractEditor(){
   const el = document.getElementById('contract-editor-container');
   if(!el) return;
-  const contracts = load('contracts') || {};
+  const contracts = (Array.isArray(load('contracts')) ? {} : (load('contracts') || {}));
   const privacyText = contracts.privacy || '';
   const rulesText   = contracts.rules   || '';
   el.innerHTML = `
@@ -8322,9 +8322,10 @@ function saveContractText(type){
   const elId = type === 'privacy' ? 'contract-privacy-text' : 'contract-rules-text';
   const statusId = type === 'privacy' ? 'contract-privacy-status' : 'contract-rules-status';
   const text = (document.getElementById(elId)||{}).value || '';
-  const contracts = load('contracts') || {};
-  contracts[type] = text;
-  save('contracts', contracts);
+  let contracts = load('contracts') || {};
+if (Array.isArray(contracts)) contracts = {};
+contracts[type] = text;
+save('contracts', contracts);
 
   // Отправляем уведомление всем ученикам
   const label = type === 'privacy' ? 'договор о персональных данных' : 'правила занятий';
@@ -8679,7 +8680,7 @@ function saveParentNotifTypes(){
 
 function _renderParentDocs(container){
   const u = currentUser;
-  const contracts = load('contracts') || {};
+  const contracts = (Array.isArray(load('contracts')) ? {} : (load('contracts') || {}));
   const privacyText = contracts.privacy || 'Текст договора о персональных данных не заполнен преподавателем.';
   const rulesText   = contracts.rules   || 'Текст правил занятий не заполнен преподавателем.';
   const signedPrivacy = u.signedPrivacy || false;
@@ -9342,7 +9343,7 @@ async function saveStudentPassword(){
 
 function _renderStudentDocs(container){
   const u = currentUser;
-  const contracts = load('contracts') || {};
+  const contracts = (Array.isArray(load('contracts')) ? {} : (load('contracts') || {}));
   const privacyText = contracts.privacy || 'Текст договора о персональных данных не заполнен преподавателем.';
   const rulesText   = contracts.rules   || 'Текст правил занятий не заполнен преподавателем.';
 
