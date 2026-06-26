@@ -8325,8 +8325,21 @@ function saveContractText(type){
   const contracts = load('contracts') || {};
   contracts[type] = text;
   save('contracts', contracts);
+
+  // Отправляем уведомление всем ученикам
+  const label = type === 'privacy' ? 'договор о персональных данных' : 'правила занятий';
+  const nav   = type === 'privacy' ? 'contract' : 'contract';
+  const students = (load('users') || []).filter(u => u.role === 'student');
+  students.forEach(s => {
+    addNotif(s.id, {
+      type: 'contract',
+      text: `📄 Преподаватель обновил ${label}. Пожалуйста, ознакомьтесь и подпишите.`,
+      nav
+    });
+  });
+
   const st = document.getElementById(statusId);
-  if(st){ st.textContent = '✅ Сохранено'; setTimeout(()=>{ if(st) st.textContent=''; }, 2500); }
+  if(st){ st.textContent = `✅ Сохранено и отправлено ${students.length} уч.`; setTimeout(()=>{ if(st) st.textContent=''; }, 3000); }
 }
 
 function renderZoomSettings(){
