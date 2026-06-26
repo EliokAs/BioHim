@@ -1755,6 +1755,9 @@ async function initData(){
       {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
     ]);
   }
+  // ВАЖНО: не перезаписываем Firebase пустыми массивами если preload не завершился
+  // (иначе таймаут/ошибка сети сотрёт все данные в базе)
+  if (_preloadWarning) return;
   if(!load('payments')) save('payments',[]);
   if(!load('attendance')) save('attendance',[]);
   if(!load('tests'))    save('tests',[]);
