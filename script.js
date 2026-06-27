@@ -1192,9 +1192,6 @@ function _fbRef(k){ return _fbInit().ref('db/' + k); }
 const _cache = {};
 // Сообщение об ошибке preloadCache (null = всё ок); показывается после входа
 let _preloadWarning = null;
-// true только после того, как preloadCache() полностью завершился (успешно или с ошибкой).
-// Пока false — сохранение запрещено, чтобы не перезаписать базу неполными данными.
-let _cacheReady = false;
 
 /**
  * Рекурсивно конвертирует Firebase-объекты с числовыми ключами обратно в массивы.
@@ -1265,18 +1262,6 @@ function renderNow(k) {
 }
 
 function save(k, v){
-  // Защита от перезаписи базы неполными данными: пока начальная синхронизация
-  // не подтверждена как успешная — сохранение запрещено.
-  if (!_cacheReady) {
-    console.error('[Firebase] Сохранение заблокировано: начальная загрузка ещё не завершена', k);
-    showNotif('⚠️ Подождите несколько секунд — идёт загрузка данных, сохранение временно недоступно.');
-    return;
-  }
-  if (_preloadWarning) {
-    console.error('[Firebase] Сохранение заблокировано: предыдущая загрузка завершилась с ошибкой', k, _preloadWarning);
-    showNotif('⚠️ Нет надёжного соединения с сервером. Обновите страницу (Ctrl+Shift+R) и попробуйте снова, иначе данные могут потеряться.');
-    return;
-  }
   _cache[k] = v;
   
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
@@ -1317,7 +1302,7 @@ async function preloadCache(){
     _preloadWarning = 'Firebase SDK не загружен. Проверьте файл firebase-bundle.js';
     return;
   }
-  const TIMEOUT_MS = 20000; // увеличено с 5000 — некоторые ДЗ с картинками весят десятки КБ и не успевали загрузиться
+  const TIMEOUT_MS = 5000;
   const timeout = new Promise((_, rej) =>
     setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
   );
@@ -1327,7 +1312,7 @@ async function preloadCache(){
     const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
-    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
       // Firebase хранит массивы как объекты — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
@@ -1347,9 +1332,6 @@ async function preloadCache(){
     // Показываем ненавязчивое предупреждение — не блокируем вход
     _preloadWarning = e.message;
   }
-  // Начальная синхронизация завершена (успешно или с ошибкой) — теперь save() разрешён.
-  // До этого момента сохранение блокируется, чтобы не перезаписать базу неполным кешем.
-  _cacheReady = true;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1654,12 +1636,8 @@ function subscribeRealtime(){
     db.ref('db/' + k).on('value', snap => {
       const val = snap.val();
       const oldVal = _cache[k];
-      // Получили реальные данные с сервера — значит соединение восстановилось,
-      // снимаем блокировку сохранения, если она была выставлена из-за сбоя preloadCache.
-      if (_preloadWarning) { _preloadWarning = null; }
-      _cacheReady = true;
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
-      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
@@ -1729,6 +1707,10 @@ async function hashPassword(plain){
 // DEFAULT DATA (записываются один раз)
 // ══════════════════════════════════════════
 async function initData(){
+  // ЗАЩИТА: если preloadCache не завершился (таймаут / сеть) — не пишем ничего.
+  // Иначе пустой кэш воспримется как «данных нет» и демо-данные перезапишут реальные.
+  if (_preloadWarning) return;
+
   try {
     // Миграция plain-text паролей → SHA-256
     const existingUsers = load('users')||[];
@@ -1752,7 +1734,13 @@ async function initData(){
     }
   } catch(e){ }
 
-  if(!(load('users')||[]).length){
+  // Дополнительная защита: перед записью демо-данных проверяем Firebase напрямую.
+  // Это защищает от случая когда кэш пуст (пустой ответ Firebase, ошибка прав),
+  // но _preloadWarning не был выставлен.
+  const _fbUsersSnap = await _fbInit().ref('db/users').get().catch(()=>null);
+  const _fbUsersExist = _fbUsersSnap && _fbUsersSnap.val() !== null;
+
+  if(!_fbUsersExist && !(load('users')||[]).length){
     const adminHash = await hashPassword('1234');
     const stuHash   = await hashPassword('1234');
     save('users',[
@@ -1762,32 +1750,40 @@ async function initData(){
     ]);
   }
   if(!(load('courses')||[]).length){
-    save('courses',[
-      {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
-      {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
-      {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
-    ]);
+    const _fbCoursesSnap = await _fbInit().ref('db/courses').get().catch(()=>null);
+    if(!_fbCoursesSnap || _fbCoursesSnap.val() === null){
+      save('courses',[
+        {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
+        {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
+        {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
+      ]);
+    }
   }
   if(!(load('slots')||[]).length){
-    save('slots',[
-      {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
-      {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
-      {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
-      {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
-      {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
-    ]);
+    const _fbSlotsSnap = await _fbInit().ref('db/slots').get().catch(()=>null);
+    if(!_fbSlotsSnap || _fbSlotsSnap.val() === null){
+      save('slots',[
+        {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
+        {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
+        {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
+        {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
+        {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
+      ]);
+    }
   }
   // ВАЖНО: не перезаписываем Firebase пустыми массивами если preload не завершился
   // (иначе таймаут/ошибка сети сотрёт все данные в базе)
   if (_preloadWarning) return;
-  if(!load('payments')) save('payments',[]);
-  if(!load('attendance')) save('attendance',[]);
-  if(!load('tests'))    save('tests',[]);
-  if(!load('hw'))       save('hw',[]);
-  if(!load('content'))  save('content',[]);
-  if(!load('bookings')) save('bookings',[]);
-  if(!load('notifs'))   save('notifs',[]);
-  if(!load('groups'))   save('groups',[]);
+  // Инициализируем пустыми массивами только если коллекции нет ни в кэше, ни в Firebase.
+  // Проверка кэша недостаточна: null в кэше может означать «Firebase ещё не вернул данные»,
+  // а не «коллекция реально пуста» — в этом случае save([]) сотрёт реальные данные.
+  const _emptyCollections = ['payments','attendance','tests','hw','content','bookings','notifs','groups'];
+  await Promise.all(_emptyCollections.map(async k => {
+    if (load(k) !== null) return; // в кэше есть — не трогаем
+    const snap = await _fbInit().ref('db/' + k).get().catch(() => null);
+    if (!snap || snap.val() !== null) return; // в Firebase тоже есть — не трогаем
+    save(k, []); // только если Firebase подтвердил: коллекции нет
+  }));
 }
 
 // ══════════════════════════════════════════
@@ -8320,7 +8316,7 @@ function clearZoomLink(){
 function renderContractEditor(){
   const el = document.getElementById('contract-editor-container');
   if(!el) return;
-  const contracts = (Array.isArray(load('contracts')) ? {} : (load('contracts') || {}));
+  const contracts = load('contracts') || {};
   const privacyText = contracts.privacy || '';
   const rulesText   = contracts.rules   || '';
   el.innerHTML = `
@@ -8344,9 +8340,7 @@ function saveContractText(type){
   const elId = type === 'privacy' ? 'contract-privacy-text' : 'contract-rules-text';
   const statusId = type === 'privacy' ? 'contract-privacy-status' : 'contract-rules-status';
   const text = (document.getElementById(elId)||{}).value || '';
-  let contracts = load('contracts') || {};
-  // Защита: если в базе ещё лежит "битый" массив со старых версий — приводим к объекту
-  if (Array.isArray(contracts)) contracts = {};
+  const contracts = load('contracts') || {};
   contracts[type] = text;
   save('contracts', contracts);
 
@@ -8703,7 +8697,7 @@ function saveParentNotifTypes(){
 
 function _renderParentDocs(container){
   const u = currentUser;
-  const contracts = (Array.isArray(load('contracts')) ? {} : (load('contracts') || {}));
+  const contracts = load('contracts') || {};
   const privacyText = contracts.privacy || 'Текст договора о персональных данных не заполнен преподавателем.';
   const rulesText   = contracts.rules   || 'Текст правил занятий не заполнен преподавателем.';
   const signedPrivacy = u.signedPrivacy || false;
@@ -9366,7 +9360,7 @@ async function saveStudentPassword(){
 
 function _renderStudentDocs(container){
   const u = currentUser;
-  const contracts = (Array.isArray(load('contracts')) ? {} : (load('contracts') || {}));
+  const contracts = load('contracts') || {};
   const privacyText = contracts.privacy || 'Текст договора о персональных данных не заполнен преподавателем.';
   const rulesText   = contracts.rules   || 'Текст правил занятий не заполнен преподавателем.';
 
