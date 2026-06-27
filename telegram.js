@@ -16,12 +16,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const { method, payload, token: bodyToken } = req.body || {};
+  const token = process.env.TELEGRAM_BOT_TOKEN || bodyToken;
   if (!token) {
     return res.status(500).json({ ok: false, error: 'Bot token not configured' });
   }
-
-  const { method, payload } = req.body || {};
 
   // Белый список разрешённых методов Telegram API
   const ALLOWED_METHODS = ['sendMessage', 'getMe'];
