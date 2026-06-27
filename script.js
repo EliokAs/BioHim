@@ -1285,7 +1285,8 @@ function _setSyncIndicator(active){
 const _ARRAY_COLLECTIONS_WITH_ID = new Set([
   'content','tests','hw','trials','users','payments','attendance',
   'slots','bookings','groups','notifs','taskbank','flashcard_decks',
-  'courses','salary_payments','mistakes','contracts'
+  'courses','salary_payments','mistakes'
+  // contracts — НЕ массив, а объект {privacy, rules}, не включаем сюда
 ]);
 
 function _saveFbError(k, e) {
@@ -1400,8 +1401,9 @@ async function preloadCache(){
   // Коллекции с потенциально тяжёлыми данными (base64) — читаем по одной
   const HEAVY_COLLECTIONS = ['content','tests','hw','trials','flashcard_decks'];
   // Коллекции которые хранятся как массивы (не объекты)
+  // contracts — объект {privacy, rules}, не массив — не включаем
   const ARRAY_COLLECTIONS = new Set(['users','attendance','payments','content','tests','hw','trials','slots',
-    'bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts']);
+    'bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes']);
 
   function _applySnap(k, raw) {
     if (raw !== null && !Array.isArray(raw) && typeof raw === 'object' && ARRAY_COLLECTIONS.has(k)) {
@@ -1757,7 +1759,8 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
-      const ARRAY_COLLECTIONS = ['users','attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+      // contracts — объект {privacy, rules}, не массив — не включаем
+      const ARRAY_COLLECTIONS = ['users','attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
