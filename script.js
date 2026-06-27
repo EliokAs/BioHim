@@ -1261,6 +1261,26 @@ function renderNow(k) {
   });
 }
 
+// Счётчик активных записей в Firebase — для индикатора синхронизации
+let _pendingSaves = 0;
+function _setSyncIndicator(active){
+  let el = document.getElementById('sync-indicator');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'sync-indicator';
+    el.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;background:#1a6b3c;color:#fff;font-size:0.78rem;padding:6px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,0.2);transition:opacity 0.4s;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  if(active){
+    el.textContent = '⏳ Сохранение…';
+    el.style.opacity = '1';
+  } else {
+    el.textContent = '✅ Сохранено';
+    el.style.opacity = '1';
+    setTimeout(() => { el.style.opacity = '0'; }, 1500);
+  }
+}
+
 function save(k, v){
   _cache[k] = v;
   
@@ -1268,20 +1288,41 @@ function save(k, v){
   renderNow(k);
   
   // Асинхронно пишем в Firebase (не блокируем UI)
-  const fbRef = _fbRef(k);
+  let fbRef;
+  try { fbRef = _fbRef(k); } catch(e) { fbRef = null; }
   if (!fbRef) {
     console.error('[Firebase] ОШИБКА: fbRef не инициализирован для ключа', k);
-    showNotif('⚠️ Ошибка соединения с сервером. Данные могут не сохраниться.');
+    showNotif('⚠️ Ошибка соединения с сервером. Данные не сохранены.');
     return;
   }
   
+  _pendingSaves++;
+  _setSyncIndicator(true);
+  
   fbRef.set(v === null ? null : v)
     .then(() => {
+      _pendingSaves--;
+      if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
     })
     .catch(e => {
-      console.error('[Firebase] ❌ ОШИБКА сохранения', k, e);
-      console.error('[Firebase] Детали ошибки:', e.message, e.code);
-      showNotif('⚠️ Ошибка сохранения данных: ' + (e.message || 'Проверьте подключение к интернету'));
+      _pendingSaves--;
+      if(_pendingSaves <= 0){ _pendingSaves = 0; }
+      console.error('[Firebase] ❌ ОШИБКА сохранения', k, e.message, e.code);
+      // Показываем крупное заметное уведомление с деталями
+      const msg = e.code === 'PERMISSION_DENIED'
+        ? '🔒 Нет прав на запись в Firebase. Проверьте Rules в консоли Firebase.'
+        : `⚠️ Данные не сохранены: ${e.message || e.code || 'нет связи'}`;
+      showNotif(msg, 6000);
+      // Дополнительно — красный баннер вверху страницы
+      let banner = document.getElementById('save-error-banner');
+      if(!banner){
+        banner = document.createElement('div');
+        banner.id = 'save-error-banner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0392b;color:#fff;font-size:0.85rem;text-align:center;padding:8px 16px;cursor:pointer;';
+        banner.onclick = () => banner.remove();
+        document.body.prepend(banner);
+      }
+      banner.textContent = msg + ' (нажми чтобы закрыть)';
     });
 }
 
@@ -1302,14 +1343,17 @@ async function preloadCache(){
     _preloadWarning = 'Firebase SDK не загружен. Проверьте файл firebase-bundle.js';
     return;
   }
-  const TIMEOUT_MS = 5000;
-  const timeout = new Promise((_, rej) =>
-    setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
-  );
   const db = _fbInit();
-  
-  try {
-    const snap = await Promise.race([db.ref('db').get(), timeout]);
+
+  // 3 попытки с увеличивающимся таймаутом
+  const TIMEOUTS = [10000, 15000, 20000];
+  let lastError = null;
+  for (let attempt = 0; attempt < TIMEOUTS.length; attempt++) {
+    try {
+      const timeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('Firebase timeout')), TIMEOUTS[attempt])
+      );
+      const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
     const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
@@ -1324,14 +1368,21 @@ async function preloadCache(){
       const count = Array.isArray(_cache[k]) ? _cache[k].length : (_cache[k] ? 'объект' : 'null');
     });
     
-  } catch(e) {
-    // При таймауте или сетевой ошибке — инициализируем пустым кешем и продолжаем.
-    // Реальтайм-подписки (subscribeRealtime) заполнят кеш после восстановления соединения.
-    console.error('[Firebase] ❌ КРИТИЧЕСКАЯ ОШИБКА preloadCache:', e.message);
-    COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
-    // Показываем ненавязчивое предупреждение — не блокируем вход
-    _preloadWarning = e.message;
+      _preloadWarning = null;
+      return;
+    } catch(e) {
+      lastError = e;
+      console.warn(`[Firebase] Попытка ${attempt + 1} не удалась:`, e.message);
+      if (attempt < TIMEOUTS.length - 1) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
   }
+
+  // Все попытки исчерпаны
+  console.error('[Firebase] ❌ КРИТИЧЕСКАЯ ОШИБКА preloadCache:', lastError?.message);
+  COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
+  _preloadWarning = lastError?.message || 'Ошибка подключения к серверу';
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -12035,6 +12086,36 @@ function _loadingDone(){
         localStorage.removeItem('biohim_session');
         return;
       }
+      // Если кэш пустой из-за ошибки сети — не удаляем сессию,
+      // а ждём пока subscribeRealtime заполнит кэш
+      if(!user && _preloadWarning && savedUser.id){
+        subscribeRealtime();
+        await new Promise(resolve => {
+          let waited = 0;
+          const check = setInterval(() => {
+            const u = (load('users')||[]).find(u=>u.id===savedUser.id);
+            waited += 300;
+            if(u || waited >= 15000){ clearInterval(check); resolve(u); }
+          }, 300);
+        }).then(async resolvedUser => {
+          if(!resolvedUser){ localStorage.removeItem('biohim_session'); return; }
+          currentUser = resolvedUser;
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='block';
+          const resetBtn = document.getElementById('btn-reset-data');
+          if(resetBtn) resetBtn.style.display = resolvedUser.role==='admin' ? 'block' : 'none';
+          if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
+          initDarkTheme();
+          buildNav();
+          await runLocalStorageMigration(resolvedUser);
+          await preloadUserData(resolvedUser);
+          const defaultPage = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
+          const lastPage = localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage;
+          navigateTo(lastPage);
+        });
+        return;
+      }
+
       if(user){
         // Проверяем что роль в сессии совпадает с ролью в базе (защита от ручного изменения)
         if(savedUser.role && savedUser.role !== user.role){
