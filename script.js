@@ -1336,29 +1336,60 @@ function save(k, v){
   // иначе при большом объёме данных Firebase отклоняет запись ("Write too large").
   if (Array.isArray(v) && _ARRAY_COLLECTIONS_WITH_ID.has(k)) {
     const db = _fbInit();
-    const prev = _cachePrev[k]; // предыдущее состояние до записи в _cache
+    const prev = _cachePrev[k]; // map {id -> item} до изменения, или undefined
     const updates = {};
+
+    if (prev === undefined) {
+      // _cachePrev ещё не инициализирован — пишем только новые/изменённые элементы
+      // сравнивая с тем что уже есть в Firebase (один лёгкий get по ключам)
+      _pendingSaves--;
+      if(_pendingSaves <= 0){ _pendingSaves = 0; }
+      db.ref('db/' + k).get().then(snap => {
+        const existing = snap.val() || {};
+        const fbUpdates = {};
+        v.forEach(item => {
+          if (!item || !item.id) return;
+          const oldItem = existing[item.id];
+          if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(item)) {
+            fbUpdates['db/' + k + '/' + item.id] = item;
+          }
+        });
+        // Удалённые
+        const newIds = new Set(v.filter(i=>i&&i.id).map(i=>i.id));
+        Object.keys(existing).forEach(oldId => {
+          if (!newIds.has(oldId)) fbUpdates['db/' + k + '/' + oldId] = null;
+        });
+        // Обновляем _cachePrev из Firebase
+        _cachePrev[k] = {};
+        v.forEach(item => { if(item && item.id) _cachePrev[k][item.id] = item; });
+        if (Object.keys(fbUpdates).length === 0) { _setSyncIndicator(false); return; }
+        _pendingSaves++;
+        return db.ref('/').update(fbUpdates);
+      })
+      .then(() => {
+        _pendingSaves--;
+        if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
+      })
+      .catch(e => _saveFbError(k, e));
+      return;
+    }
 
     // Новые и изменённые элементы
     v.forEach(item => {
       if (!item || !item.id) return;
-      const oldItem = prev && prev[item.id];
-      // Пишем только если элемент новый или изменился
+      const oldItem = prev[item.id];
       if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(item)) {
         updates['db/' + k + '/' + item.id] = item;
       }
     });
 
     // Удалённые элементы
-    if (prev) {
-      const newIds = new Set(v.filter(i=>i&&i.id).map(i=>i.id));
-      Object.keys(prev).forEach(oldId => {
-        if (!newIds.has(oldId)) updates['db/' + k + '/' + oldId] = null;
-      });
-    }
+    const newIds = new Set(v.filter(i=>i&&i.id).map(i=>i.id));
+    Object.keys(prev).forEach(oldId => {
+      if (!newIds.has(oldId)) updates['db/' + k + '/' + oldId] = null;
+    });
 
     if (Object.keys(updates).length === 0) {
-      // Ничего не изменилось — не пишем в Firebase
       _pendingSaves--;
       if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
       return;
@@ -1749,6 +1780,11 @@ function subscribeRealtime(){
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
         _cache[k] = _fbRestoreArrays(val !== undefined ? val : null);
+      }
+      // Синхронизируем _cachePrev чтобы следующий save() делал точный diff
+      if (_ARRAY_COLLECTIONS_WITH_ID.has(k) && Array.isArray(_cache[k])) {
+        _cachePrev[k] = {};
+        _cache[k].forEach(item => { if(item && item.id) _cachePrev[k][item.id] = item; });
       }
       
       // Логируем только если данные изменились
