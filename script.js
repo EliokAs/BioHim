@@ -1281,13 +1281,38 @@ function _setSyncIndicator(active){
   }
 }
 
+// Коллекции которые хранятся как массивы с .id у каждого элемента
+const _ARRAY_COLLECTIONS_WITH_ID = new Set([
+  'content','tests','hw','trials','users','payments','attendance',
+  'slots','bookings','groups','notifs','taskbank','flashcard_decks',
+  'courses','salary_payments','mistakes','contracts'
+]);
+
+function _saveFbError(k, e) {
+  _pendingSaves--;
+  if(_pendingSaves <= 0){ _pendingSaves = 0; }
+  console.error('[Firebase] ❌ ОШИБКА сохранения', k, e.message, e.code);
+  const msg = e.code === 'PERMISSION_DENIED'
+    ? '🔒 Нет прав на запись в Firebase. Проверьте Rules в консоли Firebase.'
+    : `⚠️ Данные не сохранены: ${e.message || e.code || 'нет связи'}`;
+  showNotif(msg, 6000);
+  let banner = document.getElementById('save-error-banner');
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = 'save-error-banner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0392b;color:#fff;font-size:0.85rem;text-align:center;padding:8px 16px;cursor:pointer;';
+    banner.onclick = () => banner.remove();
+    document.body.prepend(banner);
+  }
+  banner.textContent = msg + ' (нажми чтобы закрыть)';
+}
+
 function save(k, v){
   _cache[k] = v;
-  
+
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
   renderNow(k);
-  
-  // Асинхронно пишем в Firebase (не блокируем UI)
+
   let fbRef;
   try { fbRef = _fbRef(k); } catch(e) { fbRef = null; }
   if (!fbRef) {
@@ -1295,35 +1320,48 @@ function save(k, v){
     showNotif('⚠️ Ошибка соединения с сервером. Данные не сохранены.');
     return;
   }
-  
+
   _pendingSaves++;
   _setSyncIndicator(true);
-  
+
+  // Для массивов с id-элементами пишем каждый элемент отдельным узлом —
+  // иначе при большом объёме данных Firebase отклоняет запись ("Write too large").
+  if (Array.isArray(v) && _ARRAY_COLLECTIONS_WITH_ID.has(k)) {
+    const db = _fbInit();
+    const updates = {};
+    // Сначала помечаем весь узел для удаления (чтобы убрать удалённые элементы)
+    // через multi-path update: null удалит старые ключи, новые запишутся ниже
+    v.forEach(item => {
+      if (item && item.id) {
+        updates['db/' + k + '/' + item.id] = item;
+      }
+    });
+    // Узнаём какие id были в Firebase до этого — удаляем исчезнувшие
+    db.ref('db/' + k).get().then(snap => {
+      const existing = snap.val();
+      if (existing && typeof existing === 'object') {
+        const newIds = new Set(v.filter(i=>i&&i.id).map(i=>i.id));
+        Object.keys(existing).forEach(oldId => {
+          if (!newIds.has(oldId)) updates['db/' + k + '/' + oldId] = null;
+        });
+      }
+      return db.ref('/').update(updates);
+    })
+    .then(() => {
+      _pendingSaves--;
+      if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
+    })
+    .catch(e => _saveFbError(k, e));
+    return;
+  }
+
+  // Для не-массивов (users как объект, settings и т.д.) — пишем как раньше
   fbRef.set(v === null ? null : v)
     .then(() => {
       _pendingSaves--;
       if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
     })
-    .catch(e => {
-      _pendingSaves--;
-      if(_pendingSaves <= 0){ _pendingSaves = 0; }
-      console.error('[Firebase] ❌ ОШИБКА сохранения', k, e.message, e.code);
-      // Показываем крупное заметное уведомление с деталями
-      const msg = e.code === 'PERMISSION_DENIED'
-        ? '🔒 Нет прав на запись в Firebase. Проверьте Rules в консоли Firebase.'
-        : `⚠️ Данные не сохранены: ${e.message || e.code || 'нет связи'}`;
-      showNotif(msg, 6000);
-      // Дополнительно — красный баннер вверху страницы
-      let banner = document.getElementById('save-error-banner');
-      if(!banner){
-        banner = document.createElement('div');
-        banner.id = 'save-error-banner';
-        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#c0392b;color:#fff;font-size:0.85rem;text-align:center;padding:8px 16px;cursor:pointer;';
-        banner.onclick = () => banner.remove();
-        document.body.prepend(banner);
-      }
-      banner.textContent = msg + ' (нажми чтобы закрыть)';
-    });
+    .catch(e => _saveFbError(k, e));
 }
 
 /**
@@ -12116,8 +12154,34 @@ function _loadingDone(){
         return;
       }
 
+      if(!user && _preloadWarning && savedUser.id){
+        subscribeRealtime();
+        await new Promise(resolve => {
+          let waited = 0;
+          const check = setInterval(() => {
+            const u = (load('users')||[]).find(u=>u.id===savedUser.id);
+            waited += 300;
+            if(u || waited >= 15000){ clearInterval(check); resolve(u); }
+          }, 300);
+        }).then(async resolvedUser => {
+          if(!resolvedUser){ localStorage.removeItem('biohim_session'); return; }
+          currentUser = resolvedUser;
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='block';
+          const resetBtn = document.getElementById('btn-reset-data');
+          if(resetBtn) resetBtn.style.display = resolvedUser.role==='admin' ? 'block' : 'none';
+          if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
+          initDarkTheme();
+          buildNav();
+          await runLocalStorageMigration(resolvedUser);
+          await preloadUserData(resolvedUser);
+          const defaultPage = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
+          const lastPage = localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage;
+          navigateTo(lastPage);
+        });
+        return;
+      }
       if(user){
-        // Проверяем что роль в сессии совпадает с ролью в базе (защита от ручного изменения)
         if(savedUser.role && savedUser.role !== user.role){
           localStorage.removeItem('biohim_session');
           return;
@@ -12127,12 +12191,10 @@ function _loadingDone(){
         document.getElementById('app').style.display='block';
         const resetBtn = document.getElementById('btn-reset-data');
         if(resetBtn) resetBtn.style.display = user.role==='admin' ? 'block' : 'none';
-        // hide chat badge for parent
         if(user.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
-        initDarkTheme(); // FIX: was missing — dark theme wasn't restored on auto-login
+        initDarkTheme();
         buildNav();
         subscribeRealtime();
-        // Загружаем пользовательские данные из Firebase в кэш + одноразовая миграция из localStorage
         await runLocalStorageMigration(user);
         await preloadUserData(user);
         const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='teacher' ? 'teacher-dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
