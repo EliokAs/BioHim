@@ -1190,6 +1190,8 @@ function _fbRef(k){ return _fbInit().ref('db/' + k); }
 
 // Синхронный кэш — заполняется при preloadCache
 const _cache = {};
+// Предыдущее состояние кэша — для диффа в save() (только массивы с id)
+const _cachePrev = {};
 // Сообщение об ошибке preloadCache (null = всё ок); показывается после входа
 let _preloadWarning = null;
 
@@ -1308,6 +1310,12 @@ function _saveFbError(k, e) {
 }
 
 function save(k, v){
+  // Сохраняем предыдущее состояние для диффа (только для массивов с id)
+  if (_ARRAY_COLLECTIONS_WITH_ID.has(k) && Array.isArray(_cache[k])) {
+    const prev = {};
+    _cache[k].forEach(item => { if(item && item.id) prev[item.id] = item; });
+    _cachePrev[k] = prev;
+  }
   _cache[k] = v;
 
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
@@ -1328,25 +1336,35 @@ function save(k, v){
   // иначе при большом объёме данных Firebase отклоняет запись ("Write too large").
   if (Array.isArray(v) && _ARRAY_COLLECTIONS_WITH_ID.has(k)) {
     const db = _fbInit();
+    const prev = _cachePrev[k]; // предыдущее состояние до записи в _cache
     const updates = {};
-    // Сначала помечаем весь узел для удаления (чтобы убрать удалённые элементы)
-    // через multi-path update: null удалит старые ключи, новые запишутся ниже
+
+    // Новые и изменённые элементы
     v.forEach(item => {
-      if (item && item.id) {
+      if (!item || !item.id) return;
+      const oldItem = prev && prev[item.id];
+      // Пишем только если элемент новый или изменился
+      if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(item)) {
         updates['db/' + k + '/' + item.id] = item;
       }
     });
-    // Узнаём какие id были в Firebase до этого — удаляем исчезнувшие
-    db.ref('db/' + k).get().then(snap => {
-      const existing = snap.val();
-      if (existing && typeof existing === 'object') {
-        const newIds = new Set(v.filter(i=>i&&i.id).map(i=>i.id));
-        Object.keys(existing).forEach(oldId => {
-          if (!newIds.has(oldId)) updates['db/' + k + '/' + oldId] = null;
-        });
-      }
-      return db.ref('/').update(updates);
-    })
+
+    // Удалённые элементы
+    if (prev) {
+      const newIds = new Set(v.filter(i=>i&&i.id).map(i=>i.id));
+      Object.keys(prev).forEach(oldId => {
+        if (!newIds.has(oldId)) updates['db/' + k + '/' + oldId] = null;
+      });
+    }
+
+    if (Object.keys(updates).length === 0) {
+      // Ничего не изменилось — не пишем в Firebase
+      _pendingSaves--;
+      if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
+      return;
+    }
+
+    db.ref('/').update(updates)
     .then(() => {
       _pendingSaves--;
       if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
