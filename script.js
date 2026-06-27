@@ -1192,6 +1192,9 @@ function _fbRef(k){ return _fbInit().ref('db/' + k); }
 const _cache = {};
 // Сообщение об ошибке preloadCache (null = всё ок); показывается после входа
 let _preloadWarning = null;
+// true только после того, как preloadCache() полностью завершился (успешно или с ошибкой).
+// Пока false — сохранение запрещено, чтобы не перезаписать базу неполными данными.
+let _cacheReady = false;
 
 /**
  * Рекурсивно конвертирует Firebase-объекты с числовыми ключами обратно в массивы.
@@ -1262,6 +1265,18 @@ function renderNow(k) {
 }
 
 function save(k, v){
+  // Защита от перезаписи базы неполными данными: пока начальная синхронизация
+  // не подтверждена как успешная — сохранение запрещено.
+  if (!_cacheReady) {
+    console.error('[Firebase] Сохранение заблокировано: начальная загрузка ещё не завершена', k);
+    showNotif('⚠️ Подождите несколько секунд — идёт загрузка данных, сохранение временно недоступно.');
+    return;
+  }
+  if (_preloadWarning) {
+    console.error('[Firebase] Сохранение заблокировано: предыдущая загрузка завершилась с ошибкой', k, _preloadWarning);
+    showNotif('⚠️ Нет надёжного соединения с сервером. Обновите страницу (Ctrl+Shift+R) и попробуйте снова, иначе данные могут потеряться.');
+    return;
+  }
   _cache[k] = v;
   
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
@@ -1302,7 +1317,7 @@ async function preloadCache(){
     _preloadWarning = 'Firebase SDK не загружен. Проверьте файл firebase-bundle.js';
     return;
   }
-  const TIMEOUT_MS = 5000;
+  const TIMEOUT_MS = 20000; // увеличено с 5000 — некоторые ДЗ с картинками весят десятки КБ и не успевали загрузиться
   const timeout = new Promise((_, rej) =>
     setTimeout(() => rej(new Error('Firebase timeout — проверьте соединение или правила базы данных')), TIMEOUT_MS)
   );
@@ -1332,6 +1347,9 @@ async function preloadCache(){
     // Показываем ненавязчивое предупреждение — не блокируем вход
     _preloadWarning = e.message;
   }
+  // Начальная синхронизация завершена (успешно или с ошибкой) — теперь save() разрешён.
+  // До этого момента сохранение блокируется, чтобы не перезаписать базу неполным кешем.
+  _cacheReady = true;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1636,6 +1654,10 @@ function subscribeRealtime(){
     db.ref('db/' + k).on('value', snap => {
       const val = snap.val();
       const oldVal = _cache[k];
+      // Получили реальные данные с сервера — значит соединение восстановилось,
+      // снимаем блокировку сохранения, если она была выставлена из-за сбоя preloadCache.
+      if (_preloadWarning) { _preloadWarning = null; }
+      _cacheReady = true;
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
       const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
@@ -8323,9 +8345,10 @@ function saveContractText(type){
   const statusId = type === 'privacy' ? 'contract-privacy-status' : 'contract-rules-status';
   const text = (document.getElementById(elId)||{}).value || '';
   let contracts = load('contracts') || {};
-if (Array.isArray(contracts)) contracts = {};
-contracts[type] = text;
-save('contracts', contracts);
+  // Защита: если в базе ещё лежит "битый" массив со старых версий — приводим к объекту
+  if (Array.isArray(contracts)) contracts = {};
+  contracts[type] = text;
+  save('contracts', contracts);
 
   // Отправляем уведомление всем ученикам
   const label = type === 'privacy' ? 'договор о персональных данных' : 'правила занятий';
