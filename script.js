@@ -1324,47 +1324,45 @@ function save(k, v){
   _pendingSaves++;
   _setSyncIndicator(true);
 
-  // Для массивов с id-элементами пишем каждый элемент отдельным узлом —
-  // иначе при большом объёме данных Firebase отклоняет запись ("Write too large").
+  // Для массивов с id-элементами пишем каждый элемент отдельным set() —
+  // batch update() отклоняется Firebase если суммарный размер > 10 МБ,
+  // set() на отдельный узел — тот же лимит, но ошибка локализована.
   if (Array.isArray(v) && _ARRAY_COLLECTIONS_WITH_ID.has(k)) {
     const db = _fbInit();
+    const newIds = new Set(v.filter(i => i && i.id).map(i => i.id));
 
-    // Если массив пуст — просто обнуляем весь узел
-    if (v.length === 0) {
-      db.ref('db/' + k).set(null)
-        .then(() => {
-          _pendingSaves--;
-          if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
-        })
-        .catch(e => _saveFbError(k, e));
-      return;
-    }
-
-    // Новые данные: id → объект
-    const newIds = new Set();
-    const updates = {};
-    v.forEach(item => {
-      if (item && item.id) {
-        updates['db/' + k + '/' + item.id] = item;
-        newIds.add(item.id);
-      }
-    });
-
-    // Узнаём какие id были в Firebase — удаляем исчезнувшие атомарно в том же update
+    // 1. Удаляем исчезнувшие элементы
     db.ref('db/' + k).get().then(snap => {
       const existing = snap.val();
+      const deleteOps = [];
       if (existing && typeof existing === 'object') {
         Object.keys(existing).forEach(oldId => {
-          if (!newIds.has(oldId)) updates['db/' + k + '/' + oldId] = null;
+          if (!newIds.has(oldId)) deleteOps.push(db.ref('db/' + k + '/' + oldId).remove());
         });
       }
-      return db.ref('/').update(updates);
-    })
-    .then(() => {
-      _pendingSaves--;
-      if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
-    })
-    .catch(e => _saveFbError(k, e));
+      return Promise.all(deleteOps);
+    }).catch(e => console.warn('[Firebase] delete stale items error', k, e));
+
+    // 2. Сохраняем каждый элемент отдельным set() — Firebase не суммирует размеры
+    const MB = 1024 * 1024;
+    const MAX_ITEM_BYTES = 9 * MB; // Firebase лимит ~10 МБ на узел
+    const saveOps = v.filter(item => item && item.id).map(item => {
+      const byteSize = new Blob([JSON.stringify(item)]).size;
+      if (byteSize > MAX_ITEM_BYTES) {
+        const sizeMB = (byteSize / MB).toFixed(1);
+        console.error('[Firebase] ❌ Элемент "' + item.id + '" (' + k + ') слишком большой: ' + sizeMB + ' МБ > 9 МБ.');
+        showNotif('⚠️ Материал "' + (item.title || item.id) + '" слишком большой (' + sizeMB + ' МБ). Удалите часть изображений.', 8000);
+        return Promise.resolve(); // пропускаем — не блокируем остальные
+      }
+      return db.ref('db/' + k + '/' + item.id).set(item);
+    });
+
+    Promise.all(saveOps)
+      .then(() => {
+        _pendingSaves--;
+        if(_pendingSaves <= 0){ _pendingSaves = 0; _setSyncIndicator(false); }
+      })
+      .catch(e => _saveFbError(k, e));
     return;
   }
 
@@ -1407,7 +1405,7 @@ async function preloadCache(){
       const snap = await Promise.race([db.ref('db').get(), timeout]);
     const data = snap.val() || {};
     
-    const ARRAY_COLLECTIONS = ['users','attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
     COLLECTIONS.forEach(k => { 
       const raw = data[k] !== undefined ? data[k] : null;
       // Firebase хранит массивы как объекты — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
@@ -1739,7 +1737,7 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
-      const ARRAY_COLLECTIONS = ['users','attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
@@ -5201,6 +5199,11 @@ function saveEditContent(){
   const oldLinkedTestId = cont.linkedTestId || null;
   const newLinkedTestId = ltEl ? (ltEl.value || null) : oldLinkedTestId;
   cont.linkedTestId = newLinkedTestId;
+  // Проверяем размер материала перед сохранением
+  const _contSizeKB = Math.round(new Blob([JSON.stringify(cont)]).size / 1024);
+  if (_contSizeKB > 7000) { // > 7 МБ — предупреждение
+    showNotif('⚠️ Материал занимает ' + _contSizeKB + ' КБ — близко к лимиту Firebase (9 МБ). Удалите лишние изображения.', 7000);
+  }
   save('content',content);
   // Auto-send linked test to student if newly linked
   if(newLinkedTestId && newLinkedTestId !== oldLinkedTestId && cont.studentId){
@@ -15370,8 +15373,8 @@ if ('serviceWorker' in navigator) {
  * Итоговый размер: ~50–200 КБ вместо 2–8 МБ.
  */
 function _compressImage(fileOrBlob, maxPx, quality) {
-  maxPx   = maxPx   || 1200;
-  quality = quality || 0.75;
+  maxPx   = maxPx   || 800;  // было 1200 — уменьшили чтобы base64 не раздувал Firebase-узел
+  quality = quality || 0.65; // было 0.75
   return new Promise(function(resolve, reject) {
     const url = URL.createObjectURL(fileOrBlob);
     const img = new Image();
