@@ -1385,7 +1385,7 @@ function renderComponent(fn) {
 }
 
 async function preloadCache(){
-  // Проверяем доступность Firebase SDK (теперь встроен локально)
+  // Проверяем доступность Firebase SDK
   if(typeof firebase === 'undefined'){
     console.error('[Firebase] SDK не загружен — проверьте наличие firebase-bundle.js');
     COLLECTIONS.forEach(k => { if(!(k in _cache)) _cache[k] = null; });
@@ -1394,44 +1394,64 @@ async function preloadCache(){
   }
   const db = _fbInit();
 
-  // 3 попытки с увеличивающимся таймаутом
-  const TIMEOUTS = [10000, 15000, 20000];
-  let lastError = null;
-  for (let attempt = 0; attempt < TIMEOUTS.length; attempt++) {
-    try {
-      const timeout = new Promise((_, rej) =>
-        setTimeout(() => rej(new Error('Firebase timeout')), TIMEOUTS[attempt])
-      );
-      const snap = await Promise.race([db.ref('db').get(), timeout]);
-    const data = snap.val() || {};
-    
-    const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
-    COLLECTIONS.forEach(k => { 
-      const raw = data[k] !== undefined ? data[k] : null;
-      // Firebase хранит массивы как объекты — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
-      if (raw !== null && !Array.isArray(raw) && typeof raw === 'object' && ARRAY_COLLECTIONS.includes(k)) {
-        _cache[k] = Object.values(raw).map(_fbRestoreArrays);
-      } else {
-        _cache[k] = _fbRestoreArrays(raw);
-      }
-      const count = Array.isArray(_cache[k]) ? _cache[k].length : (_cache[k] ? 'объект' : 'null');
-    });
-    
-      _preloadWarning = null;
-      return;
-    } catch(e) {
-      lastError = e;
-      console.warn(`[Firebase] Попытка ${attempt + 1} не удалась:`, e.message);
-      if (attempt < TIMEOUTS.length - 1) {
-        await new Promise(r => setTimeout(r, 1000));
-      }
+  // Коллекции без base64-изображений — читаем одним запросом (быстро)
+  const LIGHT_COLLECTIONS = ['users','courses','slots','bookings','attendance','payments',
+    'salary_payments','groups','notifs','taskbank','mistakes','contracts'];
+  // Коллекции с потенциально тяжёлыми данными (base64) — читаем по одной
+  const HEAVY_COLLECTIONS = ['content','tests','hw','trials','flashcard_decks'];
+  // Коллекции которые хранятся как массивы (не объекты)
+  const ARRAY_COLLECTIONS = new Set(['attendance','payments','content','tests','hw','trials','slots',
+    'bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts']);
+
+  function _applySnap(k, raw) {
+    if (raw !== null && !Array.isArray(raw) && typeof raw === 'object' && ARRAY_COLLECTIONS.has(k)) {
+      _cache[k] = Object.values(raw).map(_fbRestoreArrays);
+    } else {
+      _cache[k] = _fbRestoreArrays(raw);
     }
   }
 
-  // Все попытки исчерпаны
-  console.error('[Firebase] ❌ КРИТИЧЕСКАЯ ОШИБКА preloadCache:', lastError?.message);
-  COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
-  _preloadWarning = lastError?.message || 'Ошибка подключения к серверу';
+  function _withTimeout(promise, ms) {
+    return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('Firebase timeout')), ms))]);
+  }
+
+  let anyError = null;
+
+  // ── 1. Сначала грузим лёгкие коллекции одним запросом (включает users) ──
+  // Строим multi-path: читаем каждую лёгкую коллекцию отдельным .get() параллельно
+  // (нельзя читать несколько путей одним get в Realtime DB без платного плана)
+  try {
+    const lightSnaps = await _withTimeout(
+      Promise.all(LIGHT_COLLECTIONS.map(k => db.ref('db/' + k).get().then(s => ({ k, s })))),
+      12000
+    );
+    lightSnaps.forEach(({ k, s }) => _applySnap(k, s.val()));
+    console.log('[Firebase] ✅ Лёгкие коллекции загружены');
+  } catch(e) {
+    anyError = e;
+    console.error('[Firebase] ❌ Ошибка загрузки лёгких коллекций:', e.message);
+    // Критично: users не загружены — ставим warning
+    LIGHT_COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
+  }
+
+  // ── 2. Тяжёлые коллекции — каждую отдельно, не блокируем вход ──
+  for (const k of HEAVY_COLLECTIONS) {
+    try {
+      const snap = await _withTimeout(db.ref('db/' + k).get(), 15000);
+      _applySnap(k, snap.val());
+      console.log('[Firebase] ✅ ' + k + ' загружен (' + (Array.isArray(_cache[k]) ? _cache[k].length + ' эл.' : 'ok') + ')');
+    } catch(e) {
+      console.warn('[Firebase] ⚠️ Не удалось загрузить ' + k + ':', e.message);
+      if (!(k in _cache)) _cache[k] = null;
+      // Не ставим anyError — не блокируем вход из-за тяжёлых коллекций
+    }
+  }
+
+  if (anyError) {
+    _preloadWarning = anyError.message || 'Ошибка подключения к серверу';
+  } else {
+    _preloadWarning = null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
