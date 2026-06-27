@@ -1727,6 +1727,7 @@ function subscribeRealtime(){
                       admin:   { pageId: 'content-admin',    fn: 'renderContentAdmin'   } },
     courses:        { admin:   { pageId: 'schedule-admin',   fn: 'renderScheduleAdmin'  },
                       student: { pageId: 'student-schedule', fn: 'renderStudentSchedule'} },
+    contracts:      { admin:   { pageId: 'zoom-settings',    fn: 'renderZoomSettings'   } },
   };
 
   // Дедупликация рендеров: одна отложенная задача на (роль, pageId, fn).
@@ -2653,14 +2654,15 @@ function theoryAccordionHTML(c, isAdmin, viewed){
     }
   }
 
+  const headerAdminActions = isAdmin ? `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openAssignStudents('content','${c.id}')">👤 Добавить ученика</button>
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditAvail('content','${c.id}')" title="Доступность">⏰ Доступность</button>
+      <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditContent('${c.id}')">✏️ Редактировать</button>
+      <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteContent('${c.id}')">🗑 Удалить</button>
+    </div>` : '';
   const adminActions = isAdmin ? `
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--green-xpale)">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${linkedTestObj||true?'10px':'0'}">
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openAssignStudents('content','${c.id}')">👤 Добавить ученика</button>
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditAvail('content','${c.id}')" title="Доступность">⏰ Доступность</button>
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openEditContent('${c.id}')">✏️ Редактировать</button>
-        <button class="btn btn-red btn-sm" onclick="event.stopPropagation();deleteContent('${c.id}')">🗑 Удалить</button>
-      </div>
       ${_linkedTestAdminBlock(c)}
     </div>` : '';
   const _availBadgeHtml = isAdmin ? availBadge(c) : '';
@@ -2757,6 +2759,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;font-size:0.97rem;color:var(--accent);margin-bottom:4px">${esc(c.title)}</div>
         <div style="display:flex;gap:5px;flex-wrap:wrap">${badges||'<span style="font-size:0.75rem;color:var(--text3)">Пустой урок</span>'}${watchBadge?'&nbsp;'+watchBadge:''}${viewedBadge?'&nbsp;'+viewedBadge:''}${_availBadgeHtml?'&nbsp;'+_availBadgeHtml:''}</div>
+        ${headerAdminActions}
       </div>
       <div class="accordion-arrow">▼</div>
     </div>
@@ -8444,7 +8447,15 @@ function clearZoomLink(){
 function renderContractEditor(){
   const el = document.getElementById('contract-editor-container');
   if(!el) return;
-  const contracts = load('contracts') || {};
+  const cached = load('contracts');
+  if(cached === null || cached === undefined){
+    _fbInit().ref('db/contracts').get().then(snap => {
+      if(snap.val()) _cache['contracts'] = snap.val();
+      renderContractEditor();
+    }).catch(() => { _cache['contracts'] = {}; renderContractEditor(); });
+    return;
+  }
+  const contracts = cached || {};
   const privacyText = contracts.privacy || '';
   const rulesText   = contracts.rules   || '';
   el.innerHTML = `
@@ -11161,29 +11172,21 @@ function renderFinanceDashboard() {
     return null;
   }
 
-  // ── Collect all paid income from attendance (present + paid) and payments
-  // attendance.costPerStudent when present=true is the earned amount per student
-  // payments.amount where status='paid' is additional recorded income
+  // ── Доход = только пополнения кошелька (см. getWalletIncome ниже)
 
-  function getAttIncome(year, month) {
-    // month is 0-based
-    // Считаем только фактически оплаченные занятия (present=true И paid=true)
-    // чтобы долги не попадали одновременно и в доход, и в задолженность
-    return att.filter(a => {
-      if (!a.present || !a.paid) return false;
-      const d = parseDate(a.date);
-      if (!d) return false;
-      return d.getFullYear() === year && d.getMonth() === month;
-    }).reduce((s, a) => s + (+a.costPerStudent || 0), 0);
-  }
-
-  function getPaymentsIncome(year, month) {
-    return payments.filter(p => {
-      if (p.status !== 'paid') return false;
-      const d = parseDate(p.date);
-      if (!d) return false;
-      return d.getFullYear() === year && d.getMonth() === month;
-    }).reduce((s, p) => s + (+p.amount || 0), 0);
+  // ── Доход считаем ТОЛЬКО по пополнениям кошелька (реальные деньги, поступившие от ученика)
+  function getWalletIncome(year, month) {
+    let total = 0;
+    students.forEach(s => {
+      const w = loadWallet(s.id);
+      (w.txns || []).forEach(tx => {
+        if (tx.type !== 'topup') return;
+        const d = parseDate(tx.date);
+        if (!d) return;
+        if (d.getFullYear() === year && d.getMonth() === month) total += (+tx.amount || 0);
+      });
+    });
+    return total;
   }
 
   function getLessonCount(year, month) {
@@ -11197,9 +11200,7 @@ function renderFinanceDashboard() {
   }
 
   // ── KPI: this month
-  const thisAttIncome  = getAttIncome(curY, curM);
-  const thisPaidIncome = getPaymentsIncome(curY, curM);
-  const thisIncome     = thisAttIncome + thisPaidIncome;
+  const thisIncome     = getWalletIncome(curY, curM);
   const thisLessons    = getLessonCount(curY, curM);
 
   // ── Debts: три источника долга
@@ -11280,7 +11281,7 @@ function renderFinanceDashboard() {
   // ── Last month income (for comparison)
   const prevM = curM === 0 ? 11 : curM - 1;
   const prevY = curM === 0 ? curY - 1 : curY;
-  const prevIncome = getAttIncome(prevY, prevM) + getPaymentsIncome(prevY, prevM);
+  const prevIncome = getWalletIncome(prevY, prevM);
 
   // ── Render KPI cards
   const kpiEl = document.getElementById('fin-kpi-row');
@@ -11304,7 +11305,7 @@ function renderFinanceDashboard() {
 
   // ── Bar chart (12 months for selectedYear)
   const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
-  const incomeData  = months.map((_, i) => getAttIncome(selectedYear, i) + getPaymentsIncome(selectedYear, i));
+  const incomeData  = months.map((_, i) => getWalletIncome(selectedYear, i));
   const lessonsData = months.map((_, i) => getLessonCount(selectedYear, i));
 
   const mode = window._finChartMode || 'income';
@@ -11417,11 +11418,14 @@ function renderFinanceDashboard() {
     .map(s => {
       const sAtt   = att.filter(a => a.studentId === s.id && a.present && a.paid);
       const curAtt = sAtt.filter(a => { const d = parseDate(a.date); return d && d.getFullYear() === curY && d.getMonth() === curM; });
-      const sIncome = curAtt.reduce((sum, a) => sum + (+a.costPerStudent || 0), 0)
-        + payments.filter(p => p.studentId === s.id && p.status === 'paid' && (() => { const d = parseDate(p.date); return d && d.getFullYear() === curY && d.getMonth() === curM; })()).reduce((sum, p) => sum + (+p.amount || 0), 0);
+      const wallet = loadWallet(s.id);
+      const sIncome = (wallet.txns || []).filter(tx => {
+        if (tx.type !== 'topup') return false;
+        const d = parseDate(tx.date);
+        return d && d.getFullYear() === curY && d.getMonth() === curM;
+      }).reduce((sum, tx) => sum + (+tx.amount || 0), 0);
       const sDebt  = debtByStudent[s.id] || 0;
       const sLessons = curAtt.length;
-      const wallet = loadWallet(s.id);
       return { s, sIncome, sDebt, sLessons, walletBalance: wallet.balance };
     })
     .sort((a, b) => b.sIncome - a.sIncome);
@@ -13791,6 +13795,21 @@ function walletDebit(sid, amount, note){
   addNotif(sid, {type:'wallet', text:`💳 Списано ${amount}₽ с кошелька${note?' · '+note:''}`, nav:'student-payment'});
 }
 
+function walletDeleteTxn(sid, txnId){
+  if(!confirm('Удалить эту транзакцию из истории? Баланс будет пересчитан.')) return;
+  const w = loadWallet(sid);
+  const idx = (w.txns||[]).findIndex(t=>t.id===txnId);
+  if(idx===-1) return;
+  const tx = w.txns[idx];
+  // Откатываем баланс: пополнение отнимаем, списание возвращаем
+  w.balance += (tx.type==='topup' ? -tx.amount : tx.amount);
+  w.txns.splice(idx,1);
+  saveWallet(sid, w);
+  renderAtpWallet();
+  renderAtpAttendance();
+  showNotif('🗑 Транзакция удалена');
+}
+
 // ── ATP PAGE (unified attend+pay admin) ──
 let _atpTab = 'attendance';
 let _walletRealtimeSid = null; // sid текущей подписки на кошелёк
@@ -13962,6 +13981,7 @@ function renderAtpWallet(){
       <div style="font-weight:800;font-size:0.97rem;color:${isTopup?'var(--green-deep)':'#c0392b'}">
         ${isTopup?'+':'−'}${tx.amount}₽
       </div>
+      <button class="btn btn-red btn-sm" title="Удалить транзакцию" onclick="walletDeleteTxn('${escAttr(sid)}','${escAttr(tx.id)}')">🗑</button>
     </div>`;
   }).join('');
 }
