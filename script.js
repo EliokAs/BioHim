@@ -1400,7 +1400,7 @@ async function preloadCache(){
   // Коллекции с потенциально тяжёлыми данными (base64) — читаем по одной
   const HEAVY_COLLECTIONS = ['content','tests','hw','trials','flashcard_decks'];
   // Коллекции которые хранятся как массивы (не объекты)
-  const ARRAY_COLLECTIONS = new Set(['attendance','payments','content','tests','hw','trials','slots',
+  const ARRAY_COLLECTIONS = new Set(['users','attendance','payments','content','tests','hw','trials','slots',
     'bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts']);
 
   function _applySnap(k, raw) {
@@ -1757,7 +1757,7 @@ function subscribeRealtime(){
       const val = snap.val();
       const oldVal = _cache[k];
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
-      const ARRAY_COLLECTIONS = ['attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
+      const ARRAY_COLLECTIONS = ['users','attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes','contracts'];
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
