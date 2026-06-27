@@ -13554,10 +13554,11 @@ async function sendTelegramNotif(sid, type, text){
 
 // Единая точка вызова Telegram через серверный прокси (токен не покидает сервер)
 async function tgApiCall(method, payload){
+  const token = localStorage.getItem('biohim_admin_tg_token') || '';
   const r = await fetch('/api/telegram', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ method, payload })
+    body: JSON.stringify({ method, payload, token })
   });
   return r.json();
 }
@@ -13684,10 +13685,12 @@ async function testNotifChannel(){
 
 // ── Страница администратора ──
 function renderNotifSettingsAdmin(){
-  // Токен хранится на сервере, не читаем из localStorage
   const botName  = localStorage.getItem(adminTgBotKey())  || '';
+  const token    = localStorage.getItem('biohim_admin_tg_token') || '';
   const elBot    = document.getElementById('admin-tg-botname');
+  const elToken  = document.getElementById('admin-tg-token');
   if(elBot)   elBot.value   = botName;
+  if(elToken) elToken.value = token;
 
   const statusEl = document.getElementById('admin-notif-student-status');
   if(!statusEl) return;
@@ -13711,9 +13714,9 @@ function renderNotifSettingsAdmin(){
 }
 
 function saveAdminTgBot(){
-  // Токен НЕ сохраняется в localStorage — он хранится только в переменной окружения Vercel (TELEGRAM_BOT_TOKEN).
-  // Здесь сохраняем только публичное имя бота для ссылки на него.
+  const token   = (document.getElementById('admin-tg-token')||{}).value?.trim();
   const botName = (document.getElementById('admin-tg-botname')||{}).value?.trim();
+  if(token)   localStorage.setItem('biohim_admin_tg_token', token);
   if(botName) localStorage.setItem(adminTgBotKey(), botName.startsWith('@')?botName:'@'+botName);
   testBotToken();
 }
