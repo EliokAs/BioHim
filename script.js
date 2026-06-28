@@ -3543,6 +3543,8 @@ function testItemHTML(t){
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('test','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadItem('test','${t.id}')" title="Скачать JSON">⬇️</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadItemDocx('test','${t.id}')" title="Скачать Word">📄</button>
         <button class="btn btn-red btn-sm" onclick="deleteTest('${t.id}')">🗑</button>
       </div>
     </div>
@@ -4580,6 +4582,8 @@ function hwItemHTML(h){
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('hw','${h.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadItem('hw','${h.id}')" title="Скачать JSON">⬇️</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadItemDocx('hw','${h.id}')" title="Скачать Word">📄</button>
         <button class="btn btn-red btn-sm" onclick="deleteHW('${h.id}')">🗑</button>
       </div>
     </div>
@@ -6818,6 +6822,8 @@ function trialAdminItemHTML(t){
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('trial','${t.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('trial','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTrial('${t.id}')">✏️</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadItem('trial','${t.id}')" title="Скачать JSON">⬇️</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadItemDocx('trial','${t.id}')" title="Скачать Word">📄</button>
         <button class="btn btn-red btn-sm" onclick="deleteTrial('${t.id}')">🗑</button>
       </div>
     </div>
@@ -10779,6 +10785,209 @@ function downloadICS(icsStr, filename) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+
+/** Admin: скачать тест / ДЗ / пробник как JSON */
+function downloadItem(type, id) {
+  const key = type === 'test' ? 'tests' : type === 'hw' ? 'hw' : 'trials';
+  const item = (load(key) || []).find(x => x.id === id);
+  if (!item) return showNotif('❌ Не найдено');
+  const safe = item.title ? item.title.replace(/[\\/:*?"<>|]/g, '_').substring(0, 60) : id;
+  const prefix = type === 'test' ? 'Тест' : type === 'hw' ? 'ДЗ' : 'Пробник';
+  const filename = `${prefix}_${safe}_${item.date || new Date().toLocaleDateString('ru').replace(/\./g,'-')}.json`;
+  const blob = new Blob([JSON.stringify(item, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  showNotif('✅ Скачано: ' + filename);
+}
+
+/** Lazy-load docx library from CDN */
+let _docxLibPromise = null;
+function _loadDocxLib() {
+  if (_docxLibPromise) return _docxLibPromise;
+  _docxLibPromise = new Promise((resolve, reject) => {
+    if (window.docx) return resolve(window.docx);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.min.js';
+    s.onload = () => window.docx ? resolve(window.docx) : reject(new Error('docx not found'));
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return _docxLibPromise;
+}
+
+/** Admin: download test / hw / trial as Word (.docx) */
+async function downloadItemDocx(type, id) {
+  const key = type === 'test' ? 'tests' : type === 'hw' ? 'hw' : 'trials';
+  const item = (load(key) || []).find(x => x.id === id);
+  if (!item) return showNotif('\u274C \u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E');
+
+  showNotif('\u23F3 \u0413\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0435\u043C Word...');
+  try {
+    const d = await _loadDocxLib();
+    const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, ShadingType } = d;
+
+    const questions = type === 'trial'
+      ? (item.sections || []).flatMap((sec, si) =>
+          (sec.questions || []).map((q, qi) => ({ ...q, _secTitle: sec.title || ('\u0427\u0430\u0441\u0442\u044C ' + (si+1)), _secIdx: si, _qi: qi }))
+        )
+      : (item.questions || []);
+
+    const prefixMap = { test: '\u0422\u0435\u0441\u0442', hw: '\u0414\u043E\u043C\u0430\u0448\u043D\u0435\u0435 \u0437\u0430\u0434\u0430\u043D\u0438\u0435', trial: '\u041F\u0440\u043E\u0431\u043D\u044B\u0439 \u044D\u043A\u0437\u0430\u043C\u0435\u043D' };
+    const prefix = prefixMap[type] || type;
+    const safe = (item.title || id).replace(/[\\\/:\*\?"<>|]/g, '_').substring(0, 60);
+    const filename = prefix.split(' ')[0] + '_' + safe + '_' + (item.date || new Date().toLocaleDateString('ru').replace(/\./g, '-')) + '.docx';
+
+    const children = [];
+
+    // Title
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 80 },
+      children: [new TextRun({ text: prefix.toUpperCase(), bold: true, size: 32, font: 'Arial', color: '1E5C32' })]
+    }));
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 120 },
+      children: [new TextRun({ text: item.title || '', bold: true, size: 28, font: 'Arial' })]
+    }));
+
+    // Meta
+    const metaParts = [];
+    if (item.date) metaParts.push('\u0414\u0430\u0442\u0430: ' + item.date);
+    if (item.timeLimit) metaParts.push('\u0412\u0440\u0435\u043C\u044F: ' + item.timeLimit + ' \u043C\u0438\u043D');
+    if (item.timeMins)  metaParts.push('\u0412\u0440\u0435\u043C\u044F: ' + item.timeMins + ' \u043C\u0438\u043D');
+    if (item.subject)   metaParts.push('\u041F\u0440\u0435\u0434\u043C\u0435\u0442: ' + item.subject);
+    const totalPts = item.maxPts || item.autoTotal || questions.reduce((s, q) => s + (+q.points || 1), 0);
+    metaParts.push('\u0411\u0430\u043B\u043B\u043E\u0432: ' + totalPts);
+    if (metaParts.length) {
+      children.push(new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 240 },
+        children: [new TextRun({ text: metaParts.join('  \u00B7  '), size: 20, font: 'Arial', color: '555555' })]
+      }));
+    }
+
+    // Instruction
+    if (item.instruction) {
+      children.push(new Paragraph({
+        spacing: { before: 100, after: 240 },
+        border: { left: { style: BorderStyle.SINGLE, size: 10, color: '27AE60', space: 4 } },
+        children: [new TextRun({ text: item.instruction, size: 20, font: 'Arial', italics: true })]
+      }));
+    }
+
+    const typeLabels = { auto: '\u0432\u044B\u0431\u043E\u0440', open: '\u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0439', fillin: '\u0432\u0441\u0442\u0430\u0432\u0438\u0442\u044C', match: '\u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435', number: '\u0447\u0438\u0441\u043B\u043E', voice: '\u0433\u043E\u043B\u043E\u0441' };
+    let lastSecIdx = -1;
+
+    questions.forEach((q, idx) => {
+      // Section header (trial only)
+      if (type === 'trial' && q._secIdx !== undefined && q._secIdx !== lastSecIdx) {
+        lastSecIdx = q._secIdx;
+        children.push(new Paragraph({
+          spacing: { before: 360, after: 120 },
+          children: [new TextRun({ text: q._secTitle, bold: true, size: 24, font: 'Arial', color: '1E5C32', underline: {} })]
+        }));
+      }
+
+      const qType = q.type || 'auto';
+      const typeLabel = typeLabels[qType] || qType;
+      const pts = +q.points || 1;
+
+      // Question text
+      children.push(new Paragraph({
+        spacing: { before: 280, after: 80 },
+        children: [
+          new TextRun({ text: (idx + 1) + '. ', bold: true, size: 22, font: 'Arial' }),
+          new TextRun({ text: (q.text || '').replace(/<[^>]+>/g, ''), size: 22, font: 'Arial' }),
+          new TextRun({ text: '  [' + typeLabel + ', ' + pts + ' \u0431.]', size: 18, font: 'Arial', color: '888888' })
+        ]
+      }));
+
+      // Options (auto / multi)
+      if ((qType === 'auto' || qType === 'multi') && Array.isArray(q.options)) {
+        q.options.forEach((opt, oi) => {
+          const letter = String.fromCharCode(65 + oi);
+          const isCorrect = Array.isArray(q.correct)
+            ? q.correct.includes(String(oi))
+            : String(q.correct) === String(oi);
+          children.push(new Paragraph({
+            spacing: { before: 40, after: 40 },
+            indent: { left: 560 },
+            children: [
+              new TextRun({ text: letter + ') ', bold: isCorrect, size: 20, font: 'Arial', color: isCorrect ? '1E8449' : '000000' }),
+              new TextRun({ text: (opt || '').replace(/<[^>]+>/g, ''), size: 20, font: 'Arial', bold: isCorrect, color: isCorrect ? '1E8449' : '000000' }),
+              ...(isCorrect ? [new TextRun({ text: ' \u2713', size: 20, font: 'Arial', color: '1E8449', bold: true })] : [])
+            ]
+          }));
+        });
+      }
+
+      // fillin / number answer
+      if ((qType === 'fillin' || qType === 'number') && q.correct !== undefined) {
+        children.push(new Paragraph({
+          spacing: { before: 60, after: 40 },
+          indent: { left: 560 },
+          children: [new TextRun({ text: '\u041E\u0442\u0432\u0435\u0442: ' + q.correct, size: 20, font: 'Arial', color: '1E8449', bold: true })]
+        }));
+      }
+
+      // Matching
+      if (qType === 'match' && Array.isArray(q.leftItems)) {
+        q.leftItems.forEach((lItem, li) => {
+          const rIdx = q.correctMap ? q.correctMap[String(li)] : undefined;
+          const rItem = (q.rightOptions && rIdx !== undefined) ? q.rightOptions[rIdx] : '';
+          children.push(new Paragraph({
+            spacing: { before: 40, after: 40 },
+            indent: { left: 560 },
+            children: [
+              new TextRun({ text: (li + 1) + '. ' + (lItem || ''), size: 20, font: 'Arial' }),
+              ...(rItem ? [new TextRun({ text: ' \u2192 ' + rItem, size: 20, font: 'Arial', color: '1E8449', bold: true })] : [])
+            ]
+          }));
+        });
+      }
+
+      // Open / voice answer blank
+      if (qType === 'open' || qType === 'voice') {
+        children.push(new Paragraph({
+          spacing: { before: 60, after: 40 },
+          indent: { left: 560 },
+          children: [new TextRun({ text: '\u041E\u0442\u0432\u0435\u0442: _____________________________________________', size: 20, font: 'Arial', color: 'BBBBBB' })]
+        }));
+      }
+    });
+
+    // Footer line
+    children.push(new Paragraph({
+      spacing: { before: 480 },
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: '\u0412\u0441\u0435\u0433\u043E \u0432\u043E\u043F\u0440\u043E\u0441\u043E\u0432: ' + questions.length + '  \u00B7  \u041C\u0430\u043A\u0441\u0438\u043C\u0443\u043C \u0431\u0430\u043B\u043B\u043E\u0432: ' + totalPts, size: 20, font: 'Arial', color: '555555', italics: true })]
+    }));
+
+    const doc = new Document({
+      styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
+      sections: [{
+        properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } } },
+        children
+      }]
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    showNotif('\u2705 Word \u0441\u043A\u0430\u0447\u0430\u043D: ' + filename);
+  } catch (err) {
+    console.error('[downloadItemDocx]', err);
+    showNotif('\u274C \u041E\u0448\u0438\u0431\u043A\u0430 Word: ' + err.message);
+  }
 }
 
 /** Build a Google Calendar import URL for a single-event (not recurring) — for "Add to Google Calendar" */
