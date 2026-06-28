@@ -10804,196 +10804,254 @@ function downloadItem(type, id) {
   showNotif('✅ Скачано: ' + filename);
 }
 
-/** Lazy-load docx library — встроенная загрузка без зависимости от LazyLibs */
-let _docxLibPromise = null;
-function _loadDocxLib() {
-  if (_docxLibPromise) return _docxLibPromise;
-  if (window.docx) return Promise.resolve(window.docx);
-  _docxLibPromise = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.js';
-    s.async = true;
-    s.onload = () => {
-      if (window.docx) resolve(window.docx);
-      else reject(new Error('docx загружен, но window.docx не найден'));
-    };
-    s.onerror = () => reject(new Error('Не удалось загрузить docx.js с cdnjs'));
-    document.head.appendChild(s);
+// ═══════════════════════════════════════════════════════════════
+// Генерация .docx без внешних библиотек — чистый OOXML + ZIP
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Минимальный ZIP-генератор для браузера.
+ * Использует CompressionStream (поддерживается во всех современных браузерах).
+ * Формат: ZIP с хранимыми (store) записями — Word открывает без проблем.
+ */
+async function _buildZip(files) {
+  // files: [{name, data: Uint8Array}]
+  const enc = new TextEncoder();
+  const parts = [];
+  const centralDir = [];
+  let offset = 0;
+
+  function u16(n){ const b=new Uint8Array(2); new DataView(b.buffer).setUint16(0,n,true); return b; }
+  function u32(n){ const b=new Uint8Array(4); new DataView(b.buffer).setUint32(0,n,true); return b; }
+
+  function crc32(buf) {
+    let crc = 0xFFFFFFFF;
+    const table = crc32._t || (crc32._t = (() => {
+      const t = new Uint32Array(256);
+      for (let i=0;i<256;i++){let c=i;for(let j=0;j<8;j++)c=c&1?(0xEDB88320^(c>>>1)):(c>>>1);t[i]=c;}
+      return t;
+    })());
+    for (let i=0;i<buf.length;i++) crc = table[(crc^buf[i])&0xFF]^(crc>>>8);
+    return (crc^0xFFFFFFFF)>>>0;
+  }
+
+  for (const f of files) {
+    const data = typeof f.data === 'string' ? enc.encode(f.data) : f.data;
+    const name = enc.encode(f.name);
+    const crc  = crc32(data);
+    const sig  = new Uint8Array([0x50,0x4B,0x03,0x04]);
+    const ver  = u16(20);
+    const flag = u16(0);
+    const meth = u16(0); // store
+    const time = u16(0); const date = u16(0);
+    const local = _concat([sig,ver,flag,meth,time,date,u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name,data]);
+    centralDir.push({name,crc,size:data.length,offset});
+    offset += local.length;
+    parts.push(local);
+  }
+
+  const cdEntries = centralDir.map(e=>{
+    const sig=new Uint8Array([0x50,0x4B,0x01,0x02]);
+    return _concat([sig,u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(e.crc),u32(e.size),u32(e.size),u16(e.name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(e.offset),e.name]);
   });
-  return _docxLibPromise;
+  const cdData = _concat(cdEntries);
+  const eocd = _concat([new Uint8Array([0x50,0x4B,0x05,0x06]),u16(0),u16(0),u16(centralDir.length),u16(centralDir.length),u32(cdData.length),u32(offset),u16(0)]);
+  return _concat([...parts,cdData,eocd]);
 }
 
-/** Admin: download test / hw / trial as Word (.docx) */
+function _concat(arrays) {
+  const total = arrays.reduce((s,a)=>s+a.length,0);
+  const out = new Uint8Array(total);
+  let off=0;
+  for(const a of arrays){out.set(a,off);off+=a.length;}
+  return out;
+}
+
+function _esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function _stripTags(s){ return String(s||'').replace(/<[^>]+>/g,''); }
+
+function _xmlRun(text, opts={}) {
+  const rpr = [
+    opts.bold   ? '<w:b/>' : '',
+    opts.italic ? '<w:i/>' : '',
+    opts.color  ? `<w:color w:val="${opts.color}"/>` : '',
+    opts.size   ? `<w:sz w:val="${opts.size}"/><w:szCs w:val="${opts.size}"/>` : '',
+    opts.underline ? '<w:u w:val="single"/>' : '',
+    '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>',
+  ].join('');
+  return `<w:r><w:rPr>${rpr}</w:rPr><w:t xml:space="preserve">${_esc(text)}</w:t></w:r>`;
+}
+
+function _xmlPara(runs, opts={}) {
+  const ppr = [
+    opts.align  ? `<w:jc w:val="${opts.align}"/>` : '',
+    opts.before || opts.after ? `<w:spacing w:before="${opts.before||0}" w:after="${opts.after||0}"/>` : '',
+    opts.indent ? `<w:ind w:left="${opts.indent}"/>` : '',
+    opts.borderLeft ? `<w:pBdr><w:left w:val="single" w:sz="12" w:space="4" w:color="${opts.borderLeft}"/></w:pBdr>` : '',
+  ].join('');
+  return `<w:p><w:pPr>${ppr}<w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:pPr>${runs}</w:p>`;
+}
+
 async function downloadItemDocx(type, id) {
   const key = type === 'test' ? 'tests' : type === 'hw' ? 'hw' : 'trials';
   const item = (load(key) || []).find(x => x.id === id);
-  if (!item) return showNotif('\u274C \u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E');
+  if (!item) return showNotif('❌ Не найдено');
 
-  showNotif('\u23F3 \u0413\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0435\u043C Word...');
+  showNotif('⏳ Генерируем Word...');
   try {
-    const d = await _loadDocxLib();
-    const { Document, Packer, Paragraph, TextRun, AlignmentType, BorderStyle, ShadingType } = d;
-
     const questions = type === 'trial'
       ? (item.sections || []).flatMap((sec, si) =>
-          (sec.questions || []).map((q, qi) => ({ ...q, _secTitle: sec.title || ('\u0427\u0430\u0441\u0442\u044C ' + (si+1)), _secIdx: si, _qi: qi }))
+          (sec.questions || []).map(q => ({ ...q, _secTitle: sec.title || `Часть ${si+1}`, _secIdx: si }))
         )
       : (item.questions || []);
 
-    const prefixMap = { test: '\u0422\u0435\u0441\u0442', hw: '\u0414\u043E\u043C\u0430\u0448\u043D\u0435\u0435 \u0437\u0430\u0434\u0430\u043D\u0438\u0435', trial: '\u041F\u0440\u043E\u0431\u043D\u044B\u0439 \u044D\u043A\u0437\u0430\u043C\u0435\u043D' };
-    const prefix = prefixMap[type] || type;
-    const safe = (item.title || id).replace(/[\\\/:\*\?"<>|]/g, '_').substring(0, 60);
-    const filename = prefix.split(' ')[0] + '_' + safe + '_' + (item.date || new Date().toLocaleDateString('ru').replace(/\./g, '-')) + '.docx';
+    const prefixMap = { test: 'ТЕСТ', hw: 'ДОМАШНЕЕ ЗАДАНИЕ', trial: 'ПРОБНЫЙ ЭКЗАМЕН' };
+    const prefix = prefixMap[type] || type.toUpperCase();
+    const safe = (item.title || id).replace(/[\\/:*?"<>|]/g,'_').substring(0,60);
+    const filename = `${prefixMap[type]||type}_${safe}_${item.date||new Date().toLocaleDateString('ru').replace(/\./g,'-')}.docx`;
 
-    const children = [];
+    const totalPts = item.maxPts || item.autoTotal || questions.reduce((s,q)=>s+(+q.points||1),0);
+    const typeLabels = { auto:'выбор', open:'открытый', fillin:'вставить', match:'соответствие', number:'число', voice:'голос' };
 
-    // Title
-    children.push(new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: 80 },
-      children: [new TextRun({ text: prefix.toUpperCase(), bold: true, size: 32, font: 'Arial', color: '1E5C32' })]
-    }));
-    children.push(new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: 120 },
-      children: [new TextRun({ text: item.title || '', bold: true, size: 28, font: 'Arial' })]
-    }));
+    const body = [];
 
-    // Meta
-    const metaParts = [];
-    if (item.date) metaParts.push('\u0414\u0430\u0442\u0430: ' + item.date);
-    if (item.timeLimit) metaParts.push('\u0412\u0440\u0435\u043C\u044F: ' + item.timeLimit + ' \u043C\u0438\u043D');
-    if (item.timeMins)  metaParts.push('\u0412\u0440\u0435\u043C\u044F: ' + item.timeMins + ' \u043C\u0438\u043D');
-    if (item.subject)   metaParts.push('\u041F\u0440\u0435\u0434\u043C\u0435\u0442: ' + item.subject);
-    const totalPts = item.maxPts || item.autoTotal || questions.reduce((s, q) => s + (+q.points || 1), 0);
-    metaParts.push('\u0411\u0430\u043B\u043B\u043E\u0432: ' + totalPts);
-    if (metaParts.length) {
-      children.push(new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 0, after: 240 },
-        children: [new TextRun({ text: metaParts.join('  \u00B7  '), size: 20, font: 'Arial', color: '555555' })]
-      }));
-    }
+    // Заголовок
+    body.push(_xmlPara(
+      _xmlRun(prefix, {bold:true, size:32, color:'1E5C32'}),
+      {align:'center', after:80}
+    ));
+    body.push(_xmlPara(
+      _xmlRun(item.title||'', {bold:true, size:28}),
+      {align:'center', after:120}
+    ));
 
-    // Instruction
+    // Мета
+    const meta = [];
+    if (item.date)      meta.push('Дата: '+item.date);
+    if (item.timeLimit) meta.push('Время: '+item.timeLimit+' мин');
+    if (item.timeMins)  meta.push('Время: '+item.timeMins+' мин');
+    if (item.subject)   meta.push('Предмет: '+item.subject);
+    meta.push('Баллов: '+totalPts);
+    body.push(_xmlPara(_xmlRun(meta.join('  ·  '), {size:20, color:'555555'}), {align:'center', after:240}));
+
+    // Инструкция
     if (item.instruction) {
-      children.push(new Paragraph({
-        spacing: { before: 100, after: 240 },
-        border: { left: { style: BorderStyle.SINGLE, size: 10, color: '27AE60', space: 4 } },
-        children: [new TextRun({ text: item.instruction, size: 20, font: 'Arial', italics: true })]
-      }));
+      body.push(_xmlPara(_xmlRun(item.instruction, {italic:true, size:20}), {before:100, after:200, borderLeft:'27AE60'}));
     }
 
-    const typeLabels = { auto: '\u0432\u044B\u0431\u043E\u0440', open: '\u043E\u0442\u043A\u0440\u044B\u0442\u044B\u0439', fillin: '\u0432\u0441\u0442\u0430\u0432\u0438\u0442\u044C', match: '\u0441\u043E\u043E\u0442\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435', number: '\u0447\u0438\u0441\u043B\u043E', voice: '\u0433\u043E\u043B\u043E\u0441' };
     let lastSecIdx = -1;
-
     questions.forEach((q, idx) => {
-      // Section header (trial only)
       if (type === 'trial' && q._secIdx !== undefined && q._secIdx !== lastSecIdx) {
         lastSecIdx = q._secIdx;
-        children.push(new Paragraph({
-          spacing: { before: 360, after: 120 },
-          children: [new TextRun({ text: q._secTitle, bold: true, size: 24, font: 'Arial', color: '1E5C32', underline: {} })]
-        }));
+        body.push(_xmlPara(_xmlRun(q._secTitle, {bold:true, size:24, color:'1E5C32', underline:true}), {before:360, after:120}));
       }
 
       const qType = q.type || 'auto';
-      const typeLabel = typeLabels[qType] || qType;
       const pts = +q.points || 1;
+      const label = typeLabels[qType] || qType;
 
-      // Question text
-      children.push(new Paragraph({
-        spacing: { before: 280, after: 80 },
-        children: [
-          new TextRun({ text: (idx + 1) + '. ', bold: true, size: 22, font: 'Arial' }),
-          new TextRun({ text: (q.text || '').replace(/<[^>]+>/g, ''), size: 22, font: 'Arial' }),
-          new TextRun({ text: '  [' + typeLabel + ', ' + pts + ' \u0431.]', size: 18, font: 'Arial', color: '888888' })
-        ]
-      }));
+      body.push(`<w:p><w:pPr><w:spacing w:before="280" w:after="80"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/></w:rPr></w:pPr>${
+        _xmlRun(`${idx+1}. `, {bold:true, size:22})
+      }${
+        _xmlRun(_stripTags(q.text||''), {size:22})
+      }${
+        _xmlRun(`  [${label}, ${pts} б.]`, {size:18, color:'888888'})
+      }</w:p>`);
 
-      // Options (auto / multi)
-      if ((qType === 'auto' || qType === 'multi') && Array.isArray(q.options)) {
-        q.options.forEach((opt, oi) => {
-          const letter = String.fromCharCode(65 + oi);
-          const isCorrect = Array.isArray(q.correct)
-            ? q.correct.includes(String(oi))
-            : String(q.correct) === String(oi);
-          children.push(new Paragraph({
-            spacing: { before: 40, after: 40 },
-            indent: { left: 560 },
-            children: [
-              new TextRun({ text: letter + ') ', bold: isCorrect, size: 20, font: 'Arial', color: isCorrect ? '1E8449' : '000000' }),
-              new TextRun({ text: (opt || '').replace(/<[^>]+>/g, ''), size: 20, font: 'Arial', bold: isCorrect, color: isCorrect ? '1E8449' : '000000' }),
-              ...(isCorrect ? [new TextRun({ text: ' \u2713', size: 20, font: 'Arial', color: '1E8449', bold: true })] : [])
-            ]
-          }));
+      if ((qType==='auto'||qType==='multi') && Array.isArray(q.options)) {
+        q.options.forEach((opt,oi)=>{
+          const letter = String.fromCharCode(65+oi);
+          const ok = Array.isArray(q.correct)?q.correct.includes(String(oi)):String(q.correct)===String(oi);
+          body.push(_xmlPara(
+            _xmlRun(`${letter}) `, {bold:ok, size:20, color:ok?'1E8449':'000000'}) +
+            _xmlRun(_stripTags(opt||''), {bold:ok, size:20, color:ok?'1E8449':'000000'}) +
+            (ok?_xmlRun(' ✓', {bold:true, size:20, color:'1E8449'}):''),
+            {indent:560, before:40, after:40}
+          ));
         });
       }
 
-      // fillin / number answer
-      if ((qType === 'fillin' || qType === 'number') && q.correct !== undefined) {
-        children.push(new Paragraph({
-          spacing: { before: 60, after: 40 },
-          indent: { left: 560 },
-          children: [new TextRun({ text: '\u041E\u0442\u0432\u0435\u0442: ' + q.correct, size: 20, font: 'Arial', color: '1E8449', bold: true })]
-        }));
+      if ((qType==='fillin'||qType==='number') && q.correct!==undefined) {
+        body.push(_xmlPara(_xmlRun('Ответ: '+q.correct, {bold:true, size:20, color:'1E8449'}), {indent:560, before:60, after:40}));
       }
 
-      // Matching
-      if (qType === 'match' && Array.isArray(q.leftItems)) {
-        q.leftItems.forEach((lItem, li) => {
-          const rIdx = q.correctMap ? q.correctMap[String(li)] : undefined;
-          const rItem = (q.rightOptions && rIdx !== undefined) ? q.rightOptions[rIdx] : '';
-          children.push(new Paragraph({
-            spacing: { before: 40, after: 40 },
-            indent: { left: 560 },
-            children: [
-              new TextRun({ text: (li + 1) + '. ' + (lItem || ''), size: 20, font: 'Arial' }),
-              ...(rItem ? [new TextRun({ text: ' \u2192 ' + rItem, size: 20, font: 'Arial', color: '1E8449', bold: true })] : [])
-            ]
-          }));
+      if (qType==='match' && Array.isArray(q.leftItems)) {
+        q.leftItems.forEach((lItem,li)=>{
+          const rIdx = q.correctMap?q.correctMap[String(li)]:undefined;
+          const rItem = (q.rightOptions&&rIdx!==undefined)?q.rightOptions[rIdx]:'';
+          body.push(_xmlPara(
+            _xmlRun(`${li+1}. ${lItem||''}`, {size:20}) + (rItem?_xmlRun(` → ${rItem}`, {bold:true, size:20, color:'1E8449'}):''),
+            {indent:560, before:40, after:40}
+          ));
         });
       }
 
-      // Open / voice answer blank
-      if (qType === 'open' || qType === 'voice') {
-        children.push(new Paragraph({
-          spacing: { before: 60, after: 40 },
-          indent: { left: 560 },
-          children: [new TextRun({ text: '\u041E\u0442\u0432\u0435\u0442: _____________________________________________', size: 20, font: 'Arial', color: 'BBBBBB' })]
-        }));
+      if (qType==='open'||qType==='voice') {
+        body.push(_xmlPara(_xmlRun('Ответ: _______________________________________', {size:20, color:'BBBBBB'}), {indent:560, before:60, after:40}));
       }
     });
 
-    // Footer line
-    children.push(new Paragraph({
-      spacing: { before: 480 },
-      alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: '\u0412\u0441\u0435\u0433\u043E \u0432\u043E\u043F\u0440\u043E\u0441\u043E\u0432: ' + questions.length + '  \u00B7  \u041C\u0430\u043A\u0441\u0438\u043C\u0443\u043C \u0431\u0430\u043B\u043B\u043E\u0432: ' + totalPts, size: 20, font: 'Arial', color: '555555', italics: true })]
-    }));
+    body.push(_xmlPara(_xmlRun(`Всего вопросов: ${questions.length}  ·  Максимум баллов: ${totalPts}`, {italic:true, size:20, color:'555555'}), {align:'center', before:480}));
 
-    const doc = new Document({
-      styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
-      sections: [{
-        properties: { page: { size: { width: 11906, height: 16838 }, margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } } },
-        children
-      }]
-    });
+    const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<w:body>
+${body.join('\n')}
+<w:sectPr>
+  <w:pgSz w:w="11906" w:h="16838"/>
+  <w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/>
+</w:sectPr>
+</w:body></w:document>`;
 
-    // Packer.toBlob() is the browser-safe method (toBuffer is Node.js only)
-    const blob = await Packer.toBlob(doc);
+    const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault><w:rPr>
+      <w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>
+      <w:sz w:val="22"/><w:szCs w:val="22"/>
+    </w:rPr></w:rPrDefault>
+  </w:docDefaults>
+</w:styles>`;
+
+    const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>`;
+
+    const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`;
+
+    const zipData = await _buildZip([
+      { name: '[Content_Types].xml',      data: appXml },
+      { name: '_rels/.rels',              data: rootRels },
+      { name: 'word/document.xml',        data: documentXml },
+      { name: 'word/_rels/document.xml.rels', data: relsXml },
+      { name: 'word/styles.xml',          data: stylesXml },
+    ]);
+
+    const blob = new Blob([zipData], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    showNotif('\u2705 Word \u0441\u043A\u0430\u0447\u0430\u043D: ' + filename);
-  } catch (err) {
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+    showNotif('✅ Word скачан: ' + filename);
+  } catch(err) {
     console.error('[downloadItemDocx]', err);
-    showNotif('\u274C \u041E\u0448\u0438\u0431\u043A\u0430 Word: ' + err.message);
+    showNotif('❌ Ошибка Word: ' + err.message);
   }
 }
-
 /** Build a Google Calendar import URL for a single-event (not recurring) — for "Add to Google Calendar" */
 function googleCalendarLink(title, startDate, endDate, description) {
   const fmt = d => d.toISOString().replace(/[-:]/g,'').slice(0,15)+'Z';
