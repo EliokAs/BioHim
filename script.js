@@ -10804,10 +10804,23 @@ function downloadItem(type, id) {
   showNotif('✅ Скачано: ' + filename);
 }
 
-/** Lazy-load docx library via LazyLibs (cdnjs, same mechanism as mammoth/jsPDF) */
-async function _loadDocxLib() {
-  await LazyLibs.docx();
-  return window.docx;
+/** Lazy-load docx library — встроенная загрузка без зависимости от LazyLibs */
+let _docxLibPromise = null;
+function _loadDocxLib() {
+  if (_docxLibPromise) return _docxLibPromise;
+  if (window.docx) return Promise.resolve(window.docx);
+  _docxLibPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.js';
+    s.async = true;
+    s.onload = () => {
+      if (window.docx) resolve(window.docx);
+      else reject(new Error('docx загружен, но window.docx не найден'));
+    };
+    s.onerror = () => reject(new Error('Не удалось загрузить docx.js с cdnjs'));
+    document.head.appendChild(s);
+  });
+  return _docxLibPromise;
 }
 
 /** Admin: download test / hw / trial as Word (.docx) */
