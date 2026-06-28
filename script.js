@@ -10804,26 +10804,10 @@ function downloadItem(type, id) {
   showNotif('✅ Скачано: ' + filename);
 }
 
-/** Lazy-load docx library from CDN */
-let _docxLibPromise = null;
-function _loadDocxLib() {
-  if (_docxLibPromise) return _docxLibPromise;
-  _docxLibPromise = new Promise((resolve, reject) => {
-    // docx 7.x exposes window.docx; 8.x may use a different global — scan for it
-    const existing = window.docx || window.Docx || window.DOCX;
-    if (existing && existing.Packer) return resolve(existing);
-    const s = document.createElement('script');
-    // Use 7.8.2 — confirmed browser-compatible UMD build on cdnjs
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/7.8.2/docx.js';
-    s.onload = () => {
-      const lib = window.docx || window.Docx || window.DOCX;
-      if (lib && lib.Packer) resolve(lib);
-      else reject(new Error('docx lib loaded but Packer not found. globals: ' + Object.keys(window).filter(k=>k.toLowerCase().includes('doc')).join(',')));
-    };
-    s.onerror = (e) => reject(new Error('Failed to load docx from CDN'));
-    document.head.appendChild(s);
-  });
-  return _docxLibPromise;
+/** Lazy-load docx library via LazyLibs (cdnjs, same mechanism as mammoth/jsPDF) */
+async function _loadDocxLib() {
+  await LazyLibs.docx();
+  return window.docx;
 }
 
 /** Admin: download test / hw / trial as Word (.docx) */
