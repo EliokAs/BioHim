@@ -1681,6 +1681,7 @@ const _answerStores = {};
 function getAnswerStore(name){
   if(name==='_testAnswers')  return _testAnswers;
   if(name==='_trialAnswers') return _trialAnswers;
+  if(name==='_hwAnswers')    return _hwAnswers;
   return null;
 }
 function getAnswer(storeName, qId){
@@ -10139,6 +10140,24 @@ function renderHWResults(h){
   </div>`;
 }
 let _doingHW=null; let _hwAnswers={};
+function renderHWTakeBody(){
+  const body=document.getElementById('take-test-body');
+  if(!_doingHW||!_doingHW.questions||!_doingHW.questions.length) return;
+  body.innerHTML=_doingHW.questions.map((q,i)=>renderStudentQuestion(q,i,'_hwAnswers','selectHWOpt')).join('')+
+    '<hr class="divider"><button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>';
+}
+function selectHWOpt(qId,val,isMulti){
+  if(isMulti){
+    const cur=(_hwAnswers[qId]||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const idx=cur.indexOf(val);
+    if(idx>=0) cur.splice(idx,1); else cur.push(val);
+    _hwAnswers[qId]=cur.join(',');
+  } else {
+    _hwAnswers[qId]=val;
+  }
+  renderHWTakeBody();
+}
+
 function doHW(id){
   const hws=load('hw')||[];
   const h=hws.find(h=>h.id===id);
@@ -10155,32 +10174,13 @@ function doHW(id){
     body.innerHTML=`<div class="form-group"><label>Ваш ответ / комментарий</label><textarea id="hw-free-answer" rows="5" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif"></textarea></div>
       <button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>`;
   } else {
-    body.innerHTML=_doingHW.questions.map((q,i)=>`
-      <div class="question-block">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <div class="question-num">Вопрос ${i+1}</div>
-          <span style="font-size:0.78rem;color:var(--text3)">⭐ ${+q.points||1} ${ptWord(+q.points||1)}</span>
-        </div>
-        <div class="question-text">${escHtml(q.text)}</div>
-        ${q.imageUrl?`<img src="${safeUrl(q.imageUrl)}" class="q-img-preview" style="margin-bottom:10px" alt="">`:''}
-        ${q.type==='auto'?`<div class="option-list">${q.options.map(o=>`
-          <div class="option-item" onclick="selectHWOption('${q.id}','${o.replace(/'/g,"\\'")}',this)">${o}</div>`).join('')}</div>`
-        :`<textarea style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;min-height:80px" 
-          onchange="_hwAnswers['${q.id}']=this.value" placeholder="Ваш ответ..."></textarea>`}
-        ${q.hint?`<div style="margin-top:10px">
-          <button onclick="toggleHint('hint-hw-${q.id}')" style="background:none;border:1.5px solid var(--green-pale);border-radius:8px;padding:5px 12px;cursor:pointer;font-family:Nunito,sans-serif;font-size:0.78rem;color:var(--text3);display:inline-flex;align-items:center;gap:5px">💡 Показать подсказку</button>
-          <div id="hint-hw-${q.id}" style="display:none;margin-top:8px;background:linear-gradient(135deg,#fffbeb,#fef9e7);border:1.5px solid #fce98a;border-radius:10px;padding:10px 14px;font-size:0.84rem;color:#856404;line-height:1.6">
-            <span style="font-weight:700;margin-right:6px">💡</span>${q.hint}
-          </div>
-        </div>`:''}
-      </div>`).join('')+`<hr class="divider"><button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>`;
+    renderHWTakeBody();
   }
   openModal('modal-take-test');
 }
 function selectHWOption(qId,opt,el){
   _hwAnswers[qId]=opt;
-  el.closest('.option-list').querySelectorAll('.option-item').forEach(e=>e.classList.remove('selected'));
-  el.classList.add('selected');
+  renderHWTakeBody();
 }
 function submitHW(){
   const hws=load('hw')||[];
@@ -15247,6 +15247,7 @@ function moveOrderItem(qId, idx, dir, answerObj){
   // Re-render the right body
   if(answerObj==='_testAnswers') renderTakeTestBody();
   else if(answerObj==='_trialAnswers') renderTrialTakeBody();
+  else if(answerObj==='_hwAnswers') renderHWTakeBody();
 }
 
 // ── Voice recording helpers ──
