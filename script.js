@@ -10023,28 +10023,17 @@ function takeTest(id) {
 function _updateOptionDOM(qId, answerObj){
   const store = getAnswerStore(answerObj);
   const ans = store ? (store[qId]||'') : '';
-  const isMulti = ans === '' ? false : true; // determined by caller context; we check both
+  const selArr = ans ? ans.split(',').map(s=>s.trim()).filter(Boolean) : [];
 
-  // Find all option-item divs inside this question's block
-  // We identify the question block by looking for an element whose onclick contains the qId
-  const allItems = document.querySelectorAll('.option-item[onclick]');
+  // Use data-qid / data-val attributes for reliable lookup (set during render)
+  const allItems = document.querySelectorAll('.option-item[data-qid="' + qId + '"]');
   let updated = 0;
   allItems.forEach(function(item){
-    const oc = item.getAttribute('onclick') || '';
-    // Check this item belongs to our question
-    const qMatch = oc.indexOf("'" + qId + "'") >= 0 || oc.indexOf('"' + qId + '"') >= 0;
-    if(!qMatch) return;
-    // Get this option's value - it's the 2nd argument in the onclick
-    // e.g. selectTestOpt('q1','value',true/false)
-    const m = oc.match(/,\s*'((?:[^'\\]|\\.)*)'\s*,/);
-    if(!m) return;
-    const optVal = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
-    const isSelected = (ans === optVal) || (ans.split(',').map(s=>s.trim()).indexOf(optVal) >= 0);
+    const optVal = item.getAttribute('data-val') || '';
+    const isSelected = selArr.indexOf(optVal) >= 0 || ans === optVal;
     item.classList.toggle('selected', isSelected);
-    // Update the indicator span (first span inside)
     const span = item.querySelector('span');
     if(span){
-      // auto: circle indicator; multi: checkmark
       const isRadio = span.style.borderRadius === '50%' || span.style.borderRadius.indexOf('50%') >= 0;
       span.textContent = isSelected ? (isRadio ? '\u25cf' : '\u2713') : '';
     }
@@ -15056,7 +15045,7 @@ function scoreQuestion(q, ans){
       correctPairs.push([norm(lv), norm(pairs[ri]?.[1]||'')]);
     });
     const totalLeft = pairs.length + leftExtra.length;
-    const givenPairs = (ans||'').split(',').map(s=>{ const ci=s.indexOf(':'); if(ci<0)return['','']; try{return[norm(decodeURIComponent(s.slice(0,ci).trim())),norm(decodeURIComponent(s.slice(ci+1).trim()))]}catch(e){const[a,b]=s.split(':');return[norm(a||''),norm(b||'')];} });
+    const givenPairs = (ans||'').split(',').map(s=>{ s=s.trim(); const pi=s.indexOf('|'); if(pi>=0){try{return[norm(atob(s.slice(0,pi))),norm(atob(s.slice(pi+1)))];}catch(e){}} const ci=s.indexOf(':'); if(ci<0)return['','']; try{return[norm(decodeURIComponent(s.slice(0,ci).trim())),norm(decodeURIComponent(s.slice(ci+1).trim()))]}catch(e){const[a,b]=s.split(':');return[norm(a||''),norm(b||'')];} });
     return givenPairs.length===totalLeft && correctPairs.every(([a,b])=>givenPairs.some(([ga,gb])=>ga===a&&gb===b));
   } else if(q.type==='order'){
     const correct = (q.correct||'').split(',').map(s=>norm(s));
@@ -15099,6 +15088,11 @@ function calcQuestionScore(q, ans) {
   });
   const givenMap = {};
   (ans||'').split(',').forEach(s=>{
+    s=s.trim(); if(!s) return;
+    // New format: base64(left)|base64(right)
+    const pi=s.indexOf('|');
+    if(pi>=0){ try{ givenMap[norm(atob(s.slice(0,pi)))] = norm(atob(s.slice(pi+1))); return; }catch(e){} }
+    // Legacy: encodeURIComponent(left):encodeURIComponent(right)
     const ci = s.indexOf(':'); if(ci<0) return;
     try { givenMap[norm(decodeURIComponent(s.slice(0,ci).trim()))] = norm(decodeURIComponent(s.slice(ci+1).trim())); }
     catch(e) { const[a,b]=s.split(':'); if(a) givenMap[norm(a)] = norm(b||''); }
@@ -15131,7 +15125,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
 
   if(q.type==='auto'){
     body=`<div class="option-list">${(q.options||[]).map(o=>`
-      <div class="option-item ${ans===o?'selected':''}" onclick="${selectFn}('${q.id}','${o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',false)">
+      <div class="option-item ${ans===o?'selected':''}" data-qid="${q.id}" data-val="${o.replace(/"/g,'&quot;')}" onclick="${selectFn}('${q.id}','${o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',false)">
         <span style="width:20px;height:20px;border-radius:50%;border:2px solid var(--green-mid);display:inline-flex;align-items:center;justify-content:center;font-size:0.7rem">${ans===o?'●':''}</span>${o}
       </div>`).join('')}</div>`;
 
@@ -15139,7 +15133,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
     const sel=(ans||'').split(',').map(s=>s.trim()).filter(Boolean);
     body=`<div style="font-size:0.76rem;color:var(--text3);margin-bottom:6px">Выбери все правильные варианты</div>
     <div class="option-list">${(q.options||[]).map(o=>`
-      <div class="option-item ${sel.includes(o)?'selected':''}" onclick="${selectFn}('${q.id}','${o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',true)" style="gap:10px">
+      <div class="option-item ${sel.includes(o)?'selected':''}" data-qid="${q.id}" data-val="${o.replace(/"/g,'&quot;')}" onclick="${selectFn}('${q.id}','${o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',true)" style="gap:10px">
         <span style="width:18px;height:18px;border-radius:4px;border:2px solid var(--green-mid);display:inline-flex;align-items:center;justify-content:center;font-size:0.65rem;flex-shrink:0">${sel.includes(o)?'✓':''}</span>${o}
       </div>`).join('')}</div>`;
 
@@ -15181,12 +15175,29 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
     const rightCol=window[_rsk];
     const leftLabel=q.leftLabel||'';
     const rightLabel=q.rightLabel||'';
+    // Parse saved answer: format is "b64left|b64right,b64left|b64right,..."
+    // Support legacy colon-separated format too
     const curMap={};
     (ans||'').split(',').forEach(s=>{
+      s=s.trim(); if(!s) return;
+      // Try new pipe-separated base64 format first
+      const pi=s.indexOf('|');
+      if(pi>=0){
+        try{
+          const a=atob(s.slice(0,pi)),b=atob(s.slice(pi+1));
+          if(a) curMap[a]=b;
+          return;
+        }catch(e){}
+      }
+      // Fallback: legacy encodeURIComponent+colon format
       const ci=s.indexOf(':'); if(ci<0) return;
-      const a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());
-      if(a) curMap[a]=b;
+      try{
+        const a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());
+        if(a) curMap[a]=b;
+      }catch(e){}
     });
+    // Build onchange that saves in new base64|pipe format
+    const onchFn=`(function(sel,l){var m={};var raw=(${answerObj}['${q.id}']||'');raw.split(',').forEach(function(s){s=s.trim();if(!s)return;var pi=s.indexOf('|');if(pi>=0){try{var a=atob(s.slice(0,pi)),b=atob(s.slice(pi+1));if(a)m[a]=b;return;}catch(e){}}var ci=s.indexOf(':');if(ci>=0){try{var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b;}catch(e){}}});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return btoa(e[0])+'|'+btoa(e[1])}).join(',')})(this,`;
     body=`<div style="border:1.5px solid var(--green-pale);border-radius:10px;overflow:hidden">
       ${leftLabel||rightLabel?`<div style="display:grid;grid-template-columns:1fr 1fr">
         <div style="padding:8px 14px;background:var(--bg2);font-size:0.73rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em">${escHtml(leftLabel)}</div>
@@ -15194,8 +15205,8 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       </div>`:''}
       ${leftCol.map((left,li)=>{
         const selOpts='<option value="">— выберите —</option>'+rightCol.map(r=>`<option value="${r.replace(/"/g,'&quot;')}" ${curMap[left]===r?'selected':''}>${escHtml(r)}</option>`).join('');
-        const leftJ=JSON.stringify(left);
-        const onch=`(function(sel,l){var m={};(${answerObj}['${q.id}']||'').split(',').forEach(function(s){var ci=s.indexOf(':');if(ci<0)return;var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return encodeURIComponent(e[0])+':'+encodeURIComponent(e[1])}).join(',')})(this,${leftJ})`;
+        const leftEsc=left.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const onch=onchFn+"'"+leftEsc+"')";
         return `<div style="display:grid;grid-template-columns:1fr 1fr;${li>0?'border-top:1px solid var(--green-pale)':''}">
           <div style="padding:10px 14px;background:var(--green-xpale);font-weight:600;font-size:0.85rem;display:flex;align-items:center;gap:6px"><span style="font-size:0.73rem;color:var(--text3);font-weight:700;min-width:18px">${li+1}.</span>${escHtml(left)}</div>
           <div style="border-left:1.5px solid var(--green-pale)">
@@ -15386,6 +15397,11 @@ function renderReviewQuestion(q, answers){
     const leftExtraRv = q.leftExtra || [];
     const givenMap={};
     (ans||'').split(',').forEach(s=>{
+      s=s.trim(); if(!s) return;
+      // New format: base64(left)|base64(right)
+      const pi=s.indexOf('|');
+      if(pi>=0){ try{ givenMap[atob(s.slice(0,pi)).trim().toLowerCase()] = atob(s.slice(pi+1)).trim().toLowerCase(); return; }catch(e){} }
+      // Legacy: encodeURIComponent:encodeURIComponent
       const ci=s.indexOf(':'); if(ci<0) return;
       try { givenMap[decodeURIComponent(s.slice(0,ci).trim()).toLowerCase()] = decodeURIComponent(s.slice(ci+1).trim()).toLowerCase(); }
       catch(e) { const[a,b]=s.split(':'); if(a) givenMap[a.trim().toLowerCase()]=( b||'').trim().toLowerCase(); }
