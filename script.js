@@ -2,6 +2,10 @@
 // УТИЛИТЫ ПРОИЗВОДИТЕЛЬНОСТИ
 // ═══════════════════════════════════════════════
 
+/** Unicode-safe base64 encode/decode (поддерживает кириллицу и любые символы) */
+function _b64e(str){ return btoa(unescape(encodeURIComponent(str))); }
+function _b64d(str){ try{ return decodeURIComponent(escape(atob(str))); }catch(e){ return atob(str); } }
+
 /** Дебаунс: откладывает вызов fn на delay мс после последнего вызова */
 function debounce(fn, delay) {
   let t;
@@ -15024,7 +15028,7 @@ function scoreQuestion(q, ans){
   if(q.type==='auto'){
     return norm(ans)===norm(q.correct);
   } else if(q.type==='multi'){
-    const correct = (q.correct||'').split(',').map(s=>norm(s)).filter(Boolean).sort();
+    const correct = (Array.isArray(q.correct)?q.correct:(q.correct||'').split(',')).map(s=>norm(s)).filter(Boolean).sort();
     const given   = (ans||'').split(',').map(s=>norm(s)).filter(Boolean).sort();
     return JSON.stringify(correct)===JSON.stringify(given);
   } else if(q.type==='fill'){
@@ -15045,7 +15049,7 @@ function scoreQuestion(q, ans){
       correctPairs.push([norm(lv), norm(pairs[ri]?.[1]||'')]);
     });
     const totalLeft = pairs.length + leftExtra.length;
-    const givenPairs = (ans||'').split(',').map(s=>{ s=s.trim(); const pi=s.indexOf('|'); if(pi>=0){try{return[norm(atob(s.slice(0,pi))),norm(atob(s.slice(pi+1)))];}catch(e){}} const ci=s.indexOf(':'); if(ci<0)return['','']; try{return[norm(decodeURIComponent(s.slice(0,ci).trim())),norm(decodeURIComponent(s.slice(ci+1).trim()))]}catch(e){const[a,b]=s.split(':');return[norm(a||''),norm(b||'')];} });
+    const givenPairs = (ans||'').split(',').map(s=>{ s=s.trim(); const pi=s.indexOf('|'); if(pi>=0){try{return[norm(_b64d(s.slice(0,pi))),norm(_b64d(s.slice(pi+1)))];}catch(e){}} const ci=s.indexOf(':'); if(ci<0)return['','']; try{return[norm(decodeURIComponent(s.slice(0,ci).trim())),norm(decodeURIComponent(s.slice(ci+1).trim()))]}catch(e){const[a,b]=s.split(':');return[norm(a||''),norm(b||'')];} });
     return givenPairs.length===totalLeft && correctPairs.every(([a,b])=>givenPairs.some(([ga,gb])=>ga===a&&gb===b));
   } else if(q.type==='order'){
     const correct = (q.correct||'').split(',').map(s=>norm(s));
@@ -15091,7 +15095,7 @@ function calcQuestionScore(q, ans) {
     s=s.trim(); if(!s) return;
     // New format: base64(left)|base64(right)
     const pi=s.indexOf('|');
-    if(pi>=0){ try{ givenMap[norm(atob(s.slice(0,pi)))] = norm(atob(s.slice(pi+1))); return; }catch(e){} }
+    if(pi>=0){ try{ givenMap[norm(_b64d(s.slice(0,pi)))] = norm(_b64d(s.slice(pi+1))); return; }catch(e){} }
     // Legacy: encodeURIComponent(left):encodeURIComponent(right)
     const ci = s.indexOf(':'); if(ci<0) return;
     try { givenMap[norm(decodeURIComponent(s.slice(0,ci).trim()))] = norm(decodeURIComponent(s.slice(ci+1).trim())); }
@@ -15184,7 +15188,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       const pi=s.indexOf('|');
       if(pi>=0){
         try{
-          const a=atob(s.slice(0,pi)),b=atob(s.slice(pi+1));
+          const a=_b64d(s.slice(0,pi)),b=_b64d(s.slice(pi+1));
           if(a) curMap[a]=b;
           return;
         }catch(e){}
@@ -15197,7 +15201,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       }catch(e){}
     });
     // Build onchange that saves in new base64|pipe format
-    const onchFn=`(function(sel,l){var m={};var raw=(${answerObj}['${q.id}']||'');raw.split(',').forEach(function(s){s=s.trim();if(!s)return;var pi=s.indexOf('|');if(pi>=0){try{var a=atob(s.slice(0,pi)),b=atob(s.slice(pi+1));if(a)m[a]=b;return;}catch(e){}}var ci=s.indexOf(':');if(ci>=0){try{var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b;}catch(e){}}});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return btoa(e[0])+'|'+btoa(e[1])}).join(',')})(this,`;
+    const onchFn=`(function(sel,l){var m={};var raw=(${answerObj}['${q.id}']||'');raw.split(',').forEach(function(s){s=s.trim();if(!s)return;var pi=s.indexOf('|');if(pi>=0){try{var a=_b64d(s.slice(0,pi)),b=_b64d(s.slice(pi+1));if(a)m[a]=b;return;}catch(e){}}var ci=s.indexOf(':');if(ci>=0){try{var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b;}catch(e){}}});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return _b64e(e[0])+'|'+_b64e(e[1])}).join(',')})(this,`;
     body=`<div style="border:1.5px solid var(--green-pale);border-radius:10px;overflow:hidden">
       ${leftLabel||rightLabel?`<div style="display:grid;grid-template-columns:1fr 1fr">
         <div style="padding:8px 14px;background:var(--bg2);font-size:0.73rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em">${escHtml(leftLabel)}</div>
@@ -15400,7 +15404,7 @@ function renderReviewQuestion(q, answers){
       s=s.trim(); if(!s) return;
       // New format: base64(left)|base64(right)
       const pi=s.indexOf('|');
-      if(pi>=0){ try{ givenMap[atob(s.slice(0,pi)).trim().toLowerCase()] = atob(s.slice(pi+1)).trim().toLowerCase(); return; }catch(e){} }
+      if(pi>=0){ try{ givenMap[_b64d(s.slice(0,pi)).trim().toLowerCase()] = _b64d(s.slice(pi+1)).trim().toLowerCase(); return; }catch(e){} }
       // Legacy: encodeURIComponent:encodeURIComponent
       const ci=s.indexOf(':'); if(ci<0) return;
       try { givenMap[decodeURIComponent(s.slice(0,ci).trim()).toLowerCase()] = decodeURIComponent(s.slice(ci+1).trim()).toLowerCase(); }
