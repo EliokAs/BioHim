@@ -7325,7 +7325,7 @@ function renderTrialTakeBody(){
 }
 function selectTrialOption(qId,opt){
   _trialAnswers[qId]=opt;
-  renderTrialTakeBody();
+  _updateOptionDOM(qId,'_trialAnswers');
 }
 function selectTrialOpt(qId,val,isMulti){
   if(isMulti){
@@ -7336,7 +7336,14 @@ function selectTrialOpt(qId,val,isMulti){
   } else {
     _trialAnswers[qId]=val;
   }
-  renderTrialTakeBody();
+  _updateOptionDOM(qId,'_trialAnswers');
+  // Update progress counter
+  const allQ=(_activeTrial.sections||[]).flatMap(s=>s.questions);
+  const answered=allQ.filter(q=>_trialAnswers[q.id]).length;
+  const lbl=document.getElementById('trial-progress-label');
+  if(lbl) lbl.textContent=answered+'/'+allQ.length+' ответов';
+  const ftr=document.getElementById('trial-footer-stats');
+  if(ftr) ftr.textContent='Отвечено: '+answered+' из '+allQ.length+' · Итого: '+(_activeTrial.maxPts||0)+' б.';
 }
 function submitTrial(timeout=false){
   clearInterval(_trialTimerInterval);
@@ -10011,6 +10018,41 @@ function takeTest(id) {
   // Запустить таймер если задан лимит времени
   _startTestTimer(t.timeLimit || t.timeMins || 0);
 }
+
+// Surgically update auto/multi options without full page re-render
+function _updateOptionDOM(qId, answerObj){
+  const store = getAnswerStore(answerObj);
+  const ans = store ? (store[qId]||'') : '';
+  const isMulti = ans === '' ? false : true; // determined by caller context; we check both
+
+  // Find all option-item divs inside this question's block
+  // We identify the question block by looking for an element whose onclick contains the qId
+  const allItems = document.querySelectorAll('.option-item[onclick]');
+  let updated = 0;
+  allItems.forEach(function(item){
+    const oc = item.getAttribute('onclick') || '';
+    // Check this item belongs to our question
+    const qMatch = oc.indexOf("'" + qId + "'") >= 0 || oc.indexOf('"' + qId + '"') >= 0;
+    if(!qMatch) return;
+    // Get this option's value - it's the 2nd argument in the onclick
+    // e.g. selectTestOpt('q1','value',true/false)
+    const m = oc.match(/,\s*'((?:[^'\\]|\\.)*)'\s*,/);
+    if(!m) return;
+    const optVal = m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+    const isSelected = (ans === optVal) || (ans.split(',').map(s=>s.trim()).indexOf(optVal) >= 0);
+    item.classList.toggle('selected', isSelected);
+    // Update the indicator span (first span inside)
+    const span = item.querySelector('span');
+    if(span){
+      // auto: circle indicator; multi: checkmark
+      const isRadio = span.style.borderRadius === '50%' || span.style.borderRadius.indexOf('50%') >= 0;
+      span.textContent = isSelected ? (isRadio ? '\u25cf' : '\u2713') : '';
+    }
+    updated++;
+  });
+  return updated;
+}
+
 function renderTakeTestBody(){
   const el=document.getElementById('take-test-body');
   el.innerHTML=_takingTest.questions.map((q,i)=>renderStudentQuestion(q,i,'_testAnswers','selectTestOpt')).join('') +
@@ -10025,11 +10067,11 @@ function selectTestOpt(qId,val,isMulti){
   } else {
     _testAnswers[qId]=val;
   }
-  renderTakeTestBody();
+  _updateOptionDOM(qId,'_testAnswers');
 }
 function selectOption(qId,opt){
   _testAnswers[qId]=opt;
-  renderTakeTestBody();
+  _updateOptionDOM(qId,'_testAnswers');
 }
 function calcGrade(pct, gradeConfig){
   const gc = gradeConfig || {5:90,4:75,3:55,2:0};
@@ -10155,7 +10197,7 @@ function selectHWOpt(qId,val,isMulti){
   } else {
     _hwAnswers[qId]=val;
   }
-  renderHWTakeBody();
+  _updateOptionDOM(qId,'_hwAnswers');
 }
 
 function doHW(id){
