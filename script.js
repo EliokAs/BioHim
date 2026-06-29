@@ -13014,6 +13014,7 @@ function loadAdminNotifs(){ return _adminNotifsCache; }
 function _addAdminNotif(notif){
   _adminNotifsCache = [..._adminNotifsCache, notif];
   _adminNotifsRef().set(_adminNotifsCache).catch(e => console.error('[Firebase] admin_notifs error', e));
+  sendAdminTelegramNotif(notif);
 }
 
 function _markAdminNotifsRead(){
@@ -13963,6 +13964,8 @@ function renderNotifSettingsAdmin(){
   if(elBot)   elBot.value   = botName;
   if(elToken) elToken.value = token;
 
+  renderAdminTgNotifBlock();
+
   const statusEl = document.getElementById('admin-notif-student-status');
   if(!statusEl) return;
   const students = getStudents();
@@ -13982,6 +13985,120 @@ function renderNotifSettingsAdmin(){
   if(typeof renderWeeklyReportSettings === 'function'){
     renderWeeklyReportSettings(document.getElementById('weekly-report-container'));
   }
+}
+
+// ── Telegram-уведомления для администратора/преподавателя ──
+// (когда ученик сдаёт ДЗ / тест / пробник, пишет в чат, оставляет комментарий и т.д.)
+function adminTgChatKey(){ return 'biohim_admin_tg_chatid'; }
+function adminTgTypesKey(){ return 'biohim_admin_tg_types'; }
+
+function loadAdminTgSettings(){
+  const def = { chatId:'', types:{ submit:true, chat:true, comment:true, contract:true } };
+  const chatId = localStorage.getItem(adminTgChatKey()) || '';
+  let types = def.types;
+  try{
+    const raw = localStorage.getItem(adminTgTypesKey());
+    if(raw) types = Object.assign({}, def.types, JSON.parse(raw));
+  } catch(e){}
+  return { chatId, types };
+}
+
+const ADMIN_NOTIF_TYPE_LABELS = {
+  submit:  { icon:'📤', name:'Сдача работ',  desc:'ДЗ, тесты и пробники — когда ученик сдаёт' },
+  chat:    { icon:'💬', name:'Чат',           desc:'Новые сообщения от учеников и родителей' },
+  comment: { icon:'📝', name:'Комментарии',  desc:'Комментарии учеников к проверенным работам' },
+  contract:{ icon:'📄', name:'Документы',    desc:'Подписание договоров и согласий' },
+};
+
+// Единая точка отправки — вызывается из _addAdminNotif для любого события
+async function sendAdminTelegramNotif(notif){
+  const settings = loadAdminTgSettings();
+  if(!settings.chatId) return;
+  if(settings.types[notif.type] === false) return;
+  try{
+    await tgApiCall('sendMessage', {
+      chat_id: settings.chatId,
+      text: `🔔 *Уведомление платформы*\n\n${notif.text}`,
+      parse_mode: 'Markdown'
+    });
+  } catch(e){
+    console.error('[Telegram] admin notif error', e);
+  }
+}
+
+function renderAdminTgNotifBlock(){
+  const settings = loadAdminTgSettings();
+  const connectBlock   = document.getElementById('admin-tg-connect-block');
+  const connectedBlock = document.getElementById('admin-tg-connected-block');
+  const statusBadge    = document.getElementById('admin-tg-status-badge');
+  const connectedId    = document.getElementById('admin-tg-connected-id');
+  const chatIdInput    = document.getElementById('admin-tg-chatid');
+
+  if(settings.chatId){
+    if(connectBlock)   connectBlock.style.display   = 'none';
+    if(connectedBlock) connectedBlock.style.display = 'block';
+    if(statusBadge)     statusBadge.innerHTML = `<span style="background:#e8f8f0;color:#27ae60;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px">✅ Подключено</span>`;
+    if(connectedId)     connectedId.textContent = settings.chatId;
+  } else {
+    if(connectBlock)   connectBlock.style.display   = 'block';
+    if(connectedBlock) connectedBlock.style.display = 'none';
+    if(statusBadge)     statusBadge.innerHTML = `<span style="background:var(--bg);color:var(--text3);font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:10px">Не подключено</span>`;
+    if(chatIdInput)     chatIdInput.value = '';
+  }
+
+  const typesEl = document.getElementById('admin-notif-types-toggles');
+  if(typesEl){
+    typesEl.innerHTML = Object.keys(ADMIN_NOTIF_TYPE_LABELS).map(key=>{
+      const t = ADMIN_NOTIF_TYPE_LABELS[key];
+      return `
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-name">${t.icon} ${t.name}</div>
+          <div class="toggle-desc">${esc(t.desc)}</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="admin-notif-type-${key}" ${settings.types[key]!==false?'checked':''} onchange="saveAdminTgTypes()">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>`;
+    }).join('');
+  }
+}
+
+function saveAdminTgConnect(){
+  const chatId = (document.getElementById('admin-tg-chatid')||{}).value?.trim();
+  if(!chatId){ showNotif('Введите Chat ID из Telegram бота'); return; }
+  if(!/^-?\d+$/.test(chatId)){ showNotif('Chat ID — только цифры, например: 123456789'); return; }
+  localStorage.setItem(adminTgChatKey(), chatId);
+  renderAdminTgNotifBlock();
+  showNotif('✅ Telegram подключён!');
+  sendAdminTelegramNotif({type:'chat', text:'🎉 Telegram-уведомления администратору подключены! Теперь вы будете получать сообщения о сдаче ДЗ, тестов и пробников, а также о новых сообщениях от учеников.'});
+}
+
+function disconnectAdminTg(){
+  localStorage.removeItem(adminTgChatKey());
+  renderAdminTgNotifBlock();
+  showNotif('Telegram отключён');
+}
+
+function saveAdminTgTypes(){
+  const settings = loadAdminTgSettings();
+  Object.keys(ADMIN_NOTIF_TYPE_LABELS).forEach(key=>{
+    const el = document.getElementById('admin-notif-type-'+key);
+    if(el) settings.types[key] = el.checked;
+  });
+  localStorage.setItem(adminTgTypesKey(), JSON.stringify(settings.types));
+  showNotif('✅ Настройки сохранены');
+}
+
+async function testAdminTgNotif(){
+  const settings = loadAdminTgSettings();
+  if(!settings.chatId){ showNotif('Сначала подключите Telegram'); return; }
+  try{
+    const d = await tgApiCall('sendMessage', { chat_id: settings.chatId,
+      text:'🔔 *Тест уведомлений*\n\nЕсли вы получили это сообщение — уведомления администратору подключены успешно! ✅', parse_mode:'Markdown' });
+    showNotif(d.ok ? '✅ Тест отправлен — проверьте Telegram!' : '❌ Ошибка: ' + (d.description||''));
+  } catch(e){ showNotif('❌ Ошибка соединения: ' + e.message); }
 }
 
 function saveAdminTgBot(){
