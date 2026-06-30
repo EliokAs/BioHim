@@ -1,16 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // TIMER MODULE — BioХим Platform
 // ═══════════════════════════════════════════════════════════════
-// Подключается после script.js в index.html.
-// Добавляет таймер обратного отсчёта при сдаче тестов и пробников.
-//
-// Для теста: перехватывает openModal('modal-take-test'),
-//            считывает timeLimit из объекта теста, запускает отсчёт,
-//            при истечении — автосдача через submitTest().
-//
-// Для пробника: script.js ведёт _trialSecondsLeft самостоятельно;
-//               этот модуль добавляет предупреждения и визуальный пульс.
-// ═══════════════════════════════════════════════════════════════
 
 // ─── Утилиты ──────────────────────────────────────────────────
 function _fmtTime(sec) {
@@ -21,16 +11,17 @@ function _fmtTime(sec) {
 // ═══════════════════════════════════════════════════════════════
 // ТЕСТ
 // ═══════════════════════════════════════════════════════════════
-// script.js уже объявляет _startTestTimer — переопределяем её нашей
-// улучшенной версией после загрузки всех скриптов.
 
-let _testInterval  = null;
-let _testSecsLeft  = 0;
-let _testSecsTotal = 0;
-let _testWarned5   = false;
-let _testWarned1   = false;
+let _testInterval     = null;
+let _testSecsLeft     = 0;
+let _testSecsTotal    = 0;
+let _testWarned5      = false;
+let _testWarned1      = false;
+let _testTimerRunning = false; // защита от двойного запуска
 
 function _startTestTimer(minutes, onExpire) {
+  // Если таймер уже идёт — не запускать второй
+  if (_testTimerRunning) return;
   _clearTestTimer();
   _testWarned5 = false;
   _testWarned1 = false;
@@ -44,18 +35,20 @@ function _startTestTimer(minutes, onExpire) {
     return;
   }
 
-  _testSecsLeft  = minutes * 60;
-  _testSecsTotal = minutes * 60;
+  _testSecsLeft     = minutes * 60;
+  _testSecsTotal    = minutes * 60;
+  _testTimerRunning = true;
 
   if (wrap)    wrap.style.display    = 'flex';
   if (barWrap) barWrap.style.display = 'block';
 
-  _tickTest(onExpire);
-  _testInterval = setInterval(() => _tickTest(onExpire), 1000);
+  // Сразу рисуем UI без декремента, потом тикаем каждую секунду
+  _renderTestTimerUI();
+  _testInterval = setInterval(function() { _tickTest(onExpire); }, 1000);
 }
 
 function _tickTest(onExpire) {
-  _testSecsLeft = Math.max(0, _testSecsLeft);
+  _testSecsLeft = Math.max(0, _testSecsLeft - 1);
   _renderTestTimerUI();
 
   if (!_testWarned5 && _testSecsLeft <= 300 && _testSecsLeft > 0) {
@@ -70,13 +63,12 @@ function _tickTest(onExpire) {
   if (_testSecsLeft <= 0) {
     _clearTestTimer();
     if (typeof onExpire === 'function') onExpire();
-    return;
   }
-  _testSecsLeft--;
 }
 
 function _clearTestTimer() {
   if (_testInterval) { clearInterval(_testInterval); _testInterval = null; }
+  _testTimerRunning = false;
 }
 
 function _renderTestTimerUI() {
@@ -109,21 +101,28 @@ function _renderTestTimerUI() {
 
 // ─── Перехват открытия / закрытия теста ───────────────────────
 (function patchTestModal() {
-  // Ждём чтобы script.js успел объявить openModal/closeModal/submitTest
   window.addEventListener('load', function () {
 
-    // openModal
+    // Переопределяем _startTestTimer из script.js нашей версией.
+    // script.js вызывает _startTestTimer(t.timeLimit) при открытии теста.
+    // Делаем это ДО перехвата openModal, чтобы openModal уже не вызывал старт второй раз.
+    window._startTestTimer = function (minutes) {
+      _startTestTimer(minutes, function () {
+        if (typeof showNotif === 'function') showNotif('⏰ Время вышло! Тест сдан автоматически.');
+        if (typeof submitTest === 'function') submitTest(true);
+        else if (typeof closeModal === 'function') closeModal('modal-take-test');
+      });
+    };
+
+    // openModal — перехватываем только для пробника (тест запускается через _startTestTimer выше)
     const _origOpen = window.openModal;
     if (typeof _origOpen === 'function') {
       window.openModal = function (id) {
         _origOpen.apply(this, arguments);
-        if (id === 'modal-take-test') {
-          // Даём script.js время заполнить заголовок и данные теста
-          setTimeout(_launchTestTimerFromDOM, 100);
-        }
         if (id === 'modal-take-trial') {
           setTimeout(_startTrialWarningWatcher, 100);
         }
+        // modal-take-test НЕ запускаем таймер здесь — script.js сам вызовет _startTestTimer
       };
     }
 
@@ -146,7 +145,7 @@ function _renderTestTimerUI() {
       };
     }
 
-    // submitTrial — остановить таймер при ручной сдаче
+    // submitTrial
     const _origSubmitTrial = window.submitTrial;
     if (typeof _origSubmitTrial === 'function') {
       window.submitTrial = function () {
@@ -155,76 +154,12 @@ function _renderTestTimerUI() {
       };
     }
 
-    // Переопределяем _startTestTimer из script.js нашей полной версией.
-    // script.js вызывает window._startTestTimer(t.timeLimit) при открытии теста.
-    window._startTestTimer = function (minutes) {
-      _startTestTimer(minutes, function () {
-        if (typeof showNotif === 'function') showNotif('⏰ Время вышло! Тест сдан автоматически.');
-        if (typeof submitTest === 'function') submitTest();
-        else if (typeof closeModal === 'function') closeModal('modal-take-test');
-      });
-    };
-
-    // Аналогично для пробника если script.js вызывает _stopTrialTimer
     window._stopTrialTimer = function () { _clearTrialWatcher(); };
   });
 })();
 
-// ─── Определяем timeLimit открытого теста ─────────────────────
-function _launchTestTimerFromDOM() {
-  // Уже обрабатывается в script.js? Проверим нет ли таймера
-  const wrap = document.getElementById('test-timer-wrap');
-  if (wrap && wrap.style.display === 'flex') {
-    // script.js сам запустил таймер — подключаем только визуальные улучшения
-    return;
-  }
-
-  // Читаем timeLimit из хранилища по заголовку
-  const titleEl = document.getElementById('take-test-title');
-  const title   = titleEl ? titleEl.textContent.replace(/^[🎯📝🃏✏️🎲]+\s*/, '').trim() : '';
-  let   limit   = 0;
-
-  try {
-    // script.js использует save(key) → localStorage.setItem('biohim_' + key, ...)
-    const tests = JSON.parse(localStorage.getItem('biohim_tests') || '[]');
-    // Ищем тест с совпадающим заголовком и timeLimit
-    const match = tests
-      .filter(t => t.timeLimit > 0)
-      .find(t => t.title === title || title.includes(t.title));
-    if (match) limit = match.timeLimit;
-  } catch (e) {}
-
-  // Пробуем глобальные переменные script.js
-  if (!limit) {
-    const candidates = [
-      '_currentTestObj', '_openTest', '_activeTest', '_testObj',
-      'currentTest', 'activeTest', 'openTest'
-    ];
-    for (const name of candidates) {
-      const v = window[name];
-      if (v && typeof v === 'object' && (v.timeLimit || v.timeMins)) {
-        limit = v.timeLimit || v.timeMins || 0;
-        break;
-      }
-    }
-  }
-
-  if (limit > 0) {
-    _startTestTimer(limit, function () {
-      if (typeof showNotif === 'function') showNotif('⏰ Время вышло! Тест сдан автоматически.');
-      if (typeof submitTest === 'function') {
-        submitTest();
-      } else {
-        if (typeof closeModal === 'function') closeModal('modal-take-test');
-      }
-    });
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════
 // ПРОБНИК — визуальные предупреждения
-// script.js уже обновляет #trial-timer-display каждую секунду;
-// мы только добавляем пульс/цвет и уведомления.
 // ═══════════════════════════════════════════════════════════════
 
 let _trialWatchInterval = null;
@@ -235,24 +170,19 @@ function _startTrialWarningWatcher() {
   _clearTrialWatcher();
   _trialWarned5 = false;
   _trialWarned1 = false;
-
   _trialWatchInterval = setInterval(_checkTrialWarnings, 1000);
 }
 
 function _clearTrialWatcher() {
   if (_trialWatchInterval) { clearInterval(_trialWatchInterval); _trialWatchInterval = null; }
-  // Сбрасываем стиль
   const el = document.getElementById('trial-timer-display');
   if (el) {
     el.classList.remove('timer-warning');
-    if (el.parentElement) {
-      el.parentElement.style.background = 'rgba(255,255,255,0.18)';
-    }
+    if (el.parentElement) el.parentElement.style.background = 'rgba(255,255,255,0.18)';
   }
 }
 
 function _checkTrialWarnings() {
-  // Берём _trialSecondsLeft из script.js если доступна
   const sLeft = (typeof window._trialSecondsLeft === 'number')
     ? window._trialSecondsLeft
     : _parseDisplayTime();
@@ -285,16 +215,14 @@ function _checkTrialWarnings() {
     if (typeof showNotif === 'function') showNotif('🔴 До конца пробника осталась 1 минута!');
   }
 
-  // Если время вышло и script.js не сдал автоматически — подстрахуемся
   if (sLeft <= 0) {
     _clearTrialWatcher();
     if (typeof submitTrial === 'function') {
-      setTimeout(() => submitTrial(true), 300);
+      setTimeout(function() { submitTrial(true); }, 300);
     }
   }
 }
 
-// Читает MM:SS из #trial-timer-display как запасной вариант
 function _parseDisplayTime() {
   const el = document.getElementById('trial-timer-display');
   if (!el) return -1;
@@ -306,10 +234,9 @@ function _parseDisplayTime() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Публичный API (доступен из script.js и других модулей)
+// Публичный API
 // ═══════════════════════════════════════════════════════════════
 window.TimerModule = {
-  // Запустить таймер теста вручную (если script.js захочет вызвать напрямую)
   startTestTimer: function (minutes, onExpire) { _startTestTimer(minutes, onExpire); },
   stopTestTimer:  function () { _clearTestTimer(); },
 };
