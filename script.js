@@ -3545,6 +3545,7 @@ function testItemHTML(t){
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openTestReviewPanel('${t.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${t.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
+        ${t.submitted?`<button class="btn btn-outline btn-sm" id="answers-review-btn-test-${t.id}" onclick="toggleAnswersReviewPanel('test','${t.id}')" title="Посмотреть ответы и ошибки ученика">👁 Ошибки</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('test','${t.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('test','${t.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditTest('${t.id}')">✏️</button>
@@ -3576,6 +3577,7 @@ function testItemHTML(t){
         <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${t.id}','test')">🎓 Поставить итоговую оценку и отзыв</button>
       </div>
     </div>` : ''}
+    ${t.submitted ? `<div id="answers-review-test-${t.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid var(--green-pale)"></div>` : ''}
     ${t.submitted ? `<div id="adm-cmt-test-${t.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
 }
@@ -4584,6 +4586,7 @@ function hwItemHTML(h){
       <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
         ${needsReview ? `<button class="btn btn-green btn-sm" onclick="openHWReviewPanel('${h.id}')" style="font-weight:700">✅ Проверить</button>` : ''}
         ${h.submitted?`<button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')" title="Итоговая оценка и отзыв">🎓 Оценка</button>`:''}
+        ${h.submitted?`<button class="btn btn-outline btn-sm" id="answers-review-btn-hw-${h.id}" onclick="toggleAnswersReviewPanel('hw','${h.id}')" title="Посмотреть ответы и ошибки ученика">👁 Ошибки</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="openAssignStudents('hw','${h.id}')" title="Отправить ученикам">👤</button>
         <button class="btn btn-outline btn-sm" onclick="openEditAvail('hw','${h.id}')" title="Доступность">⏰</button>
         <button class="btn btn-outline btn-sm" onclick="openEditHW('${h.id}')">✏️</button>
@@ -4615,6 +4618,7 @@ function hwItemHTML(h){
         <button class="btn btn-gold btn-sm" onclick="openItemOverallReview('${h.id}','hw')">🎓 Поставить итоговую оценку и отзыв</button>
       </div>
     </div>` : ''}
+    ${h.submitted ? `<div id="answers-review-hw-${h.id}" style="display:none;margin-top:10px;padding:12px;background:var(--bg2);border-radius:10px;border:1px solid var(--green-pale)"></div>` : ''}
     ${h.submitted ? `<div id="adm-cmt-hw-${h.id}" style="margin-top:4px"></div>` : ''}
   </div>`;
 }
@@ -4630,6 +4634,37 @@ function openTestReviewPanel(testId){
 function openTrialReviewPanel(trialId){
   const panel = document.getElementById(`trial-review-panel-${trialId}`);
   if(panel) panel.style.display = panel.style.display==='none' ? 'block' : 'none';
+}
+
+// ─── Просмотр ответов и ошибок ученика (тест / ДЗ / пробник) ───
+function toggleAnswersReviewPanel(type, id){
+  const el = document.getElementById(`answers-review-${type}-${id}`);
+  const btn = document.getElementById(`answers-review-btn-${type}-${id}`);
+  if(!el) return;
+  const isHidden = el.style.display==='none' || !el.style.display;
+  if(isHidden){
+    const storeKey = type==='test' ? 'tests' : type==='hw' ? 'hw' : 'trials';
+    const items = load(storeKey)||[];
+    const item = items.find(x=>x.id===id);
+    if(!item){ el.innerHTML='<div class="empty-state"><p>Работа не найдена</p></div>'; el.style.display='block'; return; }
+    const answers = item.answers||{};
+    const questions = type==='trial' ? (item.sections||[]).flatMap(s=>s.questions||[]) : (item.questions||[]);
+    const wrongCount = questions.filter(q=>{
+      if(q.type==='open'||q.type==='voice') return false;
+      return !scoreQuestion(q, answers[q.id]||'');
+    }).length;
+    const summary = wrongCount>0
+      ? `<span style="color:var(--red);font-weight:700">❌ Ошибок: ${wrongCount}</span>`
+      : `<span style="color:var(--green-mid);font-weight:700">✅ Ошибок нет</span>`;
+    el.innerHTML = `<div style="font-weight:700;font-size:0.85rem;color:var(--accent);margin-bottom:8px">👁 Ответы ученика · ${summary}</div>`
+      + (questions.length ? questions.map(q=>renderReviewQuestion(q, answers)).join('') : '<div class="empty-state"><p>Нет вопросов</p></div>');
+    el.style.display='block';
+    if(btn){ btn.dataset.origText = btn.dataset.origText || btn.textContent; btn.textContent='🙈 Скрыть'; }
+  } else {
+    el.style.display='none';
+    el.innerHTML='';
+    if(btn) btn.textContent = btn.dataset.origText || '👁 Ошибки';
+  }
 }
 function renderHWOpenAnswers(){
   const students = (load('users')||[]).filter(u=>u.role==='student');
@@ -9922,6 +9957,7 @@ function renderStudentTests(){
         <div style="margin-bottom:12px">${statusBadge}</div>
         ${t.submitted && t.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(t.teacherFeedback)}</div>` : ''}
         ${t.submitted ? renderTestResults(t) : availGate(t,'takeTest')}
+        ${t.submitted ? `<div style="margin-top:10px"><button class="btn btn-outline btn-sm" id="answers-review-btn-test-${t.id}" onclick="toggleAnswersReviewPanel('test','${t.id}')">👁 Посмотреть ошибки</button></div><div id="answers-review-test-${t.id}" style="display:none;margin-top:10px"></div>` : ''}
         <div id="cmt-test-${t.id}"></div>
       </div>
     </div>`;
@@ -10151,6 +10187,7 @@ function renderStudentHW(){
         <div style="margin-bottom:12px">${statusBadge}</div>
         ${h.submitted && h.teacherFeedback ? `<div class="feedback-box" style="margin-bottom:10px"><strong>💬 Отзыв преподавателя:</strong><br>${esc(h.teacherFeedback)}</div>` : ''}
         ${h.submitted ? renderHWResults(h) : availGate(h,'doHW')}
+        ${h.submitted ? `<div style="margin-top:10px"><button class="btn btn-outline btn-sm" id="answers-review-btn-hw-${h.id}" onclick="toggleAnswersReviewPanel('hw','${h.id}')">👁 Посмотреть ошибки</button></div><div id="answers-review-hw-${h.id}" style="display:none;margin-top:10px"></div>` : ''}
         <div id="cmt-hw-${h.id}"></div>
       </div>
     </div>`;
