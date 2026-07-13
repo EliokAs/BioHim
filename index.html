@@ -47,6 +47,8 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232d6a4f'/%3E%3Ctext x='90' y='130' text-anchor='middle' font-family='Georgia,serif' font-size='96' font-weight='700' fill='white'%3EB%3C/text%3E%3C/svg%3E">
 
 <title>Осмос — Платформа репетитора</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -3676,22 +3678,22 @@ body.dark-theme .drawer-footer { background: var(--card); }
 </div>
 
 <!-- Firebase SDK встроен локально (не зависит от CDN) -->
-<script src="firebase-bundle.js"></script>
+<script defer src="firebase-bundle.js"></script>
 <!-- Chart.js, jsPDF, html2canvas, mammoth — загружаются лениво через lazylibs.js -->
-<script src="lazylibs.js"></script>
-<script src="script.js"></script>
-<script src="course-binding.js"></script>
-<script src="timer.js"></script>
-<script src="weekly-report.js"></script>
-<script src="flashcards.js"></script>
+<script defer src="lazylibs.js"></script>
+<script defer src="script.js"></script>
+<script defer src="course-binding.js"></script>
+<script defer src="timer.js"></script>
+<script defer src="weekly-report.js"></script>
+<script defer src="flashcards.js"></script>
 
-<script src="challenges.js"></script>
-<script src="trial-proctor.js"></script>
+<script defer src="challenges.js"></script>
+<script defer src="trial-proctor.js"></script>
 
 <!-- Инициализация: scroll-hide поиска + регистрация Service Worker -->
-<script src="init.js"></script>
+<script defer src="init.js"></script>
 <!-- Доступность: focus-trap, Escape, ARIA live-регион, keyboard nav -->
-<script src="accessibility.js"></script>
+<script defer src="accessibility.js"></script>
 <!-- Flashcard modals — вынесены на уровень body, вне .page с анимацией fadeIn,
      чтобы position:fixed работал относительно viewport, а не анимирующегося предка -->
 <!-- LINK TEST TO CONTENT MODAL -->
