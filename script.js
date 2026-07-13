@@ -1440,8 +1440,8 @@ async function preloadCache(){
     LIGHT_COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
   }
 
-  // ── 2. Тяжёлые коллекции — каждую отдельно, не блокируем вход ──
-  for (const k of HEAVY_COLLECTIONS) {
+  // ── 2. Тяжёлые коллекции — параллельно, не блокируем вход ──
+  await Promise.all(HEAVY_COLLECTIONS.map(async k => {
     try {
       const snap = await _withTimeout(db.ref('db/' + k).get(), 15000);
       _applySnap(k, snap.val());
@@ -1451,7 +1451,7 @@ async function preloadCache(){
       if (!(k in _cache)) _cache[k] = null;
       // Не ставим anyError — не блокируем вход из-за тяжёлых коллекций
     }
-  }
+  }));
 
   if (anyError) {
     _preloadWarning = anyError.message || 'Ошибка подключения к серверу';
@@ -10984,6 +10984,79 @@ async function downloadItemDocx(type, id) {
     const totalPts = item.maxPts || item.autoTotal || questions.reduce((s,q)=>s+(+q.points||1),0);
     const typeLabels = { auto:'выбор', open:'открытый', fillin:'вставить', match:'соответствие', number:'число', voice:'голос' };
 
+    // ── Загрузка картинок ──────────────────────────────────────────────────
+    // imgMap: url → { rId, ext, bytes: Uint8Array, w_emu, h_emu }
+    const imgMap = new Map();
+    let imgCounter = 0;
+
+    async function _fetchImageBytes(url) {
+      if (!url) return null;
+      try {
+        if (url.startsWith('data:')) {
+          const [meta, b64] = url.split(',');
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const ext = (meta.match(/image\/(\w+)/) || [])[1] || 'png';
+          return { bytes, ext: ext === 'jpeg' ? 'jpg' : ext };
+        }
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const buf = await resp.arrayBuffer();
+        const ct = resp.headers.get('content-type') || 'image/png';
+        const ext = ct.includes('jpeg') || ct.includes('jpg') ? 'jpg' : 'png';
+        return { bytes: new Uint8Array(buf), ext };
+      } catch { return null; }
+    }
+
+    async function _imgDimensions(bytes, ext) {
+      return new Promise(resolve => {
+        const blob = new Blob([bytes], { type: ext === 'jpg' ? 'image/jpeg' : 'image/png' });
+        const burl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => { resolve({ w: img.naturalWidth, h: img.naturalHeight }); URL.revokeObjectURL(burl); };
+        img.onerror = () => { resolve({ w: 400, h: 300 }); URL.revokeObjectURL(burl); };
+        img.src = burl;
+      });
+    }
+
+    // Собираем уникальные imageUrl
+    const uniqueUrls = [...new Set(questions.map(q => q.imageUrl).filter(Boolean))];
+    await Promise.all(uniqueUrls.map(async url => {
+      const res = await _fetchImageBytes(url);
+      if (!res) return;
+      imgCounter++;
+      const rId = `rId${imgCounter + 1}`; // rId1 зарезервирован для styles
+      const { w, h } = await _imgDimensions(res.bytes, res.ext);
+      // Вписать в 9638400 EMU (≈ 17 см ширина контента A4 с отступами 2cm)
+      const maxW = 9638400;
+      const scale = Math.min(1, maxW / (w * 9144));
+      const wEmu = Math.round(w * 9144 * scale);
+      const hEmu = Math.round(h * 9144 * scale);
+      imgMap.set(url, { rId, ext: res.ext, bytes: res.bytes, wEmu, hEmu, idx: imgCounter });
+    }));
+
+    // Хелпер: OOXML drawing для картинки
+    function _xmlImage(url) {
+      const img = imgMap.get(url);
+      if (!img) return '';
+      return `<w:p><w:pPr><w:spacing w:before="120" w:after="120"/><w:jc w:val="left"/></w:pPr>` +
+        `<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">` +
+        `<wp:extent cx="${img.wEmu}" cy="${img.hEmu}"/>` +
+        `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+        `<wp:docPr id="${img.idx}" name="img${img.idx}"/>` +
+        `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
+        `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+        `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+        `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+        `<pic:nvPicPr><pic:cNvPr id="${img.idx}" name="img${img.idx}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+        `<pic:blipFill><a:blip r:embed="${img.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>` +
+        `<a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+        `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${img.wEmu}" cy="${img.hEmu}"/></a:xfrm>` +
+        `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+        `</pic:pic></a:graphicData></a:graphic>` +
+        `</wp:inline></w:drawing></w:r></w:p>`;
+    }
+
+    // ── Построение тела документа ──────────────────────────────────────────
     const body = [];
 
     // Заголовок
@@ -11029,6 +11102,9 @@ async function downloadItemDocx(type, id) {
         _xmlRun(`  [${label}, ${pts} б.]`, {size:18, color:'888888'})
       }</w:p>`);
 
+      // Картинка вопроса
+      if (q.imageUrl) body.push(_xmlImage(q.imageUrl));
+
       if ((qType==='auto'||qType==='multi') && Array.isArray(q.options)) {
         q.options.forEach((opt,oi)=>{
           const letter = String.fromCharCode(65+oi);
@@ -11064,10 +11140,14 @@ async function downloadItemDocx(type, id) {
 
     body.push(_xmlPara(_xmlRun(`Всего вопросов: ${questions.length}  ·  Максимум баллов: ${totalPts}`, {italic:true, size:20, color:'555555'}), {align:'center', before:480}));
 
+    // ── Сборка XML-файлов ──────────────────────────────────────────────────
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
   xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
 <w:body>
 ${body.join('\n')}
 <w:sectPr>
@@ -11076,9 +11156,16 @@ ${body.join('\n')}
 </w:sectPr>
 </w:body></w:document>`;
 
+    // Relationships: rId1 = styles, rId2+ = images
+    const imgRels = [...imgMap.values()].map(img => {
+      const mtype = img.ext === 'jpg' ? 'jpeg' : img.ext;
+      return `  <Relationship Id="${img.rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/img${img.idx}.${img.ext}"/>`;
+    }).join('\n');
+
     const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+${imgRels}
 </Relationships>`;
 
     const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -11091,10 +11178,17 @@ ${body.join('\n')}
   </w:docDefaults>
 </w:styles>`;
 
+    // Content-Types: добавляем image-типы
+    const imgCTypes = [...new Set([...imgMap.values()].map(img => img.ext))].map(ext => {
+      const ct = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+      return `  <Default Extension="${ext}" ContentType="${ct}"/>`;
+    }).join('\n');
+
     const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
+${imgCTypes}
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>`;
@@ -11104,13 +11198,20 @@ ${body.join('\n')}
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`;
 
-    const zipData = await _buildZip([
-      { name: '[Content_Types].xml',      data: appXml },
-      { name: '_rels/.rels',              data: rootRels },
-      { name: 'word/document.xml',        data: documentXml },
+    // Собираем ZIP
+    const zipFiles = [
+      { name: '[Content_Types].xml',          data: appXml },
+      { name: '_rels/.rels',                  data: rootRels },
+      { name: 'word/document.xml',            data: documentXml },
       { name: 'word/_rels/document.xml.rels', data: relsXml },
-      { name: 'word/styles.xml',          data: stylesXml },
-    ]);
+      { name: 'word/styles.xml',              data: stylesXml },
+    ];
+    // Добавляем картинки
+    for (const img of imgMap.values()) {
+      zipFiles.push({ name: `word/media/img${img.idx}.${img.ext}`, data: img.bytes });
+    }
+
+    const zipData = await _buildZip(zipFiles);
 
     const blob = new Blob([zipData], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     const url = URL.createObjectURL(blob);
