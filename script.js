@@ -11019,10 +11019,12 @@ async function downloadItemDocx(type, id) {
     }
 
     // Собираем уникальные imageUrl
+    // ВАЖНО: обрабатываем последовательно (for...of, не Promise.all), чтобы imgCounter
+    // назначался строго по одному и не было race condition при параллельных await.
     const uniqueUrls = [...new Set(questions.map(q => q.imageUrl).filter(Boolean))];
-    await Promise.all(uniqueUrls.map(async url => {
+    for (const url of uniqueUrls) {
       const res = await _fetchImageBytes(url);
-      if (!res) return;
+      if (!res) continue;
       imgCounter++;
       const rId = `rId${imgCounter + 1}`; // rId1 зарезервирован для styles
       const { w, h } = await _imgDimensions(res.bytes, res.ext);
@@ -11032,7 +11034,7 @@ async function downloadItemDocx(type, id) {
       const wEmu = Math.round(w * 9144 * scale);
       const hEmu = Math.round(h * 9144 * scale);
       imgMap.set(url, { rId, ext: res.ext, bytes: res.bytes, wEmu, hEmu, idx: imgCounter });
-    }));
+    }
 
     // Хелпер: OOXML drawing для картинки
     // drawingCounter обеспечивает уникальный id каждого вхождения drawing в документе
