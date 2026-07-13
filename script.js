@@ -10982,7 +10982,7 @@ async function downloadItemDocx(type, id) {
     const filename = `${prefixMap[type]||type}_${safe}_${item.date||new Date().toLocaleDateString('ru').replace(/\./g,'-')}.docx`;
 
     const totalPts = item.maxPts || item.autoTotal || questions.reduce((s,q)=>s+(+q.points||1),0);
-    const typeLabels = { auto:'выбор', open:'открытый', fillin:'вставить', match:'соответствие', number:'число', voice:'голос' };
+    const typeLabels = { auto:'выбор', multi:'несколько правильных', open:'открытый', fill:'вставить слово', fillin:'вставить', match:'соответствие', pairs:'найти пары', order:'по порядку', number:'число', voice:'голос' };
 
     // ── Загрузка картинок ──────────────────────────────────────────────────
     // imgMap: url → { rId, ext, bytes: Uint8Array, w_emu, h_emu }
@@ -11125,19 +11125,63 @@ async function downloadItemDocx(type, id) {
         });
       }
 
-      if ((qType==='fillin'||qType==='number') && q.correct!==undefined) {
+      // fill (вставить слово) — тип называется 'fill', не 'fillin'
+      if (qType==='fill') {
+        const parts = (q.text||'').split('___');
+        if (parts.length > 1) {
+          // Показываем текст с пропусками и правильные ответы
+          const correctFills = q.correct ? String(q.correct).split(',') : [];
+          let fillLine = '';
+          parts.forEach((part, pi) => {
+            fillLine += _stripTags(part);
+            if (pi < parts.length - 1) {
+              const ans = correctFills[pi] ? correctFills[pi].trim() : '______';
+              fillLine += ` [${ans}] `;
+            }
+          });
+          body.push(_xmlPara(_xmlRun(fillLine, {size:20}), {indent:560, before:60, after:40}));
+        } else if (q.correct !== undefined) {
+          body.push(_xmlPara(_xmlRun('Ответ: ' + q.correct, {bold:true, size:20, color:'1E8449'}), {indent:560, before:60, after:40}));
+        }
+      }
+
+      if (qType==='number' && q.correct!==undefined) {
         body.push(_xmlPara(_xmlRun('Ответ: '+q.correct, {bold:true, size:20, color:'1E8449'}), {indent:560, before:60, after:40}));
       }
 
-      if (qType==='match' && Array.isArray(q.leftItems)) {
-        q.leftItems.forEach((lItem,li)=>{
-          const rIdx = q.correctMap?q.correctMap[String(li)]:undefined;
-          const rItem = (q.rightOptions&&rIdx!==undefined)?q.rightOptions[rIdx]:'';
-          body.push(_xmlPara(
-            _xmlRun(`${li+1}. ${lItem||''}`, {size:20}) + (rItem?_xmlRun(` → ${rItem}`, {bold:true, size:20, color:'1E8449'}):''),
-            {indent:560, before:40, after:40}
-          ));
-        });
+      // match и pairs — данные хранятся в q.pairs[] (массив [left, right]) + q.correctMap
+      if (qType==='match' || qType==='pairs') {
+        const pairsRaw = q.pairs || [];
+        const pairs = pairsRaw.map(p => Array.isArray(p) ? p : [p.left||'', p.right||'']);
+        const cMap = q.correctMap || {};
+        if (pairs.length) {
+          pairs.forEach((p, pi) => {
+            const rIdx = cMap[String(pi)] !== undefined ? cMap[String(pi)] : pi;
+            const rightVal = pairs[rIdx] ? pairs[rIdx][1] : '';
+            const arrow = qType === 'match' ? ' → ' : ' ↔ ';
+            body.push(_xmlPara(
+              _xmlRun(`${pi+1}. ${_stripTags(p[0]||'')}`, {size:20}) +
+              (rightVal ? _xmlRun(arrow + _stripTags(rightVal), {bold:true, size:20, color:'1E8449'}) : ''),
+              {indent:560, before:40, after:40}
+            ));
+          });
+        } else {
+          body.push(_xmlPara(_xmlRun('(нет пар)', {size:20, color:'BBBBBB'}), {indent:560, before:40, after:40}));
+        }
+      }
+
+      // order — правильный порядок элементов из q.items[]
+      if (qType==='order') {
+        const items = q.items || [];
+        if (items.length) {
+          items.forEach((item, ii) => {
+            body.push(_xmlPara(
+              _xmlRun(`${ii+1}. `, {bold:true, size:20, color:'1E8449'}) +
+              _xmlRun(_stripTags(item||''), {size:20}),
+              {indent:560, before:40, after:40}
+            ));
+          });
+        }
       }
 
       if (qType==='open'||qType==='voice') {
