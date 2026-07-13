@@ -11035,19 +11035,24 @@ async function downloadItemDocx(type, id) {
     }));
 
     // Хелпер: OOXML drawing для картинки
+    // drawingCounter обеспечивает уникальный id каждого вхождения drawing в документе
+    // (wp:docPr id и pic:cNvPr id должны быть уникальны на каждое <wp:inline>, а не на файл)
+    let drawingCounter = 0;
     function _xmlImage(url) {
       const img = imgMap.get(url);
       if (!img) return '';
+      drawingCounter++;
+      const did = drawingCounter;
       return `<w:p><w:pPr><w:spacing w:before="120" w:after="120"/><w:jc w:val="left"/></w:pPr>` +
         `<w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0">` +
         `<wp:extent cx="${img.wEmu}" cy="${img.hEmu}"/>` +
         `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
-        `<wp:docPr id="${img.idx}" name="img${img.idx}"/>` +
+        `<wp:docPr id="${did}" name="img${did}"/>` +
         `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
         `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
         `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
         `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
-        `<pic:nvPicPr><pic:cNvPr id="${img.idx}" name="img${img.idx}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+        `<pic:nvPicPr><pic:cNvPr id="${did}" name="img${did}"/><pic:cNvPicPr/></pic:nvPicPr>` +
         `<pic:blipFill><a:blip r:embed="${img.rId}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>` +
         `<a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
         `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${img.wEmu}" cy="${img.hEmu}"/></a:xfrm>` +
