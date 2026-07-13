@@ -1440,15 +1440,16 @@ async function preloadCache(){
     LIGHT_COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
   }
 
-  // ── 2. Тяжёлые коллекции — в фоне, НЕ блокируем вход ──
-  // Запускаем без await — login screen показывается сразу после лёгких коллекций
-  window._heavyPreloadPromise = Promise.all(HEAVY_COLLECTIONS.map(async k => {
+  // ── 2. Тяжёлые коллекции — параллельно, не блокируем вход ──
+  await Promise.all(HEAVY_COLLECTIONS.map(async k => {
     try {
       const snap = await _withTimeout(db.ref('db/' + k).get(), 15000);
       _applySnap(k, snap.val());
+      console.log('[Firebase] ✅ ' + k + ' загружен (' + (Array.isArray(_cache[k]) ? _cache[k].length + ' эл.' : 'ok') + ')');
     } catch(e) {
       console.warn('[Firebase] ⚠️ Не удалось загрузить ' + k + ':', e.message);
       if (!(k in _cache)) _cache[k] = null;
+      // Не ставим anyError — не блокируем вход из-за тяжёлых коллекций
     }
   }));
 
@@ -1862,10 +1863,13 @@ async function initData(){
     }
   } catch(e){ }
 
-  // Используем кэш (уже загружен preloadCache) — без повторных Firebase запросов
-  const _fbUsersExist = (load('users')||[]).length > 0;
+  // Дополнительная защита: перед записью демо-данных проверяем Firebase напрямую.
+  // Это защищает от случая когда кэш пуст (пустой ответ Firebase, ошибка прав),
+  // но _preloadWarning не был выставлен.
+  const _fbUsersSnap = await _fbInit().ref('db/users').get().catch(()=>null);
+  const _fbUsersExist = _fbUsersSnap && _fbUsersSnap.val() !== null;
 
-  if(!_fbUsersExist){
+  if(!_fbUsersExist && !(load('users')||[]).length){
     const adminHash = await hashPassword('1234');
     const stuHash   = await hashPassword('1234');
     save('users',[
@@ -1875,21 +1879,26 @@ async function initData(){
     ]);
   }
   if(!(load('courses')||[]).length){
-    // Кэш уже загружен — если пустой, значит в Firebase нет данных
-    save('courses',[
-      {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
-      {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
-      {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
-    ]);
+    const _fbCoursesSnap = await _fbInit().ref('db/courses').get().catch(()=>null);
+    if(!_fbCoursesSnap || _fbCoursesSnap.val() === null){
+      save('courses',[
+        {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
+        {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
+        {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
+      ]);
+    }
   }
   if(!(load('slots')||[]).length){
-    save('slots',[
-      {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
-      {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
-      {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
-      {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
-      {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
-    ]);
+    const _fbSlotsSnap = await _fbInit().ref('db/slots').get().catch(()=>null);
+    if(!_fbSlotsSnap || _fbSlotsSnap.val() === null){
+      save('slots',[
+        {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
+        {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
+        {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
+        {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
+        {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
+      ]);
+    }
   }
   // ВАЖНО: не перезаписываем Firebase пустыми массивами если preload не завершился
   // (иначе таймаут/ошибка сети сотрёт все данные в базе)
@@ -1897,11 +1906,13 @@ async function initData(){
   // Инициализируем пустыми массивами только если коллекции нет ни в кэше, ни в Firebase.
   // Проверка кэша недостаточна: null в кэше может означать «Firebase ещё не вернул данные»,
   // а не «коллекция реально пуста» — в этом случае save([]) сотрёт реальные данные.
-  // Используем кэш — без повторных Firebase запросов (данные уже загружены preloadCache)
   const _emptyCollections = ['payments','attendance','tests','hw','content','bookings','notifs','groups'];
-  _emptyCollections.forEach(k => {
-    if (load(k) === null) save(k, []);
-  });
+  await Promise.all(_emptyCollections.map(async k => {
+    if (load(k) !== null) return; // в кэше есть — не трогаем
+    const snap = await _fbInit().ref('db/' + k).get().catch(() => null);
+    if (!snap || snap.val() !== null) return; // в Firebase тоже есть — не трогаем
+    save(k, []); // только если Firebase подтвердил: коллекции нет
+  }));
 }
 
 // ══════════════════════════════════════════
@@ -12616,14 +12627,15 @@ function _loadingDone(){
   _loadingStep('Подключение к базе данных…', 10);
 
   try {
-    _loadingStep('Загрузка данных…', 40);
-    await preloadCache(); // лёгкие коллекции — блокируем; тяжёлые — уже в фоне
-    _loadingStep('Инициализация…', 85);
+    _loadingStep('Загрузка данных…', 35);
+    await preloadCache(); // при таймауте не бросает, ставит _preloadWarning
+    _loadingStep('Инициализация…', 75);
     await initData();
     _loadingStep('Готово', 100);
   } catch(e) {
     console.error('Init error:', e);
     _loadingDone();
+    // Show error inline on login form instead
     const errEl = document.getElementById('login-err');
     if(errEl) errEl.textContent = '⚠️ Ошибка загрузки: ' + (e.message||e) + ' — попробуйте обновить страницу';
     return;
@@ -12650,30 +12662,61 @@ function _loadingDone(){
         localStorage.removeItem('biohim_session');
         return;
       }
-      // Если кэш пустой из-за ошибки сети — ждём пока subscribeRealtime заполнит кэш
+      // Если кэш пустой из-за ошибки сети — не удаляем сессию,
+      // а ждём пока subscribeRealtime заполнит кэш
       if(!user && _preloadWarning && savedUser.id){
         subscribeRealtime();
-        const resolvedUser = await new Promise(resolve => {
+        await new Promise(resolve => {
           let waited = 0;
           const check = setInterval(() => {
             const u = (load('users')||[]).find(u=>u.id===savedUser.id);
             waited += 300;
-            if(u || waited >= 15000){ clearInterval(check); resolve(u||null); }
+            if(u || waited >= 15000){ clearInterval(check); resolve(u); }
           }, 300);
+        }).then(async resolvedUser => {
+          if(!resolvedUser){ localStorage.removeItem('biohim_session'); return; }
+          currentUser = resolvedUser;
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='block';
+          const resetBtn = document.getElementById('btn-reset-data');
+          if(resetBtn) resetBtn.style.display = resolvedUser.role==='admin' ? 'block' : 'none';
+          if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
+          initDarkTheme();
+          buildNav();
+          await runLocalStorageMigration(resolvedUser);
+          await preloadUserData(resolvedUser);
+          const defaultPage = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
+          const lastPage = localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage;
+          navigateTo(lastPage);
         });
-        if(!resolvedUser){ localStorage.removeItem('biohim_session'); return; }
-        currentUser = resolvedUser;
-        document.getElementById('login-screen').style.display='none';
-        document.getElementById('app').style.display='block';
-        const resetBtn = document.getElementById('btn-reset-data');
-        if(resetBtn) resetBtn.style.display = resolvedUser.role==='admin' ? 'block' : 'none';
-        if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
-        initDarkTheme();
-        buildNav();
-        await runLocalStorageMigration(resolvedUser);
-        await preloadUserData(resolvedUser);
-        const defaultPage0 = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
-        navigateTo(localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage0);
+        return;
+      }
+
+      if(!user && _preloadWarning && savedUser.id){
+        subscribeRealtime();
+        await new Promise(resolve => {
+          let waited = 0;
+          const check = setInterval(() => {
+            const u = (load('users')||[]).find(u=>u.id===savedUser.id);
+            waited += 300;
+            if(u || waited >= 15000){ clearInterval(check); resolve(u); }
+          }, 300);
+        }).then(async resolvedUser => {
+          if(!resolvedUser){ localStorage.removeItem('biohim_session'); return; }
+          currentUser = resolvedUser;
+          document.getElementById('login-screen').style.display='none';
+          document.getElementById('app').style.display='block';
+          const resetBtn = document.getElementById('btn-reset-data');
+          if(resetBtn) resetBtn.style.display = resolvedUser.role==='admin' ? 'block' : 'none';
+          if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
+          initDarkTheme();
+          buildNav();
+          await runLocalStorageMigration(resolvedUser);
+          await preloadUserData(resolvedUser);
+          const defaultPage = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
+          const lastPage = localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage;
+          navigateTo(lastPage);
+        });
         return;
       }
       if(user){
