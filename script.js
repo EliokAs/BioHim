@@ -1863,13 +1863,11 @@ async function initData(){
     }
   } catch(e){ }
 
-  // Дополнительная защита: перед записью демо-данных проверяем Firebase напрямую.
-  // Это защищает от случая когда кэш пуст (пустой ответ Firebase, ошибка прав),
-  // но _preloadWarning не был выставлен.
-  const _fbUsersSnap = await _fbInit().ref('db/users').get().catch(()=>null);
-  const _fbUsersExist = _fbUsersSnap && _fbUsersSnap.val() !== null;
+  // Проверяем кэш (уже заполнен preloadCache): если users есть — не пишем демо-данные.
+  // Повторный .get() к Firebase убран — он дублирует preloadCache и замедляет запуск на 1-3 сек.
+  const _fbUsersExist = (load('users')||[]).length > 0;
 
-  if(!_fbUsersExist && !(load('users')||[]).length){
+  if(!_fbUsersExist){
     const adminHash = await hashPassword('1234');
     const stuHash   = await hashPassword('1234');
     save('users',[
@@ -1878,41 +1876,33 @@ async function initData(){
       {id:'dima',  login:'dima',  passwordHash: stuHash,   name:'Дмитрий Козлов',role:'student', subject:'Химия',    active:true, mustChangePassword: true}
     ]);
   }
+  // courses: используем кэш из preloadCache — повторный .get() убран (ускорение ~1-2 сек)
   if(!(load('courses')||[]).length){
-    const _fbCoursesSnap = await _fbInit().ref('db/courses').get().catch(()=>null);
-    if(!_fbCoursesSnap || _fbCoursesSnap.val() === null){
-      save('courses',[
-        {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
-        {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
-        {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
-      ]);
-    }
+    save('courses',[
+      {id:'c1',title:'Биология ЕГЭ',subject:'Биология',format:'individual',price:1800,desc:'Подготовка к ЕГЭ по биологии. Теория + практика.'},
+      {id:'c2',title:'Химия ОГЭ',subject:'Химия',format:'individual',price:1600,desc:'Подготовка к ОГЭ по химии. Разбор заданий.'},
+      {id:'c3',title:'Общий курс: Клетка',subject:'Биология + Химия',format:'group',price:900,desc:'Групповые занятия по теме "Клетка".'},
+    ]);
   }
+  // slots: используем кэш из preloadCache — повторный .get() убран
   if(!(load('slots')||[]).length){
-    const _fbSlotsSnap = await _fbInit().ref('db/slots').get().catch(()=>null);
-    if(!_fbSlotsSnap || _fbSlotsSnap.val() === null){
-      save('slots',[
-        {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
-        {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
-        {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
-        {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
-        {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
-      ]);
-    }
+    save('slots',[
+      {id:'s1',day:'Понедельник',time:'10:00',dur:60,bookedBy:null},
+      {id:'s2',day:'Понедельник',time:'12:00',dur:60,bookedBy:null},
+      {id:'s3',day:'Среда',time:'11:00',dur:90,bookedBy:'anna'},
+      {id:'s4',day:'Пятница',time:'14:00',dur:60,bookedBy:null},
+      {id:'s5',day:'Суббота',time:'10:00',dur:60,bookedBy:'dima'},
+    ]);
   }
   // ВАЖНО: не перезаписываем Firebase пустыми массивами если preload не завершился
-  // (иначе таймаут/ошибка сети сотрёт все данные в базе)
   if (_preloadWarning) return;
-  // Инициализируем пустыми массивами только если коллекции нет ни в кэше, ни в Firebase.
-  // Проверка кэша недостаточна: null в кэше может означать «Firebase ещё не вернул данные»,
-  // а не «коллекция реально пуста» — в этом случае save([]) сотрёт реальные данные.
+  // Инициализируем пустыми массивами только если в кэше null (preloadCache подтвердил отсутствие).
+  // Повторный .get() убран: preloadCache уже загрузил все коллекции, null = нет данных.
   const _emptyCollections = ['payments','attendance','tests','hw','content','bookings','notifs','groups'];
-  await Promise.all(_emptyCollections.map(async k => {
+  _emptyCollections.forEach(k => {
     if (load(k) !== null) return; // в кэше есть — не трогаем
-    const snap = await _fbInit().ref('db/' + k).get().catch(() => null);
-    if (!snap || snap.val() !== null) return; // в Firebase тоже есть — не трогаем
-    save(k, []); // только если Firebase подтвердил: коллекции нет
-  }));
+    save(k, []); // preloadCache вернул null → коллекции нет, инициализируем пустым массивом
+  });
 }
 
 // ══════════════════════════════════════════
