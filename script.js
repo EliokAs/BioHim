@@ -1767,6 +1767,12 @@ function subscribeRealtime(){
       // Firebase возвращает объект вместо массива — конвертируем рекурсивно (включая вложенные blocks/files/timestamps)
       // contracts — объект {privacy, rules}, не массив — не включаем
       const ARRAY_COLLECTIONS = ['users','attendance','payments','content','tests','hw','trials','slots','bookings','groups','notifs','taskbank','flashcard_decks','courses','salary_payments','mistakes'];
+
+      // Защита от double-fire: Firebase SDK при первом .on() может сначала отдать null (локальный кэш SDK),
+      // а затем реальные данные из сети. Если кэш уже заполнен preloadCache — не затираем его null-ом.
+      const oldHasData = Array.isArray(oldVal) ? oldVal.length > 0 : (oldVal !== null && oldVal !== undefined);
+      if (val === null && oldHasData) return;
+
       if (val !== null && val !== undefined && !Array.isArray(val) && typeof val === 'object' && ARRAY_COLLECTIONS.includes(k)) {
         _cache[k] = Object.values(val).map(_fbRestoreArrays);
       } else {
@@ -6012,10 +6018,12 @@ function renderScheduleAdmin(){
     const g=s.groupId?getGroups().find(x=>x.id===s.groupId):null;
     const whoLabel = g ? `<b>👥 ${esc(g.name)}</b>` : (u?`<b>${esc(u.name)}</b>`:'<span style="color:var(--text3)">Свободно</span>');
     const courseLabel = s.courseId ? (load('courses')||[]).find(c=>c.id===s.courseId)?.title : null;
+    const repeatBadge = s.repeat ? `<span style="font-size:0.72rem;background:#e8f4fd;color:#1565c0;border-radius:5px;padding:1px 6px;margin-left:5px">🔁 еженедельно</span>` : '';
+    const dateBadge = s.slotDate && !s.repeat ? `<span style="font-size:0.72rem;background:#fff3e0;color:#e65100;border-radius:5px;padding:1px 6px;margin-left:5px">📅 разово</span>` : '';
     return `<div class="content-item">
       <div class="content-icon">🕐</div>
       <div class="content-info">
-        <div class="content-name">${s.day} ${s.time}${courseLabel?` · <span style="color:var(--chem);font-size:0.8rem">${courseLabel}</span>`:''}</div>
+        <div class="content-name">${s.day} ${s.time}${courseLabel?` · <span style="color:var(--chem);font-size:0.8rem">${courseLabel}</span>`:''}${repeatBadge}${dateBadge}</div>
         <div class="content-meta">${s.dur} мин · ${whoLabel}</div>
       </div>
       <button class="btn btn-red btn-sm" onclick="deleteSlot('${s.id}')">🗑</button>
@@ -6070,7 +6078,20 @@ function saveCourse(){
 }
 function deleteCourse(id){ save('courses',(load('courses')||[]).filter(c=>c.id!==id)); renderScheduleAdmin(); }
 function saveSlot(){
-  const day=document.getElementById('nsl-day').value;
+  const mode = (document.getElementById('nsl-date-wrap')||{}).style?.display==='none' ? 'week' : 'date';
+  let day, slotDate=null, repeat=false;
+  if(mode==='date'){
+    slotDate = document.getElementById('nsl-date').value;
+    if(!slotDate){ showNotif('Выберите дату'); return; }
+    repeat = document.getElementById('nsl-repeat').checked;
+    // human-readable label
+    const d = new Date(slotDate);
+    const days=['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+    const months=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+    day = `${d.getDate()} ${months[d.getMonth()]} (${days[d.getDay()]})`;
+  } else {
+    day=document.getElementById('nsl-day').value;
+  }
   const time=document.getElementById('nsl-time').value;
   const dur=document.getElementById('nsl-dur').value;
   const courseId=document.getElementById('nsl-course')?.value||null;
@@ -6084,13 +6105,14 @@ function saveSlot(){
     if(g&&g.memberIds&&g.memberIds.length) bookedBy=g.memberIds[0];
   }
   const slots=load('slots')||[];
-  slots.push({id:'s'+Date.now(),day,time,dur:parseInt(dur),bookedBy,groupId:groupId||null,courseId:courseId||null});
+  slots.push({id:'s'+Date.now(),day,time,dur:parseInt(dur),bookedBy,groupId:groupId||null,courseId:courseId||null,
+    slotDate:slotDate||null, repeat:repeat||false, mode});
   save('slots',slots);
-  // Notify assigned student(s)
-  if(bookedBy) addNotif(bookedBy,{type:'schedule',text:`🗓 Вас записали: ${day} ${time}`,nav:'schedule'});
+  const label = slotDate ? `${day} ${time}` : `${day} ${time}`;
+  if(bookedBy) addNotif(bookedBy,{type:'schedule',text:`🗓 Вас записали: ${label}`,nav:'schedule'});
   if(groupId){
     const g=getGroups().find(x=>x.id===groupId);
-    if(g) (g.memberIds||[]).forEach(sid=>addNotif(sid,{type:'schedule',text:`🗓 Группа записана: ${day} ${time}`,nav:'schedule'}));
+    if(g) (g.memberIds||[]).forEach(sid=>addNotif(sid,{type:'schedule',text:`🗓 Группа записана: ${label}`,nav:'schedule'}));
   }
   closeModal('modal-add-slot');
   renderScheduleAdmin();
@@ -13960,7 +13982,26 @@ function openModal_addSlot(){
   document.getElementById('nsl-assigntype').value = '';
   document.getElementById('nsl-student-wrap').style.display = 'none';
   document.getElementById('nsl-group-wrap').style.display = 'none';
+  // Init date mode
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('nsl-date').value = today;
+  document.getElementById('nsl-repeat').checked = false;
+  setSlotMode('date');
   openModal('modal-add-slot');
+}
+
+function setSlotMode(mode){
+  const dateWrap = document.getElementById('nsl-date-wrap');
+  const weekWrap = document.getElementById('nsl-week-wrap');
+  const btnDate  = document.getElementById('nsl-mode-date');
+  const btnWeek  = document.getElementById('nsl-mode-week');
+  if(mode==='date'){
+    dateWrap.style.display=''; weekWrap.style.display='none';
+    btnDate.className='btn btn-green btn-sm'; btnWeek.className='btn btn-outline btn-sm';
+  } else {
+    dateWrap.style.display='none'; weekWrap.style.display='';
+    btnDate.className='btn btn-outline btn-sm'; btnWeek.className='btn btn-green btn-sm';
+  }
 }
 
 function updateSlotAssignUI(){
