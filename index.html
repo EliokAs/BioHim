@@ -3017,8 +3017,23 @@ body.dark-theme .drawer-footer { background: var(--card); }
       <button class="drawer-close" onclick="closeModal('modal-add-slot')">✕</button>
     </div>
     <div class="drawer-body">
-      <div class="form-group"><label>День недели</label>
-        <select id="nsl-day"><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option><option>Воскресенье</option></select></div>
+      <div class="form-group">
+        <label>Режим даты</label>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button id="nsl-mode-date" class="btn btn-green btn-sm" onclick="setSlotMode('date')" style="flex:1">📅 Конкретная дата</button>
+          <button id="nsl-mode-week" class="btn btn-outline btn-sm" onclick="setSlotMode('week')" style="flex:1">📆 День недели</button>
+        </div>
+        <div id="nsl-date-wrap">
+          <input id="nsl-date" type="date" style="width:100%">
+          <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:400;cursor:pointer">
+            <input type="checkbox" id="nsl-repeat" style="width:16px;height:16px">
+            <span>Повторять каждую неделю</span>
+          </label>
+        </div>
+        <div id="nsl-week-wrap" style="display:none">
+          <select id="nsl-day"><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option><option>Воскресенье</option></select>
+        </div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group" style="margin:0"><label>Время</label><input id="nsl-time" type="time" value="10:00"></div>
         <div class="form-group" style="margin:0"><label>Продолжительность (мин)</label><input id="nsl-dur" type="number" value="60"></div>
