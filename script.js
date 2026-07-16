@@ -12801,27 +12801,39 @@ function getCalEvents(){
   // 🔵 BLUE — занятия (slots with bookedBy)
   const slots = load('slots')||[];
   slots.filter(s=>s.bookedBy).forEach(s=>{
-    const dowIndex = DAY_MAP[s.day];
-    if(dowIndex === undefined) return;
     const student = users.find(u=>u.id===s.bookedBy);
-    // Generate occurrences for next 6 weeks from today
-    for(let w=0; w<6; w++){
-      const d = new Date(today);
-      // Find next occurrence of this weekday
-      let diff = (dowIndex - ((today.getDay()+6)%7) + 7*w) % 7;
-      if(diff===0 && w>0) diff=7;
-      d.setDate(today.getDate() + (7*w) + (w===0 ? (diff===0?0:diff) : 0));
-      // Simpler: just find date of that weekday in current+next weeks
-      const base = new Date(today);
-      base.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
-      base.setHours(0,0,0,0);
-      if(base >= today || w===0){
-        events.push({
-          date: base,
-          type: 'blue',
-          label: `${s.time} — ${student?student.name:'ученик'}`,
-          who: student?student.name:''
-        });
+    const label = `${s.time} — ${student?student.name:'ученик'}`;
+    const who = student?student.name:'';
+
+    if(s.mode==='date' || s.slotDate){
+      // Конкретная дата
+      if(!s.slotDate) return;
+      const base = new Date(s.slotDate); base.setHours(0,0,0,0);
+      if(isNaN(base)) return;
+      if(s.repeat){
+        // Повторять каждую неделю
+        const dowIndex = (base.getDay()+6)%7; // Mon=0
+        for(let w=0; w<8; w++){
+          const d = new Date(today);
+          d.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
+          d.setHours(0,0,0,0);
+          if(d >= base) events.push({date:d,type:'blue',label,who});
+        }
+      } else {
+        // Разовое занятие
+        events.push({date:base,type:'blue',label,who});
+      }
+    } else {
+      // Режим weekday (s.day = название дня)
+      const dowIndex = DAY_MAP[s.day];
+      if(dowIndex === undefined) return;
+      for(let w=0; w<6; w++){
+        const base = new Date(today);
+        base.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
+        base.setHours(0,0,0,0);
+        if(base >= today || w===0){
+          events.push({date:base,type:'blue',label,who});
+        }
       }
     }
   });
@@ -12981,14 +12993,34 @@ function getCalEventsForStudent(){
   // BLUE — занятия этого ученика (напрямую или через группу)
   const slots = load('slots')||[];
   slots.filter(s=>isSlotForStudent(s,sid)).forEach(s=>{
-    const dowIndex = DAY_MAP[s.day];
-    if(dowIndex === undefined) return;
-    for(let w=0; w<8; w++){
-      const base = new Date(today);
-      base.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
-      base.setHours(0,0,0,0);
-      if(base >= today || w===0){
-        events.push({ date: base, type: 'blue', label: s.time + ' — занятие', who: '', itemId: s.id, nav: 'student-schedule' });
+    const label = s.time + ' — занятие';
+    const ev = { type: 'blue', label, who: '', itemId: s.id, nav: 'student-schedule' };
+
+    if(s.mode==='date' || s.slotDate){
+      if(!s.slotDate) return;
+      const base = new Date(s.slotDate); base.setHours(0,0,0,0);
+      if(isNaN(base)) return;
+      if(s.repeat){
+        const dowIndex = (base.getDay()+6)%7;
+        for(let w=0; w<8; w++){
+          const d = new Date(today);
+          d.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
+          d.setHours(0,0,0,0);
+          if(d >= base) events.push({...ev, date:d});
+        }
+      } else {
+        events.push({...ev, date:base});
+      }
+    } else {
+      const dowIndex = DAY_MAP[s.day];
+      if(dowIndex === undefined) return;
+      for(let w=0; w<8; w++){
+        const base = new Date(today);
+        base.setDate(today.getDate() - ((today.getDay()+6)%7) + dowIndex + 7*w);
+        base.setHours(0,0,0,0);
+        if(base >= today || w===0){
+          events.push({...ev, date:base});
+        }
       }
     }
   });
