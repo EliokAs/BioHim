@@ -1896,12 +1896,13 @@ async function initData(){
   }
   // ВАЖНО: не перезаписываем Firebase пустыми массивами если preload не завершился
   if (_preloadWarning) return;
-  // Инициализируем пустыми массивами только если в кэше null (preloadCache подтвердил отсутствие).
-  // Повторный .get() убран: preloadCache уже загрузил все коллекции, null = нет данных.
-  const _emptyCollections = ['payments','attendance','tests','hw','content','bookings','notifs','groups'];
-  _emptyCollections.forEach(k => {
-    if (load(k) !== null) return; // в кэше есть — не трогаем
-    save(k, []); // preloadCache вернул null → коллекции нет, инициализируем пустым массивом
+  // Инициализируем пустыми массивами только безопасные коллекции (платежи, посещаемость, записи и т.д.)
+  // НЕ включаем hw/tests/content/trials: preloadCache при таймауте пишет null в кэш
+  // без выставления _preloadWarning — save([]) в этом случае сотрёт все данные.
+  const _safeEmptyCollections = ['payments','attendance','bookings','notifs','groups'];
+  _safeEmptyCollections.forEach(k => {
+    if (load(k) !== null) return;
+    save(k, []);
   });
 }
 
