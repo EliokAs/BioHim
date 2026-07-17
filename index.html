@@ -3077,14 +3077,26 @@ body.dark-theme .drawer-footer { background: var(--card); }
       <div id="test-timer-wrap" style="display:none;align-items:center;gap:8px">
         <div id="test-timer-display" style="font-family:'Playfair Display',serif;font-size:1.3rem;font-weight:800;padding:6px 16px;border-radius:12px;background:var(--green-xpale);color:var(--green-deep);letter-spacing:0.06em;min-width:80px;text-align:center">—</div>
       </div>
+      <button onclick="closeModal('modal-take-test')" style="background:none;border:1.5px solid var(--text3);color:var(--text3);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:0.82rem;white-space:nowrap;line-height:1.4" title="Свернуть тест (черновик сохранится)">💾 Свернуть</button>
     </div>
     <div id="test-timer-bar-wrap" style="display:none;margin-bottom:12px">
       <div style="height:5px;background:var(--green-xpale);border-radius:10px;overflow:hidden">
         <div id="test-timer-bar" style="height:100%;width:100%;background:linear-gradient(90deg,var(--green-mid),var(--green-light));border-radius:10px;transition:width 1s linear,background 0.5s"></div>
       </div>
     </div>
-    <span class="modal-close" onclick="closeModal('modal-take-test')">✕</span>
     <div id="take-test-body" class="no-copy"></div>
+  </div>
+  <!-- Встроенный диалог подтверждения выхода (вместо браузерного confirm) -->
+  <div id="test-exit-confirm" style="display:none;position:absolute;inset:0;background:rgba(27,67,50,0.7);z-index:10;align-items:center;justify-content:center;border-radius:inherit">
+    <div style="background:var(--white);border-radius:16px;padding:28px 32px;max-width:360px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.25)">
+      <div style="font-size:2rem;margin-bottom:8px">💾</div>
+      <div style="font-weight:700;font-size:1.05rem;color:var(--accent);margin-bottom:8px" id="test-exit-confirm-title">Свернуть тест?</div>
+      <div style="color:var(--text2);font-size:0.9rem;margin-bottom:20px">Ответы автоматически сохранены в черновик. При следующем открытии продолжишь с того же места.</div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button onclick="document.getElementById('test-exit-confirm').style.display='none'" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--green-pale);background:none;color:var(--text2);font-family:Nunito,sans-serif;font-size:0.95rem;cursor:pointer">Остаться</button>
+        <button onclick="_confirmExitTest()" style="flex:1;padding:10px;border-radius:10px;border:none;background:var(--green-mid);color:#fff;font-family:Nunito,sans-serif;font-size:0.95rem;font-weight:700;cursor:pointer">Свернуть</button>
+      </div>
+    </div>
   </div>
 </div>
 
