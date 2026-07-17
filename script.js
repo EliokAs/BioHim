@@ -2992,6 +2992,14 @@ function closeModal(id, force){
     _safeClose(id, force);
     return;
   }
+  // Защита теста/ДЗ — спрашиваем ДО закрытия
+  if(id==='modal-take-test'){
+    if(!force && (_takingTest || _doingHW)){
+      const name = _takingTest ? _takingTest.title : (_doingHW ? _doingHW.title : '');
+      if(!confirm('Закрыть «' + name + '»?\nОтветы сохранены в облаке — при следующем открытии продолжишь с того же места.')) return;
+    }
+    _clearTestTimer();
+  }
   const el=document.getElementById(id);
   if(el){
     // Для drawer-bg — убираем open с анимацией
@@ -3006,13 +3014,6 @@ function closeModal(id, force){
     } else {
       el.classList.remove('open');
     }
-  }
-  if(id==='modal-take-test'){
-    if(!force && (_takingTest || _doingHW)){
-      const name = _takingTest ? _takingTest.title : (_doingHW ? _doingHW.title : '');
-      if(!confirm('Закрыть «' + name + '»?\nОтветы сохранены в облаке — при следующем открытии продолжишь с того же места.')) return;
-    }
-    _clearTestTimer();
   }
   if(id==='modal-add-theory'){
     _theoryFiles=[];
