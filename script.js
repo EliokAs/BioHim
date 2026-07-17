@@ -1400,10 +1400,10 @@ async function preloadCache(){
   const db = _fbInit();
 
   // Коллекции без base64-изображений — читаем одним запросом (быстро)
-  const LIGHT_COLLECTIONS = ['users','courses','slots','bookings','attendance','payments',
+  const LIGHT_COLLECTIONS = ['users','courses','slots','bookings','attendance','payments','hw',
     'salary_payments','groups','notifs','taskbank','mistakes','contracts'];
   // Коллекции с потенциально тяжёлыми данными (base64) — читаем по одной
-  const HEAVY_COLLECTIONS = ['content','tests','hw','trials','flashcard_decks'];
+  const HEAVY_COLLECTIONS = ['content','tests','trials','flashcard_decks'];
   // Коллекции которые хранятся как массивы (не объекты)
   // contracts — объект {privacy, rules}, не массив — не включаем
   const ARRAY_COLLECTIONS = new Set(['users','attendance','payments','content','tests','hw','trials','slots',
@@ -14930,9 +14930,23 @@ function prefillAttendanceFromSlot(){
   const students = getStudents();
   const slots = load('slots')||[];
   const courses = load('courses')||[];
-  // Find slots happening today (by day of week)
-  const dow = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'][new Date().getDay()];
-  const todaySlots = slots.filter(s=>s.day===dow);
+  // Find slots happening today — weekday-mode OR date-mode
+  const now = new Date();
+  const dow = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'][now.getDay()];
+  const todayISO = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todaySlots = slots.filter(s=>{
+    if(s.mode==='date' || s.slotDate){
+      if(!s.slotDate) return false;
+      if(s.repeat){
+        // Повторяющийся: совпадает день недели начиная с даты начала
+        const base = new Date(s.slotDate); base.setHours(0,0,0,0);
+        const nowD = new Date(now); nowD.setHours(0,0,0,0);
+        return nowD >= base && base.getDay() === now.getDay();
+      }
+      return s.slotDate === todayISO;
+    }
+    return s.day === dow;
+  });
   const slotSel = document.getElementById('att-slot-select');
   if(slotSel){
     slotSel.innerHTML = '<option value="">— Без привязки к слоту —</option>' +
