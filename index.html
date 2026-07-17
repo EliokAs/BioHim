@@ -2388,7 +2388,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<div class="modal-bg" id="modal-create-trial">
+<div class="modal-bg" id="modal-create-trial" data-no-dismiss>
   <div class="modal" style="max-width:720px">
     <div class="modal-title">🎯 Создать пробник</div>
     <span class="modal-close" onclick="closeModal('modal-create-trial')">✕</span>
@@ -2451,7 +2451,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 </div>
 
 <!-- Take Trial Modal -->
-<div class="modal-bg" id="modal-take-trial" style="align-items:stretch;padding:0">
+<div class="modal-bg" id="modal-take-trial" data-no-dismiss style="align-items:stretch;padding:0">
   <div style="background:var(--white);width:100%;max-width:820px;margin:0 auto;display:flex;flex-direction:column;height:100vh;overflow:hidden">
     <!-- Header bar -->
     <div style="display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--accent);color:#fff;flex-shrink:0">
@@ -2475,7 +2475,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
 </div>
 
 <!-- EDIT TRIAL -->
-<div class="modal-bg" id="modal-edit-trial">
+<div class="modal-bg" id="modal-edit-trial" data-no-dismiss>
   <div class="modal" style="max-width:720px">
     <div class="modal-title">✏️ Редактировать пробник</div>
     <span class="modal-close" onclick="closeModal('modal-edit-trial')">✕</span>
@@ -2757,7 +2757,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<div class="drawer-bg" id="modal-create-test" onclick="if(event.target===this)closeModal('modal-create-test')">
+<div class="drawer-bg" id="modal-create-test" onclick="if(event.target===this){var t=document.getElementById('nt-title');if(!t||!t.value.trim()||confirm('Данные теста будут потеряны. Закрыть без сохранения?'))closeModal('modal-create-test')}">
   <div class="drawer drawer-wide">
     <div class="drawer-header">
       <div class="drawer-title">📋 Создать тест</div>
@@ -2849,7 +2849,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<div class="drawer-bg" id="modal-create-hw" onclick="if(event.target===this)closeModal('modal-create-hw')">
+<div class="drawer-bg" id="modal-create-hw" onclick="if(event.target===this){var t=document.getElementById('nhw-title');if(!t||!t.value.trim()||confirm('Данные ДЗ будут потеряны. Закрыть без сохранения?'))closeModal('modal-create-hw')}">
   <div class="drawer drawer-wide">
     <div class="drawer-header">
       <div class="drawer-title">📚 Создать ДЗ</div>
@@ -3070,7 +3070,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<div class="modal-bg" id="modal-take-test">
+<div class="modal-bg" id="modal-take-test" data-no-dismiss>
   <div class="modal" style="max-width:680px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
       <div class="modal-title" id="take-test-title" style="margin:0;flex:1"></div>
@@ -3088,7 +3088,7 @@ body.dark-theme .drawer-footer { background: var(--card); }
   </div>
 </div>
 
-<div class="modal-bg" id="modal-check-answer">
+<div class="modal-bg" id="modal-check-answer" data-no-dismiss>
   <div class="modal">
     <div class="modal-title">✏️ Проверка ответа</div>
     <span class="modal-close" onclick="closeModal('modal-check-answer')">✕</span>
