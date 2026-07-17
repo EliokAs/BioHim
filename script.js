@@ -9834,6 +9834,7 @@ function renderStudentWorks(){
 
   if(_worksTab === 'tests'){
     body.innerHTML = `
+      ${_buildCourseFilterBar('test')}
       <div class="filter-bar">
         <div class="filter-pill active" onclick="setTestFilter('all',this)">📋 Все</div>
         <div class="filter-pill" onclick="setTestFilter('pending',this)">⏳ Не сдано</div>
@@ -9844,6 +9845,7 @@ function renderStudentWorks(){
     if(currentUser && currentUser.role === 'student') renderStudentTests();
   } else if(_worksTab === 'hw'){
     body.innerHTML = `
+      ${_buildCourseFilterBar('hw')}
       <div class="filter-bar">
         <div class="filter-pill active" onclick="setHWFilter('all',this)">📝 Все</div>
         <div class="filter-pill" onclick="setHWFilter('pending',this)">⏳ Не сдано</div>
@@ -9867,6 +9869,8 @@ function renderStudentWorks(){
 let _materialFilter = 'all';
 let _testFilter = 'all';
 let _hwFilter = 'all';
+let _testCourseFilter = 'all';
+let _hwCourseFilter = 'all';
 
 function setMaterialFilter(f, el){
   _materialFilter = f;
@@ -9875,7 +9879,32 @@ function setMaterialFilter(f, el){
   el.className = 'filter-pill ' + (f==='all'?'active': f==='viewed'?'active-done':'active-todo');
   renderStudentMaterials();
 }
-function setTestFilter(f, el){
+function _buildCourseFilterBar(type){
+  // type = 'test' | 'hw'
+  const sid = currentUser?.id;
+  if(!sid) return '';
+  const u = (load('users')||[]).find(u=>u.id===sid);
+  const enrolledIds = u?.enrolledCourses||[];
+  if(enrolledIds.length < 2) return ''; // показываем только если курсов 2+
+  const courses = load('courses')||[];
+  const enrolled = enrolledIds.map(id=>courses.find(c=>c.id===id)).filter(Boolean);
+  if(enrolled.length < 2) return '';
+  const cur = type==='test' ? _testCourseFilter : _hwCourseFilter;
+  const fn = type==='test' ? 'setTestCourseFilter' : 'setHWCourseFilter';
+  const opts = ['<option value="all">📚 Все курсы</option>',
+    ...enrolled.map(c=>`<option value="${c.id}" ${cur===c.id?'selected':''}>${esc(c.title)}</option>`)
+  ].join('');
+  return `<div style="margin-bottom:10px">
+    <select onchange="${fn}(this.value)"
+      style="padding:7px 12px;border-radius:10px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.85rem;background:var(--white);color:var(--text1);min-width:160px">
+      ${opts}
+    </select>
+  </div>`;
+}
+function setTestCourseFilter(v){ _testCourseFilter=v; renderStudentTests(); }
+function setHWCourseFilter(v){ _hwCourseFilter=v; renderStudentHW(); }
+
+
   _testFilter = f;
   const scope = document.getElementById('works-tab-content') || document.getElementById('page-student-tests');
   if(scope) scope.querySelectorAll('.filter-pill').forEach(p=>p.className='filter-pill');
@@ -9929,6 +9958,15 @@ function renderStudentTests(){
   let tests=(load('tests')||[]).filter(t=>t.studentId===sid);
   const el=document.getElementById('student-tests-list');
   if(!tests.length){ if(el) el.innerHTML=emptyHTML(); return; }
+
+  // Фильтр по курсу
+  if(_testCourseFilter !== 'all'){
+    const course = (load('courses')||[]).find(c=>c.id===_testCourseFilter);
+    tests = tests.filter(t=>
+      t.courseId === _testCourseFilter ||
+      (course && t.subject && t.subject === course.subject)
+    );
+  }
 
   if(_testFilter==='pending') tests=tests.filter(t=>!t.submitted);
   if(_testFilter==='done')    tests=tests.filter(t=>t.submitted && !(t.openChecked || !(t.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
@@ -10156,6 +10194,15 @@ function renderStudentHW(){
   let hws=(load('hw')||[]).filter(h=>h.studentId===sid);
   const el=document.getElementById('student-hw-list');
   if(!hws.length){ if(el) el.innerHTML=emptyHTML(); return; }
+
+  // Фильтр по курсу
+  if(_hwCourseFilter !== 'all'){
+    const course = (load('courses')||[]).find(c=>c.id===_hwCourseFilter);
+    hws = hws.filter(h=>
+      h.courseId === _hwCourseFilter ||
+      (course && h.subject && h.subject === course.subject)
+    );
+  }
 
   if(_hwFilter==='pending') hws=hws.filter(h=>!h.submitted);
   if(_hwFilter==='done')    hws=hws.filter(h=>h.submitted && !(h.openChecked || !(h.questions||[]).some(q=>q.type==='open'||q.type==='voice')));
