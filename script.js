@@ -9750,6 +9750,7 @@ function renderStudentLibrary(){
   if(!body) return;
   if(_libraryTab === 'materials'){
     body.innerHTML = `
+      ${_buildCourseFilterBar('material')}
       <div class="filter-bar">
         <div class="filter-pill active" onclick="setMaterialFilter('all',this)">📚 Все</div>
         <div class="filter-pill" onclick="setMaterialFilter('new',this)">🔵 Не просмотрено</div>
@@ -9867,6 +9868,7 @@ function renderStudentWorks(){
 }
 
 let _materialFilter = 'all';
+let _materialCourseFilter = 'all';
 let _testFilter = 'all';
 let _hwFilter = 'all';
 let _testCourseFilter = 'all';
@@ -9880,7 +9882,7 @@ function setMaterialFilter(f, el){
   renderStudentMaterials();
 }
 function _buildCourseFilterBar(type){
-  // type = 'test' | 'hw'
+  // type = 'test' | 'hw' | 'material'
   const sid = currentUser?.id;
   if(!sid) return '';
   const u = (load('users')||[]).find(u=>u.id===sid);
@@ -9889,8 +9891,8 @@ function _buildCourseFilterBar(type){
   const courses = load('courses')||[];
   const enrolled = enrolledIds.map(id=>courses.find(c=>c.id===id)).filter(Boolean);
   if(enrolled.length < 2) return '';
-  const cur = type==='test' ? _testCourseFilter : _hwCourseFilter;
-  const fn = type==='test' ? 'setTestCourseFilter' : 'setHWCourseFilter';
+  const cur = type==='test' ? _testCourseFilter : type==='material' ? _materialCourseFilter : _hwCourseFilter;
+  const fn  = type==='test' ? 'setTestCourseFilter' : type==='material' ? 'setMaterialCourseFilter' : 'setHWCourseFilter';
   const opts = ['<option value="all">📚 Все курсы</option>',
     ...enrolled.map(c=>`<option value="${c.id}" ${cur===c.id?'selected':''}>${esc(c.title)}</option>`)
   ].join('');
@@ -9903,6 +9905,7 @@ function _buildCourseFilterBar(type){
 }
 function setTestCourseFilter(v){ _testCourseFilter=v; renderStudentTests(); }
 function setHWCourseFilter(v){ _hwCourseFilter=v; renderStudentHW(); }
+function setMaterialCourseFilter(v){ _materialCourseFilter=v; renderStudentMaterials(); }
 
 
   _testFilter = f;
@@ -9936,6 +9939,15 @@ function renderStudentMaterials(){
     files: c.type==='video' ? [] : (c.files || (c.attachmentUrl ? [{type:c.type==='word'?'word':'pdf', name:c.title, url:c.attachmentUrl||c.url||''}] : (c.url?[{type:c.type==='word'?'word':'pdf', name:c.title, url:c.url}]:[])))
   }));
   let all = [...theories, ...legacyAsTheory];
+
+  // Фильтр по курсу (показываем только если ученик записан на 2+ курса)
+  if(_materialCourseFilter !== 'all'){
+    const course = (load('courses')||[]).find(c=>c.id===_materialCourseFilter);
+    all = all.filter(c=>
+      c.courseId === _materialCourseFilter ||
+      (course && c.subject && c.subject === course.subject)
+    );
+  }
 
   // Apply filter — use c.viewed flag
   const viewed = _getViewedCache(sid);
