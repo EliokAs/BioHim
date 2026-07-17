@@ -5304,7 +5304,7 @@ let _editTestQuestions=[];
 let _editTestMaxPtsManual = false;
 
 // ── Защита от потери несохранённых изменений ──
-const _DIRTY_MODALS = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial'];
+const _DIRTY_MODALS = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial', 'modal-create-trial'];
 let _editorDirty = false;
 
 function _setDirty(val) {
@@ -5312,12 +5312,35 @@ function _setDirty(val) {
 }
 
 function _safeClose(id, force) {
-  if (!force && _DIRTY_MODALS.includes(id) && _editorDirty) {
-    if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
+  if (!force && _DIRTY_MODALS.includes(id)) {
+    // Для редакторов — только если _editorDirty
+    const editModals = ['modal-edit-test', 'modal-edit-hw', 'modal-edit-trial'];
+    if (editModals.includes(id) && _editorDirty) {
+      if (!confirm('Есть несохранённые изменения. Закрыть без сохранения?')) return;
+    }
+    // Для modal-create-trial — проверяем заполненность
+    if (id === 'modal-create-trial') {
+      const titleEl = document.getElementById('ntr-title');
+      const hasContent = titleEl && titleEl.value.trim();
+      if (hasContent && !confirm('Данные пробника будут потеряны. Закрыть без сохранения?')) return;
+    }
   }
   _editorDirty = false;
+  // Используем полный closeModal с анимацией drawer, но с force=true чтобы не рекурсировать
   const el = document.getElementById(id);
-  if (el) el.classList.remove('open');
+  if (el) {
+    if (el.classList.contains('drawer-bg')) {
+      const drawer = el.querySelector('.drawer');
+      if (drawer) {
+        drawer.style.transform = 'translateX(100%)';
+        setTimeout(() => el.classList.remove('open'), 280);
+      } else {
+        el.classList.remove('open');
+      }
+    } else {
+      el.classList.remove('open');
+    }
+  }
   if (id === 'modal-add-theory') { _theoryFiles = []; }
 }
 // ── EDIT TEST ──
@@ -12820,9 +12843,9 @@ function _loadingDone(){
   document.getElementById('login-password').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
   document.getElementById('login-username').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 
-  // Close modal on bg click
+  // Close modal on bg click (пропускаем модалки с data-no-dismiss — тесты, ДЗ, пробники)
   document.querySelectorAll('.modal-bg').forEach(bg=>{
-    bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
+    bg.addEventListener('click',e=>{ if(e.target===bg && !bg.dataset.noDismiss) bg.classList.remove('open'); });
   });
 })();
 
@@ -16427,6 +16450,7 @@ document.addEventListener('click', function(e) {
   if (!e.target.classList.contains('modal-bg')) return;
   const modal = e.target;
   if (!modal.classList.contains('open')) return;
+  if (modal.dataset.noDismiss) return; // защищённые модалки не закрываем кликом на фон
   closeModal(modal.id);
 });
 
