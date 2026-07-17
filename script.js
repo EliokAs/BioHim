@@ -3008,6 +3008,10 @@ function closeModal(id, force){
     }
   }
   if(id==='modal-take-test'){
+    if(!force && (_takingTest || _doingHW)){
+      const name = _takingTest ? _takingTest.title : (_doingHW ? _doingHW.title : '');
+      if(!confirm('Закрыть «' + name + '»?\nОтветы сохранены в облаке — при следующем открытии продолжишь с того же места.')) return;
+    }
     _clearTestTimer();
   }
   if(id==='modal-add-theory'){
@@ -7353,19 +7357,21 @@ function renderStudentTrial(){
 // ── TAKING A TRIAL ──
 let _activeTrial=null, _trialAnswers={}, _trialTimerInterval=null, _trialSecondsLeft=0;
 
-function startTrial(id){
+async function startTrial(id){
   const t=(load('trials')||[]).find(t=>t.id===id);
   if(!t) return;
   if(currentUser && currentUser.role==='student' && t.studentId && t.studentId!==currentUser.id){
     showNotif('⛔ Нет доступа к этому пробнику'); return;
   }
   _activeTrial=t;
-  _trialAnswers={};
+  const draft = await _loadDraft('trial', id);
+  _trialAnswers = (draft && typeof draft === 'object') ? draft : {};
+  if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
   _trialSecondsLeft=t.timeMins*60;
   document.getElementById('trial-take-title').textContent=t.title;
   // Instruction
   const instrBar=document.getElementById('trial-instruction-bar');
-  if(t.instruction){ instrBar.textContent='📋 '+t.instruction; instrBar.style.display='block'; }
+  if(t.instruction){ instrBar.textContent='?? '+t.instruction; instrBar.style.display='block'; }
   else instrBar.style.display='none';
   renderTrialTakeBody();
   updateTrialTimer();
@@ -7419,6 +7425,7 @@ function selectTrialOpt(qId,val,isMulti){
   if(lbl) lbl.textContent=answered+'/'+allQ.length+' ответов';
   const ftr=document.getElementById('trial-footer-stats');
   if(ftr) ftr.textContent='Отвечено: '+answered+' из '+allQ.length+' · Итого: '+(_activeTrial.maxPts||0)+' б.';
+  if(_activeTrial) _saveDraft('trial', _activeTrial.id, _trialAnswers);
 }
 function submitTrial(timeout=false){
   clearInterval(_trialTimerInterval);
@@ -7440,6 +7447,7 @@ function submitTrial(timeout=false){
   t.autoPct=pct;
   save('trials',trials);
   _collectAndSaveWrongAnswersTrial(t, _trialAnswers);
+  _clearDraft('trial', t.id);
   document.getElementById('modal-take-trial').classList.remove('open');
   renderStudentTrial();
   updateMistakesBadge();
@@ -10069,6 +10077,25 @@ function renderTestResults(t){
 }
 
 let _takingTest=null; let _testAnswers={};
+
+// ── Черновики ответов в Firebase (db/drafts/{sid}/{type}_{id}) ──
+function _draftFbPath(type, id){
+  const sid = currentUser && currentUser.id ? currentUser.id : 'unknown';
+  return 'db/drafts/' + sid + '/' + type + '_' + id;
+}
+async function _saveDraft(type, id, answers){
+  try { await _fbInit().ref(_draftFbPath(type,id)).set({ answers, savedAt: Date.now() }); } catch(e){}
+}
+async function _loadDraft(type, id){
+  try {
+    const snap = await _fbInit().ref(_draftFbPath(type,id)).get();
+    const v = snap.val();
+    return (v && v.answers) ? v.answers : null;
+  } catch(e){ return null; }
+}
+async function _clearDraft(type, id){
+  try { await _fbInit().ref(_draftFbPath(type,id)).remove(); } catch(e){}
+}
 // ── Таймер теста ──
 let _testTimerInterval = null;
 let _testTimerSecsLeft = 0;
@@ -10124,7 +10151,7 @@ function _renderTestTimer() {
   }
 }
 
-function takeTest(id) {
+async function takeTest(id) {
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===id);
   if(!t){ showNotif('Тест не найден'); return; }
@@ -10134,14 +10161,15 @@ function takeTest(id) {
   const maxAttempts=t.maxAttempts||0;
   const attemptsUsed=(t.attempts||[]).length;
   if(maxAttempts>0 && attemptsUsed>=maxAttempts){
-    showNotif(`❌ Исчерпано попыток: ${attemptsUsed}/${maxAttempts}`); return;
+    showNotif('❌ Исчерпано попыток: '+attemptsUsed+'/'+maxAttempts); return;
   }
   _takingTest=t;
-  _testAnswers={};
+  const draft = await _loadDraft('test', id);
+  _testAnswers = (draft && typeof draft === 'object') ? draft : {};
+  if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
   document.getElementById('take-test-title').textContent=t.title;
   renderTakeTestBody();
   openModal('modal-take-test');
-  // Запустить таймер если задан лимит времени
   _startTestTimer(t.timeLimit || t.timeMins || 0);
 }
 
@@ -10183,6 +10211,7 @@ function selectTestOpt(qId,val,isMulti){
     _testAnswers[qId]=val;
   }
   _updateOptionDOM(qId,'_testAnswers');
+  if(_takingTest) _saveDraft('test', _takingTest.id, _testAnswers);
 }
 function selectOption(qId,opt){
   _testAnswers[qId]=opt;
@@ -10215,6 +10244,7 @@ function submitTest(autoSubmit){
   t.autoPct=pct;
   save('tests',tests);
   _collectAndSaveWrongAnswers('test', t, _testAnswers);
+  _clearDraft('test', t.id);
   closeModal('modal-take-test');
   renderStudentTests();
   updateMistakesBadge();
@@ -10323,23 +10353,27 @@ function selectHWOpt(qId,val,isMulti){
     _hwAnswers[qId]=val;
   }
   _updateOptionDOM(qId,'_hwAnswers');
+  if(_doingHW) _saveDraft('hw', _doingHW.id, _hwAnswers);
 }
 
-function doHW(id){
+async function doHW(id){
   const hws=load('hw')||[];
   const h=hws.find(h=>h.id===id);
+  if(!h){ showNotif('❌ ДЗ не найдено'); return; }
   const maxAttempts=h.maxAttempts||0;
   const attemptsUsed=(h.attempts||[]).length;
   if(maxAttempts>0 && attemptsUsed>=maxAttempts){
-    showNotif(`❌ Исчерпано попыток: ${attemptsUsed}/${maxAttempts}`); return;
+    showNotif('❌ Исчерпано попыток: '+attemptsUsed+'/'+maxAttempts); return;
   }
   _doingHW=h;
-  _hwAnswers={};
+  const draft = await _loadDraft('hw', id);
+  _hwAnswers = (draft && typeof draft === 'object') ? draft : {};
+  if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
   const body=document.getElementById('take-test-body');
   document.getElementById('take-test-title').textContent=_doingHW.title;
   if(!_doingHW.questions||!_doingHW.questions.length){
     body.innerHTML=`<div class="form-group"><label>Ваш ответ / комментарий</label><textarea id="hw-free-answer" rows="5" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif"></textarea></div>
-      <button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>`;
+      <button class="btn btn-green" onclick="submitHW()">?? Сдать ДЗ</button>`;
   } else {
     renderHWTakeBody();
   }
@@ -10369,6 +10403,7 @@ function submitHW(){
   h.autoPct=pct;
   save('hw',hws);
   _collectAndSaveWrongAnswers('hw', h, _hwAnswers);
+  _clearDraft('hw', _doingHW.id);
   closeModal('modal-take-test');
   renderStudentHW();
   updateMistakesBadge();
