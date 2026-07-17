@@ -9907,7 +9907,7 @@ function setTestCourseFilter(v){ _testCourseFilter=v; renderStudentTests(); }
 function setHWCourseFilter(v){ _hwCourseFilter=v; renderStudentHW(); }
 function setMaterialCourseFilter(v){ _materialCourseFilter=v; renderStudentMaterials(); }
 
-
+function setTestFilter(f, el){
   _testFilter = f;
   const scope = document.getElementById('works-tab-content') || document.getElementById('page-student-tests');
   if(scope) scope.querySelectorAll('.filter-pill').forEach(p=>p.className='filter-pill');
