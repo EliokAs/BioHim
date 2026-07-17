@@ -2992,11 +2992,15 @@ function closeModal(id, force){
     _safeClose(id, force);
     return;
   }
-  // Защита теста/ДЗ — спрашиваем ДО закрытия
+  // Защита теста/ДЗ — показываем встроенный диалог вместо браузерного confirm
   if(id==='modal-take-test'){
     if(!force && (_takingTest || _doingHW)){
       const name = _takingTest ? _takingTest.title : (_doingHW ? _doingHW.title : '');
-      if(!confirm('Закрыть «' + name + '»?\nОтветы сохранены в облаке — при следующем открытии продолжишь с того же места.')) return;
+      const titleEl = document.getElementById('test-exit-confirm-title');
+      if(titleEl) titleEl.textContent = 'Свернуть «' + name + '»?';
+      const confirmEl = document.getElementById('test-exit-confirm');
+      if(confirmEl){ confirmEl.style.display = 'flex'; return; }
+      // fallback если диалог не найден
     }
     _clearTestTimer();
   }
@@ -3028,6 +3032,13 @@ function closeModal(id, force){
     if (hint) hint.textContent = '';
   }
 }
+/** Вызывается кнопкой "Свернуть" во встроенном диалоге подтверждения */
+function _confirmExitTest(){
+  const confirmEl = document.getElementById('test-exit-confirm');
+  if(confirmEl) confirmEl.style.display = 'none';
+  closeModal('modal-take-test', true);
+}
+
 function getVideoEmbedUrl(url){
   if(!url) return null;
   url = url.trim();
@@ -10169,6 +10180,7 @@ async function takeTest(id) {
   _testAnswers = (draft && typeof draft === 'object') ? draft : {};
   if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
   document.getElementById('take-test-title').textContent=t.title;
+  const _ec1 = document.getElementById('test-exit-confirm'); if(_ec1) _ec1.style.display='none';
   renderTakeTestBody();
   openModal('modal-take-test');
   _startTestTimer(t.timeLimit || t.timeMins || 0);
@@ -10372,6 +10384,7 @@ async function doHW(id){
   if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
   const body=document.getElementById('take-test-body');
   document.getElementById('take-test-title').textContent=_doingHW.title;
+  const _ec2 = document.getElementById('test-exit-confirm'); if(_ec2) _ec2.style.display='none';
   if(!_doingHW.questions||!_doingHW.questions.length){
     body.innerHTML=`<div class="form-group"><label>Ваш ответ / комментарий</label><textarea id="hw-free-answer" rows="5" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif"></textarea></div>
       <button class="btn btn-green" onclick="submitHW()">?? Сдать ДЗ</button>`;
