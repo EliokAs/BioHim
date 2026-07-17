@@ -12778,6 +12778,8 @@ const RU_MONTHS = ['Январь','Февраль','Март','Апрель','М
 const RU_DAYS_SHORT = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 // Day-of-week text → number (Mon=0)
 const DAY_MAP = {'Понедельник':0,'Вторник':1,'Среда':2,'Четверг':3,'Пятница':4,'Суббота':5,'Воскресенье':6};
+// Локальный ключ даты YYYY-MM-DD (без UTC-сдвига)
+function localDateKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 function calPrev(){ _calMonth--; if(_calMonth<0){_calMonth=11;_calYear--;} renderCalendar(); }
 function calNext(){ _calMonth++; if(_calMonth>11){_calMonth=0;_calYear++;} renderCalendar(); }
@@ -12886,7 +12888,7 @@ function renderCalendar(){
   const evMap = {};
   events.forEach(ev=>{
     if(isNaN(ev.date)) return;
-    const key = ev.date.toISOString().slice(0,10);
+    const key = localDateKey(ev.date);
     if(!evMap[key]) evMap[key]=[];
     evMap[key].push(ev);
   });
@@ -12901,7 +12903,7 @@ function renderCalendar(){
     const date = new Date(_calYear, _calMonth, d);
     date.setHours(0,0,0,0);
     const isToday = date.getTime()===today.getTime();
-    const key = date.toISOString().slice(0,10);
+    const key = localDateKey(date);
     const dayEvs = evMap[key] || [];
     // Unique types for dots
     const typeSet = new Set(dayEvs.map(e=>e.type));
@@ -12924,7 +12926,7 @@ function renderCalendar(){
 
 function openCalDay(key, dayNum){
   const events = getCalEvents();
-  const dayEvs = events.filter(ev=>!isNaN(ev.date) && ev.date.toISOString().slice(0,10)===key);
+  const dayEvs = events.filter(ev=>!isNaN(ev.date) && localDateKey(ev.date)===key);
   if(!dayEvs.length) return;
 
   const [y,m,d] = key.split('-').map(Number);
@@ -13073,7 +13075,7 @@ function renderStudentCalendar(){
   const evMap = {};
   events.forEach(ev=>{
     if(isNaN(ev.date)) return;
-    const key = ev.date.toISOString().slice(0,10);
+    const key = localDateKey(ev.date);
     if(!evMap[key]) evMap[key]=[];
     evMap[key].push(ev);
   });
@@ -13086,7 +13088,7 @@ function renderStudentCalendar(){
     const date = new Date(_sCalYear, _sCalMonth, d);
     date.setHours(0,0,0,0);
     const isToday = date.getTime()===today.getTime();
-    const key = date.toISOString().slice(0,10);
+    const key = localDateKey(date);
     const dayEvs = evMap[key] || [];
     const typeSet = new Set(dayEvs.map(e=>e.type));
     const dots = [...typeSet].map(t=>'<div class="cal-dot '+t+'"></div>').join('');
@@ -13106,7 +13108,7 @@ function renderStudentCalendar(){
 
 function openSCalDay(key, dayNum){
   const events = getCalEventsForStudent();
-  const dayEvs = events.filter(ev=>!isNaN(ev.date) && ev.date.toISOString().slice(0,10)===key);
+  const dayEvs = events.filter(ev=>!isNaN(ev.date) && localDateKey(ev.date)===key);
   if(!dayEvs.length) return;
   const [y,m,d] = key.split('-').map(Number);
   const dateObj = new Date(y,m-1,d);
@@ -13175,7 +13177,7 @@ function renderStudentTodoList(mode){
   } else {
     const groups = {};
     filtered.forEach(ev=>{
-      const key = ev.date.toISOString().slice(0,10);
+      const key = localDateKey(ev.date);
       if(!groups[key]) groups[key]={date:ev.date, items:[]};
       groups[key].items.push(ev);
     });
@@ -13247,7 +13249,7 @@ function renderTodoList(mode){
     // Group by date
     const groups = {};
     filtered.forEach(ev=>{
-      const key = ev.date.toISOString().slice(0,10);
+      const key = localDateKey(ev.date);
       if(!groups[key]) groups[key]={date:ev.date, items:[]};
       groups[key].items.push(ev);
     });
@@ -14015,7 +14017,7 @@ function openModal_addSlot(){
   document.getElementById('nsl-student-wrap').style.display = 'none';
   document.getElementById('nsl-group-wrap').style.display = 'none';
   // Init date mode
-  const today = new Date().toISOString().slice(0,10);
+  const today = localDateKey(new Date());
   document.getElementById('nsl-date').value = today;
   document.getElementById('nsl-repeat').checked = false;
   setSlotMode('date');
