@@ -1336,17 +1336,17 @@ function save(k, v){
     const db = _fbInit();
     const newIds = new Set(v.filter(i => i && i.id).map(i => i.id));
 
-    // 1. Удаляем исчезнувшие элементы
-    db.ref('db/' + k).get().then(snap => {
-      const existing = snap.val();
+    // 1. Удаляем исчезнувшие элементы — используем локальный кэш вместо лишнего Firebase .get()
+    const prevVal = _cache[k];
+    if (Array.isArray(prevVal) && prevVal.length > 0) {
       const deleteOps = [];
-      if (existing && typeof existing === 'object') {
-        Object.keys(existing).forEach(oldId => {
-          if (!newIds.has(oldId)) deleteOps.push(db.ref('db/' + k + '/' + oldId).remove());
-        });
-      }
-      return Promise.all(deleteOps);
-    }).catch(e => console.warn('[Firebase] delete stale items error', k, e));
+      prevVal.forEach(item => {
+        if (item && item.id && !newIds.has(item.id)) {
+          deleteOps.push(db.ref('db/' + k + '/' + item.id).remove());
+        }
+      });
+      if (deleteOps.length) Promise.all(deleteOps).catch(e => console.warn('[Firebase] delete stale items error', k, e));
+    }
 
     // 2. Сохраняем каждый элемент отдельным set() — Firebase не суммирует размеры
     const MB = 1024 * 1024;
@@ -1440,8 +1440,8 @@ async function preloadCache(){
     LIGHT_COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
   }
 
-  // ── 2. Тяжёлые коллекции — параллельно, не блокируем вход ──
-  await Promise.all(HEAVY_COLLECTIONS.map(async k => {
+  // ── 2. Тяжёлые коллекции — в фоне, не задерживаем появление экрана входа ──
+  Promise.all(HEAVY_COLLECTIONS.map(async k => {
     try {
       const snap = await _withTimeout(db.ref('db/' + k).get(), 15000);
       _applySnap(k, snap.val());
@@ -1449,7 +1449,6 @@ async function preloadCache(){
     } catch(e) {
       console.warn('[Firebase] ⚠️ Не удалось загрузить ' + k + ':', e.message);
       if (!(k in _cache)) _cache[k] = null;
-      // Не ставим anyError — не блокируем вход из-за тяжёлых коллекций
     }
   }));
 
@@ -1521,10 +1520,15 @@ async function preloadUserData(user) {
 async function runLocalStorageMigration(user) {
   if (!user || !user.id) return;
   const sid = user.id;
+  // Быстрая проверка через localStorage — не делаем Firebase RTT если миграция уже была
+  if (localStorage.getItem('biohim_migrated_' + sid) === '1') return;
   try {
     const flagRef = _fbInit().ref('migrations/ls_v1/' + sid);
     const flagSnap = await flagRef.get();
-    if (flagSnap.val() === true) return; // уже мигрировано
+    if (flagSnap.val() === true) {
+      localStorage.setItem('biohim_migrated_' + sid, '1'); // кешируем чтобы больше не проверять
+      return;
+    }
 
     const db = _fbInit();
 
@@ -1550,6 +1554,7 @@ async function runLocalStorageMigration(user) {
     ]);
 
     await flagRef.set(true);
+    localStorage.setItem('biohim_migrated_' + sid, '1'); // кешируем локально
 
     // Перезагружаем кэши из Firebase после миграции
     await preloadUserData(user);
@@ -1786,6 +1791,16 @@ function subscribeRealtime(){
       }
 
       if (!currentUser) return;
+      // Обновляем badge уведомлений при изменении notifs (без дублирующей подписки)
+      if (k === 'notifs' && typeof updateNotifBadge === 'function') {
+        debounce(() => {
+          updateNotifBadge();
+          if (currentUser.role === 'student') {
+            const el = document.getElementById('student-notifs-list');
+            if (el && typeof renderStudentNotifs === 'function') renderStudentNotifs();
+          }
+        }, 300)();
+      }
       const entry = PAGE_MAP[k];
       if (!entry) return;
       const m = entry[currentUser.role] || entry['admin'];
@@ -1796,15 +1811,8 @@ function subscribeRealtime(){
   });
 
 
-  // notifs — дебаунсированный badge + список
-  const _flushNotifs = debounce(() => {
-    if (typeof updateNotifBadge === 'function') updateNotifBadge();
-    if (currentUser && currentUser.role === 'student') {
-      const el = document.getElementById('student-notifs-list');
-      if (el && typeof renderStudentNotifs === 'function') renderStudentNotifs();
-    }
-  }, 300);
-  db.ref('db/notifs').on('value', _flushNotifs);
+  // notifs badge — вызывается из COLLECTIONS.forEach при изменении notifs (дублирующий .on() убран)
+  // updateNotifBadge вызывается через _scheduleRender после обновления _cache['notifs']
 
   // admin_notifs — дебаунсированный badge + список
   const _flushAdminNotifs = debounce(() => {
@@ -1985,9 +1993,7 @@ async function _startSession(user){
   initDarkTheme();
   buildNav();
   subscribeRealtime();
-  // Загружаем пользовательские данные из Firebase в кэш + одноразовая миграция из localStorage
-  await runLocalStorageMigration(user);
-  await preloadUserData(user);
+  // Навигируем сразу — не ждём Firebase round-trips для миграции/preload
   const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='teacher' ? 'teacher-dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
   let lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
   // Redirect legacy student page IDs to new combined pages
@@ -2002,6 +2008,8 @@ async function _startSession(user){
   };
   if(_legacyPageMap[lastPage]) lastPage = _legacyPageMap[lastPage];
   navigateTo(lastPage);
+  // Миграция + preload пользовательских данных — в фоне, не блокируем UI
+  runLocalStorageMigration(user).then(() => preloadUserData(user)).catch(e => console.warn('[Session] bg preload error', e));
 }
 function doLogout(){
   _lessonActive=false;
@@ -12852,11 +12860,10 @@ function _loadingDone(){
           if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
           initDarkTheme();
           buildNav();
-          await runLocalStorageMigration(resolvedUser);
-          await preloadUserData(resolvedUser);
           const defaultPage = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
           const lastPage = localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage;
           navigateTo(lastPage);
+          runLocalStorageMigration(resolvedUser).then(() => preloadUserData(resolvedUser)).catch(e => console.warn('[Session] bg preload error', e));
         });
         return;
       }
@@ -12880,11 +12887,10 @@ function _loadingDone(){
           if(resolvedUser.role==='parent'){ const cb=document.getElementById('sidebar-chat-badge'); if(cb) cb.style.display='none'; }
           initDarkTheme();
           buildNav();
-          await runLocalStorageMigration(resolvedUser);
-          await preloadUserData(resolvedUser);
           const defaultPage = resolvedUser.role==='admin' ? 'dashboard' : resolvedUser.role==='teacher' ? 'teacher-dashboard' : resolvedUser.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
           const lastPage = localStorage.getItem('biohim_last_page_'+resolvedUser.id) || defaultPage;
           navigateTo(lastPage);
+          runLocalStorageMigration(resolvedUser).then(() => preloadUserData(resolvedUser)).catch(e => console.warn('[Session] bg preload error', e));
         });
         return;
       }
@@ -12902,11 +12908,10 @@ function _loadingDone(){
         initDarkTheme();
         buildNav();
         subscribeRealtime();
-        await runLocalStorageMigration(user);
-        await preloadUserData(user);
         const defaultPage = user.role==='admin' ? 'dashboard' : user.role==='teacher' ? 'teacher-dashboard' : user.role==='parent' ? 'parent-dashboard' : 'student-dashboard';
         const lastPage = localStorage.getItem('biohim_last_page_'+user.id) || defaultPage;
         navigateTo(lastPage);
+        runLocalStorageMigration(user).then(() => preloadUserData(user)).catch(e => console.warn('[Session] bg preload error', e));
       } else {
         localStorage.removeItem('biohim_session');
       }
