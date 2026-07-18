@@ -10192,13 +10192,18 @@ async function takeTest(id) {
     showNotif('❌ Исчерпано попыток: '+attemptsUsed+'/'+maxAttempts); return;
   }
   _takingTest=t;
-  const draft = await _loadDraft('test', id);
-  _testAnswers = (draft && typeof draft === 'object') ? draft : {};
-  if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
+  _testAnswers={};
+  // Открываем модалку сразу — не ждём черновик
   document.getElementById('take-test-title').textContent=t.title;
   const _ec1 = document.getElementById('test-exit-confirm'); if(_ec1) _ec1.style.display='none';
-  renderTakeTestBody();
+  const _tbody=document.getElementById('take-test-body');
+  if(_tbody) _tbody.innerHTML=`<div style="text-align:center;padding:32px 0;color:var(--text3)"><span style="font-size:1.5rem">⏳</span><br><span style="font-size:0.9rem">Загружаем задание…</span></div>`;
   openModal('modal-take-test');
+  // Грузим черновик параллельно
+  const draft = await _loadDraft('test', id);
+  _testAnswers = (draft && typeof draft === 'object') ? draft : {};
+  if(draft && Object.keys(draft).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
+  renderTakeTestBody();
   _startTestTimer(t.timeLimit || t.timeMins || 0);
 }
 
@@ -10395,19 +10400,23 @@ async function doHW(id){
     showNotif('❌ Исчерпано попыток: '+attemptsUsed+'/'+maxAttempts); return;
   }
   _doingHW=h;
+  _hwAnswers={};
+  // Открываем модалку сразу — не ждём черновик
+  const body=document.getElementById('take-test-body');
+  document.getElementById('take-test-title').textContent=h.title;
+  const _ec2 = document.getElementById('test-exit-confirm'); if(_ec2) _ec2.style.display='none';
+  body.innerHTML=`<div style="text-align:center;padding:32px 0;color:var(--text3)"><span style="font-size:1.5rem">⏳</span><br><span style="font-size:0.9rem">Загружаем задание…</span></div>`;
+  openModal('modal-take-test');
+  // Грузим черновик параллельно
   const draft = await _loadDraft('hw', id);
   _hwAnswers = (draft && typeof draft === 'object') ? draft : {};
-  if(draft && Object.keys(draft).length) showNotif('?? Черновик восстановлен — продолжаем с места остановки', 3000);
-  const body=document.getElementById('take-test-body');
-  document.getElementById('take-test-title').textContent=_doingHW.title;
-  const _ec2 = document.getElementById('test-exit-confirm'); if(_ec2) _ec2.style.display='none';
+  if(draft && Object.keys(draft).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
   if(!_doingHW.questions||!_doingHW.questions.length){
     body.innerHTML=`<div class="form-group"><label>Ваш ответ / комментарий</label><textarea id="hw-free-answer" rows="5" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif"></textarea></div>
-      <button class="btn btn-green" onclick="submitHW()">?? Сдать ДЗ</button>`;
+      <button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>`;
   } else {
     renderHWTakeBody();
   }
-  openModal('modal-take-test');
 }
 function selectHWOption(qId,opt,el){
   _hwAnswers[qId]=opt;
