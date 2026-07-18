@@ -1484,7 +1484,7 @@ async function preloadUserData(user) {
   try {
     const [
       walletSnap, srSnap, viewedSnap, videoSnap,
-      goalsSnap, notifSnap, dailyLogSnap, dailyAnsSnap
+      goalsSnap, notifSnap, dailyLogSnap, dailyAnsSnap, draftsSnap
     ] = await Promise.all([
       db.ref('db/wallet/'         + sid).get(),
       db.ref('db/sr/'             + sid).get(),
@@ -1494,6 +1494,7 @@ async function preloadUserData(user) {
       db.ref('db/notif_settings/' + sid).get(),
       db.ref('db/daily_task_log/' + sid).get(),
       db.ref('db/daily_answers/'  + sid).get(),
+      db.ref('db/drafts/'         + sid).get(), // все черновики одним запросом
     ]);
     if (walletSnap.val())    _walletCache[sid]         = walletSnap.val();
     if (srSnap.val())        _srCache[sid]             = srSnap.val();
@@ -1502,6 +1503,12 @@ async function preloadUserData(user) {
     if (goalsSnap.val())     _goalsCache[sid]          = goalsSnap.val();
     if (dailyLogSnap.val())  _dailyTaskLogCache[sid]   = dailyLogSnap.val();
     if (dailyAnsSnap.val())  _dailyAnswersCache[sid]   = dailyAnsSnap.val();
+    // Заполняем кеш черновиков — после этого _loadDraft не делает Firebase RTT
+    const draftsVal = draftsSnap.val();
+    if (draftsVal && typeof draftsVal === 'object') {
+      Object.assign(_draftsCache, draftsVal);
+    }
+    _draftsCacheLoaded = true;
     // video_progress хранится как {vidId: pct} — разворачиваем в плоский кэш
     if (videoSnap.val()) {
       const vmap = videoSnap.val();
@@ -1510,6 +1517,7 @@ async function preloadUserData(user) {
       });
     }
   } catch(e) {
+    _draftsCacheLoaded = true; // даже при ошибке — не блокируем, используем пустой кеш
   }
 }
 
@@ -2024,6 +2032,9 @@ function doLogout(){
   document.getElementById('login-username').value='';
   document.getElementById('login-password').value='';
   sessionStorage.removeItem('biohim_bf'); // FIX: was 'bf_login_attempts' — wrong key, brute-force cache was never cleared on logout
+  // Сбрасываем кеш черновиков чтобы при следующем входе загрузились данные нового пользователя
+  for (const k in _draftsCache) delete _draftsCache[k];
+  _draftsCacheLoaded = false;
 }
 
 // ══════════════════════════════════════════
@@ -10099,22 +10110,42 @@ function renderTestResults(t){
 let _takingTest=null; let _testAnswers={};
 
 // ── Черновики ответов в Firebase (db/drafts/{sid}/{type}_{id}) ──
+// In-memory кеш: { 'hw_hwXXX': { answers, savedAt }, ... }
+// Заполняется в preloadUserData одним запросом — _loadDraft больше не делает Firebase RTT
+const _draftsCache = {};
+let _draftsCacheLoaded = false;
+
 function _draftFbPath(type, id){
   const sid = currentUser && currentUser.id ? currentUser.id : 'unknown';
   return 'db/drafts/' + sid + '/' + type + '_' + id;
 }
+function _draftKey(type, id){ return type + '_' + id; }
+
 async function _saveDraft(type, id, answers){
-  try { await _fbInit().ref(_draftFbPath(type,id)).set({ answers, savedAt: Date.now() }); } catch(e){}
+  const key = _draftKey(type, id);
+  const data = { answers, savedAt: Date.now() };
+  _draftsCache[key] = data; // обновляем кеш синхронно
+  try { _fbInit().ref(_draftFbPath(type,id)).set(data); } catch(e){}
 }
 async function _loadDraft(type, id){
+  const key = _draftKey(type, id);
+  // Если кеш уже загружен — возвращаем мгновенно без Firebase RTT
+  if (_draftsCacheLoaded) {
+    const v = _draftsCache[key];
+    return (v && v.answers) ? v.answers : null;
+  }
+  // Кеш ещё не готов (редкий случай — очень быстрый клик до загрузки) — разовый Firebase запрос
   try {
     const snap = await _fbInit().ref(_draftFbPath(type,id)).get();
     const v = snap.val();
+    if (v) _draftsCache[key] = v; // кешируем на будущее
     return (v && v.answers) ? v.answers : null;
   } catch(e){ return null; }
 }
 async function _clearDraft(type, id){
-  try { await _fbInit().ref(_draftFbPath(type,id)).remove(); } catch(e){}
+  const key = _draftKey(type, id);
+  delete _draftsCache[key]; // удаляем из кеша синхронно
+  try { _fbInit().ref(_draftFbPath(type,id)).remove(); } catch(e){}
 }
 
 // ── Автосохранение черновика при вводе текста (open/fill/number/match/order) ──
@@ -10201,17 +10232,14 @@ async function takeTest(id) {
   }
   _takingTest=t;
   _testAnswers={};
-  // Открываем модалку сразу — не ждём черновик
-  document.getElementById('take-test-title').textContent=t.title;
-  const _ec1 = document.getElementById('test-exit-confirm'); if(_ec1) _ec1.style.display='none';
-  const _tbody=document.getElementById('take-test-body');
-  if(_tbody) _tbody.innerHTML=`<div style="text-align:center;padding:32px 0;color:var(--text3)"><span style="font-size:1.5rem">⏳</span><br><span style="font-size:0.9rem">Загружаем задание…</span></div>`;
-  openModal('modal-take-test');
-  // Грузим черновик параллельно
+  // Черновик берём из кеша (мгновенно) — Firebase RTT только если кеш ещё не загружен
   const draft = await _loadDraft('test', id);
   _testAnswers = (draft && typeof draft === 'object') ? draft : {};
   if(draft && Object.keys(draft).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
+  document.getElementById('take-test-title').textContent=t.title;
+  const _ec1 = document.getElementById('test-exit-confirm'); if(_ec1) _ec1.style.display='none';
   renderTakeTestBody();
+  openModal('modal-take-test');
   _startTestTimer(t.timeLimit || t.timeMins || 0);
 }
 
@@ -10409,22 +10437,20 @@ async function doHW(id){
   }
   _doingHW=h;
   _hwAnswers={};
-  // Открываем модалку сразу — не ждём черновик
-  const body=document.getElementById('take-test-body');
-  document.getElementById('take-test-title').textContent=h.title;
-  const _ec2 = document.getElementById('test-exit-confirm'); if(_ec2) _ec2.style.display='none';
-  body.innerHTML=`<div style="text-align:center;padding:32px 0;color:var(--text3)"><span style="font-size:1.5rem">⏳</span><br><span style="font-size:0.9rem">Загружаем задание…</span></div>`;
-  openModal('modal-take-test');
-  // Грузим черновик параллельно
+  // Черновик берём из кеша (мгновенно) — Firebase RTT только если кеш ещё не загружен
   const draft = await _loadDraft('hw', id);
   _hwAnswers = (draft && typeof draft === 'object') ? draft : {};
   if(draft && Object.keys(draft).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
+  const body=document.getElementById('take-test-body');
+  document.getElementById('take-test-title').textContent=h.title;
+  const _ec2 = document.getElementById('test-exit-confirm'); if(_ec2) _ec2.style.display='none';
   if(!_doingHW.questions||!_doingHW.questions.length){
     body.innerHTML=`<div class="form-group"><label>Ваш ответ / комментарий</label><textarea id="hw-free-answer" rows="5" style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif"></textarea></div>
       <button class="btn btn-green" onclick="submitHW()">📤 Сдать ДЗ</button>`;
   } else {
     renderHWTakeBody();
   }
+  openModal('modal-take-test');
 }
 function selectHWOption(qId,opt,el){
   _hwAnswers[qId]=opt;
