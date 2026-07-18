@@ -10218,7 +10218,7 @@ function _renderTestTimer() {
   }
 }
 
-async function takeTest(id) {
+function takeTest(id) {
   const tests=load('tests')||[];
   const t=tests.find(t=>t.id===id);
   if(!t){ showNotif('Тест не найден'); return; }
@@ -10231,11 +10231,11 @@ async function takeTest(id) {
     showNotif('❌ Исчерпано попыток: '+attemptsUsed+'/'+maxAttempts); return;
   }
   _takingTest=t;
-  _testAnswers={};
-  // Черновик берём из кеша (мгновенно) — Firebase RTT только если кеш ещё не загружен
-  const draft = await _loadDraft('test', id);
-  _testAnswers = (draft && typeof draft === 'object') ? draft : {};
-  if(draft && Object.keys(draft).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
+  // Берём черновик синхронно из кеша — никакого await, никакого Firebase RTT
+  const _testDraftKey = _draftKey('test', id);
+  const _testCachedDraft = _draftsCache[_testDraftKey];
+  _testAnswers = (_testCachedDraft && _testCachedDraft.answers && typeof _testCachedDraft.answers === 'object') ? {..._testCachedDraft.answers} : {};
+  if(Object.keys(_testAnswers).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
   document.getElementById('take-test-title').textContent=t.title;
   const _ec1 = document.getElementById('test-exit-confirm'); if(_ec1) _ec1.style.display='none';
   renderTakeTestBody();
@@ -10426,7 +10426,7 @@ function selectHWOpt(qId,val,isMulti){
   if(_doingHW) _saveDraft('hw', _doingHW.id, _hwAnswers);
 }
 
-async function doHW(id){
+function doHW(id){
   const hws=load('hw')||[];
   const h=hws.find(h=>h.id===id);
   if(!h){ showNotif('❌ ДЗ не найдено'); return; }
@@ -10436,11 +10436,11 @@ async function doHW(id){
     showNotif('❌ Исчерпано попыток: '+attemptsUsed+'/'+maxAttempts); return;
   }
   _doingHW=h;
-  _hwAnswers={};
-  // Черновик берём из кеша (мгновенно) — Firebase RTT только если кеш ещё не загружен
-  const draft = await _loadDraft('hw', id);
-  _hwAnswers = (draft && typeof draft === 'object') ? draft : {};
-  if(draft && Object.keys(draft).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
+  // Берём черновик синхронно из кеша — никакого await, никакого Firebase RTT
+  const draftKey = _draftKey('hw', id);
+  const cachedDraft = _draftsCache[draftKey];
+  _hwAnswers = (cachedDraft && cachedDraft.answers && typeof cachedDraft.answers === 'object') ? {...cachedDraft.answers} : {};
+  if(Object.keys(_hwAnswers).length) showNotif('📝 Черновик восстановлен — продолжаем с места остановки', 3000);
   const body=document.getElementById('take-test-body');
   document.getElementById('take-test-title').textContent=h.title;
   const _ec2 = document.getElementById('test-exit-confirm'); if(_ec2) _ec2.style.display='none';
