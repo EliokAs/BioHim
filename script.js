@@ -10108,6 +10108,22 @@ async function _loadDraft(type, id){
 async function _clearDraft(type, id){
   try { await _fbInit().ref(_draftFbPath(type,id)).remove(); } catch(e){}
 }
+
+// ── Автосохранение черновика при вводе текста (open/fill/number/match/order) ──
+const _saveDraftDebounced = debounce(function(type, id, answers) {
+  _saveDraft(type, id, answers);
+}, 600);
+
+function _onAnswerInput(answerObj) {
+  if (answerObj === '_testAnswers' && _takingTest) {
+    _saveDraftDebounced('test', _takingTest.id, _testAnswers);
+  } else if (answerObj === '_hwAnswers' && _doingHW) {
+    _saveDraftDebounced('hw', _doingHW.id, _hwAnswers);
+  } else if (answerObj === '_trialAnswers' && window._activeTrial) {
+    _saveDraftDebounced('trial', window._activeTrial.id, window._trialAnswers);
+  }
+}
+
 // ── Таймер теста ──
 let _testTimerInterval = null;
 let _testTimerSecsLeft = 0;
@@ -15543,7 +15559,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
 
   } else if(q.type==='open'||q.type==='voice'){
     body=`<textarea style="width:100%;padding:10px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem;min-height:80px;resize:vertical;box-sizing:border-box"
-      placeholder="Ваш ответ..." oninput="${answerObj}['${q.id}']=this.value">${ans}</textarea>`;
+      placeholder="Ваш ответ..." oninput="${answerObj}['${q.id}']=this.value;_onAnswerInput('${answerObj}')">${ans}</textarea>`;
 
   } else if(q.type==='fill'){
     // Show text with ___ replaced by inputs
@@ -15554,10 +15570,10 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
         parts.map((part,pi)=>{
           if(pi===parts.length-1) return part;
           const inputVal=(fills[pi]||'').replace(/"/g,'&quot;');
-          return part+`<input type="text" value="${inputVal}" placeholder="..." style="border:none;border-bottom:2px solid var(--green-mid);padding:2px 6px;min-width:80px;font-family:Nunito,sans-serif;font-size:0.88rem;background:transparent;outline:none" oninput="(function(el,i){const f=${answerObj}['${q.id}']?${answerObj}['${q.id}'].split(','):new Array(${parts.length-1}).fill('');f[i]=el.value;${answerObj}['${q.id}']=f.join(',')})(this,${pi})">`;
+          return part+`<input type="text" value="${inputVal}" placeholder="..." style="border:none;border-bottom:2px solid var(--green-mid);padding:2px 6px;min-width:80px;font-family:Nunito,sans-serif;font-size:0.88rem;background:transparent;outline:none" oninput="(function(el,i){const f=${answerObj}['${q.id}']?${answerObj}['${q.id}'].split(','):new Array(${parts.length-1}).fill('');f[i]=el.value;${answerObj}['${q.id}']=f.join(',');_onAnswerInput('${answerObj}')})(this,${pi})">`;
         }).join('') + `</div>`;
     } else {
-      body=`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem" placeholder="Ваш ответ..." value="${(ans||'').replace(/"/g,'&quot;')}" oninput="${answerObj}['${q.id}']=this.value">`;
+      body=`<input style="width:100%;padding:8px 12px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:0.88rem" placeholder="Ваш ответ..." value="${(ans||'').replace(/"/g,'&quot;')}" oninput="${answerObj}['${q.id}']=this.value;_onAnswerInput('${answerObj}')">`;
     }
 
   } else if(q.type==='match'||q.type==='pairs'){
@@ -15601,7 +15617,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
       }catch(e){}
     });
     // Build onchange that saves in new base64|pipe format
-    const onchFn=`(function(sel,l){var m={};var raw=(${answerObj}['${q.id}']||'');raw.split(',').forEach(function(s){s=s.trim();if(!s)return;var pi=s.indexOf('|');if(pi>=0){try{var a=_b64d(s.slice(0,pi)),b=_b64d(s.slice(pi+1));if(a)m[a]=b;return;}catch(e){}}var ci=s.indexOf(':');if(ci>=0){try{var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b;}catch(e){}}});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return _b64e(e[0])+'|'+_b64e(e[1])}).join(',')})(this,`;
+    const onchFn=`(function(sel,l){var m={};var raw=(${answerObj}['${q.id}']||'');raw.split(',').forEach(function(s){s=s.trim();if(!s)return;var pi=s.indexOf('|');if(pi>=0){try{var a=_b64d(s.slice(0,pi)),b=_b64d(s.slice(pi+1));if(a)m[a]=b;return;}catch(e){}}var ci=s.indexOf(':');if(ci>=0){try{var a=decodeURIComponent(s.slice(0,ci).trim()),b=decodeURIComponent(s.slice(ci+1).trim());if(a)m[a]=b;}catch(e){}}});m[l]=sel.value;${answerObj}['${q.id}']=Object.entries(m).filter(function(e){return e[1]}).map(function(e){return _b64e(e[0])+'|'+_b64e(e[1])}).join(',');_onAnswerInput('${answerObj}')})(this,`;
     body=`<div style="border:1.5px solid var(--green-pale);border-radius:10px;overflow:hidden">
       ${leftLabel||rightLabel?`<div style="display:grid;grid-template-columns:1fr 1fr">
         <div style="padding:8px 14px;background:var(--bg2);font-size:0.73rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.03em">${escHtml(leftLabel)}</div>
@@ -15647,7 +15663,7 @@ function renderStudentQuestion(q, idx, answerObj, selectFn){
 
   } else if(q.type==='number'){
     body=`<div style="font-size:0.8rem;color:var(--text3);margin-bottom:8px">Введите числовой ответ (используйте точку или запятую для десятичной части)</div>
-      <input type="text" inputmode="decimal" style="width:100%;max-width:260px;padding:10px 14px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:1rem" placeholder="0" value="${(ans||'').replace(/"/g,'&quot;')}" oninput="${answerObj}['${q.id}']=this.value">`;
+      <input type="text" inputmode="decimal" style="width:100%;max-width:260px;padding:10px 14px;border-radius:8px;border:1.5px solid var(--green-pale);font-family:Nunito,sans-serif;font-size:1rem" placeholder="0" value="${(ans||'').replace(/"/g,'&quot;')}" oninput="${answerObj}['${q.id}']=this.value;_onAnswerInput('${answerObj}')">`;
 
   } else if(q.type==='voice'){
     const voiceKey='_vrec_'+q.id;
@@ -15701,6 +15717,7 @@ function moveOrderItem(qId, idx, dir, answerObj){
   if(newIdx<0||newIdx>=arr.length) return;
   [arr[idx],arr[newIdx]]=[arr[newIdx],arr[idx]];
   setAnswer(answerObj, qId, arr.join(','));
+  _onAnswerInput(answerObj);
   // Re-render the right body
   if(answerObj==='_testAnswers') renderTakeTestBody();
   else if(answerObj==='_trialAnswers') renderTrialTakeBody();
