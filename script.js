@@ -1313,6 +1313,9 @@ function _saveFbError(k, e) {
 }
 
 function save(k, v){
+  // Запоминаем предыдущее значение ДО обновления кэша —
+  // нужно для определения удалённых элементов (строки ниже)
+  const _prevCacheVal = _cache[k];
   _cache[k] = v;
 
   // Немедленно перерисовываем текущую страницу — без ожидания Firebase echo
@@ -1336,8 +1339,8 @@ function save(k, v){
     const db = _fbInit();
     const newIds = new Set(v.filter(i => i && i.id).map(i => i.id));
 
-    // 1. Удаляем исчезнувшие элементы — используем локальный кэш вместо лишнего Firebase .get()
-    const prevVal = _cache[k];
+    // 1. Удаляем исчезнувшие элементы — используем снимок кэша до перезаписи
+    const prevVal = _prevCacheVal;
     if (Array.isArray(prevVal) && prevVal.length > 0) {
       const deleteOps = [];
       prevVal.forEach(item => {
