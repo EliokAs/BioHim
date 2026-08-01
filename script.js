@@ -16666,6 +16666,136 @@ function _pasteImageToQuestion(dataUrl, target) {
   return true;
 }
 
+/**
+ * Возвращает true если вставляемый HTML содержит картинки или несколько
+ * блочных элементов — значит нужно перехватить paste и разбить на блоки.
+ */
+function _htmlNeedsBlockPaste(html) {
+  if (!html) return false;
+  // Картинки — всегда перехватываем
+  if (/<img[\s>]/i.test(html)) return true;
+  // Несколько блочных тегов → перехватываем (выделение из нескольких абзацев)
+  const blockTags = (html.match(/<(p|h[1-6]|li|blockquote|div|table|tr|hr)[\s>]/gi) || []).length;
+  return blockTags >= 2;
+}
+
+/**
+ * Парсит HTML из буфера обмена и вставляет блоки в nb-редактор.
+ * Поддерживает: h1–h3, p, li, blockquote, img (base64 и src-url).
+ * Возвращает true если вставлено хотя бы что-то.
+ */
+function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
+  const arr = stateVar === '_nbBlocksNew' ? _nbBlocksNew : _nbBlocks;
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  const newBlocks = [];
+
+  function processNode(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.trim();
+      if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: text });
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tag = node.tagName.toLowerCase();
+
+    if (tag === 'img') {
+      const src = node.getAttribute('src') || '';
+      if (src) newBlocks.push({ ...nbDefaultBlock('image'), url: src, caption: node.getAttribute('alt') || '' });
+      return;
+    }
+
+    if (tag === 'h1') { newBlocks.push({ ...nbDefaultBlock('h1'), content: node.innerHTML }); return; }
+    if (tag === 'h2') { newBlocks.push({ ...nbDefaultBlock('h2'), content: node.innerHTML }); return; }
+    if (tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
+      newBlocks.push({ ...nbDefaultBlock('h3'), content: node.innerHTML }); return;
+    }
+    if (tag === 'blockquote') { newBlocks.push({ ...nbDefaultBlock('quote'), content: node.innerHTML }); return; }
+    if (tag === 'hr') { newBlocks.push(nbDefaultBlock('divider')); return; }
+
+    if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article') {
+      // Проверяем — есть ли внутри img?
+      const imgs = node.querySelectorAll('img');
+      if (imgs.length) {
+        // Сначала текст до первой картинки
+        const textBefore = node.textContent.trim();
+        if (textBefore) newBlocks.push({ ...nbDefaultBlock('p'), content: node.innerHTML.replace(/<img[^>]*>/gi, '').trim() });
+        imgs.forEach(img => {
+          const src = img.getAttribute('src') || '';
+          if (src) newBlocks.push({ ...nbDefaultBlock('image'), url: src, caption: img.getAttribute('alt') || '' });
+        });
+      } else {
+        const inner = node.innerHTML.trim();
+        if (inner) newBlocks.push({ ...nbDefaultBlock('p'), content: inner });
+      }
+      return;
+    }
+
+    if (tag === 'ul' || tag === 'ol') {
+      const items = Array.from(node.querySelectorAll('li')).map(li => '• ' + li.textContent.trim()).join('\n');
+      if (items) newBlocks.push({ ...nbDefaultBlock('p'), content: items });
+      return;
+    }
+
+    if (tag === 'li') {
+      const text = node.textContent.trim();
+      if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: '• ' + text });
+      return;
+    }
+
+    // Для body, table, thead, tbody, tr, td, th — обходим дочерние
+    if (['body','table','thead','tbody','tfoot','tr','td','th','figure','figcaption','span','strong','em','a','br','main','header','footer','nav','aside'].includes(tag)) {
+      // table cells — вставим как параграф
+      if (tag === 'td' || tag === 'th') {
+        const text = node.textContent.trim();
+        if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: node.innerHTML.trim() });
+        return;
+      }
+      node.childNodes.forEach(child => processNode(child));
+      return;
+    }
+
+    // Всё остальное — пробуем вытащить текст
+    const text = node.textContent.trim();
+    if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: text });
+  }
+
+  doc.body.childNodes.forEach(child => processNode(child));
+
+  // Убрать пустые параграфы и дубли подряд
+  const filtered = newBlocks.filter((b, i) => {
+    if (!b.content && !b.url) return false;
+    if (b.type === 'p' && !b.content.trim()) return false;
+    return true;
+  });
+
+  if (!filtered.length) return false;
+
+  // Вставляем после текущего фокуса или в конец
+  const canvas = document.getElementById(canvasId);
+  const focused = canvas && canvas.querySelector('[contenteditable]:focus, input:focus, textarea:focus');
+  let insertIdx = arr.length;
+  if (focused) {
+    const wrap = focused.closest('.nb-block');
+    if (wrap) {
+      const idx = parseInt(wrap.dataset.idx, 10);
+      if (!isNaN(idx)) insertIdx = idx + 1;
+    }
+  }
+  arr.splice(insertIdx, 0, ...filtered);
+
+  if (stateVar === '_nbBlocksNew') {
+    nbRenderCanvas(_nbBlocksNew, '_nbBlocksNew', 'nb-canvas-new');
+  } else {
+    nbRender();
+  }
+  showNotif(`📋 Вставлено ${filtered.length} блок${filtered.length === 1 ? '' : filtered.length < 5 ? 'а' : 'ов'} из буфера`);
+  return true;
+}
+
 // Глобальный paste-listener — работает для всех нужных областей
 document.addEventListener('paste', function(e) {
   const target = e.target;
@@ -16673,16 +16803,28 @@ document.addEventListener('paste', function(e) {
 
   // ── 1. Блочный редактор «Новый урок» ──────────────────────────
   if (target.closest('#nb-canvas-new') || target.closest('#modal-add-theory')) {
+    // Сначала пробуем вставить картинку из буфера
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocksNew', 'nb-canvas-new');
     })) { e.preventDefault(); return; }
+    // Затем — HTML с форматированием/картинками (копирование из Word, Google Docs, браузера)
+    const html1 = e.clipboardData && e.clipboardData.getData('text/html');
+    if (html1 && _htmlNeedsBlockPaste(html1)) {
+      if (_pasteHtmlToNbCanvas(html1, '_nbBlocksNew', 'nb-canvas-new')) { e.preventDefault(); return; }
+    }
   }
 
   // ── 2. Блочный редактор «Редактировать урок» ──────────────────
   if (target.closest('#nb-canvas') || target.closest('#modal-edit-content')) {
+    // Сначала пробуем вставить картинку из буфера
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocks', 'nb-canvas');
     })) { e.preventDefault(); return; }
+    // Затем — HTML с форматированием/картинками
+    const html2 = e.clipboardData && e.clipboardData.getData('text/html');
+    if (html2 && _htmlNeedsBlockPaste(html2)) {
+      if (_pasteHtmlToNbCanvas(html2, '_nbBlocks', 'nb-canvas')) { e.preventDefault(); return; }
+    }
   }
 
   // ── 3. Тест — создание (modal-create-test) ────────────────────
