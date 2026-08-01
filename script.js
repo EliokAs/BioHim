@@ -16855,24 +16855,6 @@ document.addEventListener('paste', function(e) {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocksNew', 'nb-canvas-new');
     })) { e.preventDefault(); return; }
     const html1 = e.clipboardData && e.clipboardData.getData('text/html');
-    // Диагностика
-    if (html1) {
-      const _imgTags = (html1.match(/<img[\s>]/gi)||[]).length;
-      const _hasVml  = /v:imagedata/i.test(html1);
-      const _hasBg   = /background-image/i.test(html1);
-      console.log('[Paste1] len:', html1.length, 'img:', _imgTags, 'vml:', _hasVml, 'bg:', _hasBg);
-      if (_hasVml) {
-        // Показать первый v:imagedata и соседний <img если есть
-        const vmlSnip = html1.match(/<v:imagedata[^>]{0,300}>/i);
-        console.log('[Paste1] v:imagedata:', vmlSnip ? vmlSnip[0] : 'not found');
-        const imgNearVml = html1.match(/<img[^>]{0,300}>/i);
-        console.log('[Paste1] nearby img:', imgNearVml ? imgNearVml[0] : 'none');
-      }
-      if (!_imgTags && !_hasVml && !_hasBg) {
-        const bodySnip = html1.match(/<body[^>]*>([\s\S]{0,500})/i);
-        console.log('[Paste1] body start:', bodySnip ? bodySnip[1] : html1.substring(0,500));
-      }
-    }
     if (html1 && _htmlNeedsBlockPaste(html1)) {
       e.preventDefault();
       _pasteHtmlToNbCanvas(html1, '_nbBlocksNew', 'nb-canvas-new');
@@ -16886,17 +16868,6 @@ document.addEventListener('paste', function(e) {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocks', 'nb-canvas');
     })) { e.preventDefault(); return; }
     const html2 = e.clipboardData && e.clipboardData.getData('text/html');
-    // Диагностика
-    if (html2) {
-      const _imgTags = (html2.match(/<img[\s>]/gi)||[]).length;
-      const _hasVml  = /v:imagedata/i.test(html2);
-      const _hasBg   = /background-image/i.test(html2);
-      console.log('[Paste2] len:', html2.length, 'img:', _imgTags, 'vml:', _hasVml, 'bg:', _hasBg);
-      if (!_imgTags && !_hasVml && !_hasBg) {
-        const bodySnip = html2.match(/<body[^>]*>([\s\S]{0,500})/i);
-        console.log('[Paste2] body start:', bodySnip ? bodySnip[1] : html2.substring(0,500));
-      }
-    }
     if (html2 && _htmlNeedsBlockPaste(html2)) {
       e.preventDefault();
       _pasteHtmlToNbCanvas(html2, '_nbBlocks', 'nb-canvas');
