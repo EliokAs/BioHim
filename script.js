@@ -1532,21 +1532,31 @@ async function preloadCache(){
 
   let anyError = null;
 
-  // ── 1. Сначала грузим лёгкие коллекции одним запросом (включает users) ──
-  // Строим multi-path: читаем каждую лёгкую коллекцию отдельным .get() параллельно
-  // (нельзя читать несколько путей одним get в Realtime DB без платного плана)
-  try {
-    const lightSnaps = await _withTimeout(
-      Promise.all(LIGHT_COLLECTIONS.map(k => db.ref('db/' + k).get().then(s => ({ k, s })))),
-      12000
-    );
-    lightSnaps.forEach(({ k, s }) => _applySnap(k, s.val()));
+  // ── 1. Лёгкие коллекции — каждая независимо с собственным таймаутом ──
+  // Promise.allSettled: один медленный узел не роняет остальные.
+  const lightResults = await Promise.allSettled(
+    LIGHT_COLLECTIONS.map(k =>
+      _withTimeout(db.ref('db/' + k).get().then(s => ({ k, v: s.val() })), 12000)
+    )
+  );
+  const failedLight = [];
+  lightResults.forEach((res, i) => {
+    const k = LIGHT_COLLECTIONS[i];
+    if (res.status === 'fulfilled') {
+      _applySnap(k, res.value.v);
+    } else {
+      failedLight.push(k);
+      if (!(k in _cache)) _cache[k] = null;
+      console.warn('[Firebase] ⚠️ Не удалось загрузить ' + k + ':', res.reason && res.reason.message);
+    }
+  });
+  if (failedLight.length === 0) {
     console.log('[Firebase] ✅ Лёгкие коллекции загружены');
-  } catch(e) {
-    anyError = e;
-    console.error('[Firebase] ❌ Ошибка загрузки лёгких коллекций:', e.message);
-    // Критично: users не загружены — ставим warning
-    LIGHT_COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
+  } else {
+    console.warn('[Firebase] ⚠️ Не загружены: ' + failedLight.join(', '));
+    if (failedLight.includes('users')) {
+      anyError = new Error('Не удалось загрузить данные пользователей');
+    }
   }
 
   // ── 2. Тяжёлые коллекции — грузим параллельно в фоне.
