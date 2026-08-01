@@ -1197,6 +1197,101 @@ const _cache = {};
 // Сообщение об ошибке preloadCache (null = всё ок); показывается после входа
 let _preloadWarning = null;
 
+// ═══════════════════════════════════════════════════════════════
+// CONTENT IMAGES — ленивая загрузка картинок из материалов
+// Картинки хранятся отдельно в db/content_images/{contentId}
+// и подгружаются только когда пользователь раскрывает аккордеон.
+// ═══════════════════════════════════════════════════════════════
+const _contentImagesCache = {}; // contentId → { blocks_with_images } | 'loading' | 'none'
+
+/**
+ * Стрипует base64-картинки из blocks перед сохранением материала в основной узел.
+ * Возвращает { cleanBlocks, imageBlocks } где imageBlocks — только блоки с картинками
+ * (с сохранением их индексов для восстановления).
+ */
+function _stripImagesFromBlocks(blocks) {
+  if (!blocks || !blocks.length) return { cleanBlocks: blocks, hasImages: false };
+  let hasImages = false;
+  const cleanBlocks = blocks.map((b, idx) => {
+    if ((b.type === 'image' || b.type === 'image-upload') && b.url && b.url.startsWith('data:')) {
+      hasImages = true;
+      return { ...b, url: '__lazy__', _origIdx: idx }; // placeholder
+    }
+    return b;
+  });
+  return { cleanBlocks, hasImages };
+}
+
+/**
+ * Сохраняет картинки материала в отдельный узел Firebase db/content_images/{id}.
+ * Вызывается при save() коллекции content автоматически.
+ */
+function _saveContentImages(contentId, blocks) {
+  if (!blocks || !blocks.length) return;
+  const imageBlocks = blocks
+    .map((b, idx) => ({ b, idx }))
+    .filter(({ b }) => (b.type === 'image' || b.type === 'image-upload') && b.url && b.url.startsWith('data:'));
+  if (!imageBlocks.length) return;
+  const payload = {};
+  imageBlocks.forEach(({ b, idx }) => { payload[idx] = { url: b.url, caption: b.caption || '' }; });
+  try {
+    _fbInit().ref('db/content_images/' + contentId).set(payload)
+      .catch(e => console.warn('[Firebase] content_images save', contentId, e));
+  } catch(e) { console.warn('[Firebase] content_images save error', e); }
+}
+
+/**
+ * Загружает картинки для одного материала и подставляет их в DOM.
+ * Вызывается при раскрытии аккордеона.
+ */
+function _loadContentImages(contentId) {
+  if (_contentImagesCache[contentId]) return; // уже есть или грузится
+  _contentImagesCache[contentId] = 'loading';
+  try {
+    _fbInit().ref('db/content_images/' + contentId).get().then(snap => {
+      const val = snap.val();
+      if (!val) { _contentImagesCache[contentId] = 'none'; return; }
+      _contentImagesCache[contentId] = val; // { idx: {url, caption} }
+      _injectContentImages(contentId, val);
+    }).catch(e => {
+      console.warn('[Firebase] content_images load', contentId, e);
+      _contentImagesCache[contentId] = 'none';
+    });
+  } catch(e) { _contentImagesCache[contentId] = 'none'; }
+}
+
+/**
+ * Подставляет загруженные картинки в уже отрендеренный аккордеон.
+ */
+function _injectContentImages(contentId, imgMap) {
+  const accEl = document.getElementById('acc-' + contentId);
+  if (!accEl) return;
+  // Ищем все плейсхолдеры и заменяем их на реальные картинки
+  accEl.querySelectorAll('img[data-lazy-idx]').forEach(img => {
+    const idx = img.getAttribute('data-lazy-idx');
+    const entry = imgMap[idx];
+    if (entry && entry.url) {
+      img.src = entry.url;
+      img.removeAttribute('data-lazy-idx');
+      img.style.opacity = '1';
+    }
+  });
+  // Также обновляем кэш материала — чтобы при редактировании блоки были полные
+  const content = load('content');
+  if (content) {
+    const item = content.find(c => c.id === contentId);
+    if (item && item.blocks) {
+      item.blocks = item.blocks.map((b, idx) => {
+        if ((b.type === 'image' || b.type === 'image-upload') && b.url === '__lazy__') {
+          const entry = imgMap[idx];
+          return entry ? { ...b, url: entry.url, caption: entry.caption || b.caption } : b;
+        }
+        return b;
+      });
+    }
+  }
+}
+
 /**
  * Рекурсивно конвертирует Firebase-объекты с числовыми ключами обратно в массивы.
  * Firebase хранит JS-массивы как объекты {0: ..., 1: ...} — при чтении нужно
@@ -1355,14 +1450,24 @@ function save(k, v){
     const MB = 1024 * 1024;
     const MAX_ITEM_BYTES = 9 * MB; // Firebase лимит ~10 МБ на узел
     const saveOps = v.filter(item => item && item.id).map(item => {
-      const byteSize = new Blob([JSON.stringify(item)]).size;
+      // Для content — вырезаем base64 картинки в отдельный узел content_images
+      // чтобы основной узел оставался лёгким (быстрая загрузка списка материалов)
+      let itemToSave = item;
+      if (k === 'content' && item.blocks && item.blocks.length) {
+        const { cleanBlocks, hasImages } = _stripImagesFromBlocks(item.blocks);
+        if (hasImages) {
+          _saveContentImages(item.id, item.blocks); // сохраняем картинки отдельно
+          itemToSave = { ...item, blocks: cleanBlocks }; // основной узел без base64
+        }
+      }
+      const byteSize = new Blob([JSON.stringify(itemToSave)]).size;
       if (byteSize > MAX_ITEM_BYTES) {
         const sizeMB = (byteSize / MB).toFixed(1);
         console.error('[Firebase] ❌ Элемент "' + item.id + '" (' + k + ') слишком большой: ' + sizeMB + ' МБ > 9 МБ.');
         showNotif('⚠️ Материал "' + (item.title || item.id) + '" слишком большой (' + sizeMB + ' МБ). Удалите часть изображений.', 8000);
         return Promise.resolve(); // пропускаем — не блокируем остальные
       }
-      return db.ref('db/' + k + '/' + item.id).set(item);
+      return db.ref('db/' + k + '/' + item.id).set(itemToSave);
     });
 
     Promise.all(saveOps)
@@ -1402,11 +1507,12 @@ async function preloadCache(){
   }
   const db = _fbInit();
 
-  // Коллекции без base64-изображений — читаем одним запросом (быстро)
+  // Коллекции без base64-изображений — читаем параллельно (быстро)
+  // content теперь тоже здесь: картинки хранятся отдельно в content_images
   const LIGHT_COLLECTIONS = ['users','courses','slots','bookings','attendance','payments','hw',
-    'salary_payments','groups','notifs','taskbank','mistakes','contracts'];
-  // Коллекции с потенциально тяжёлыми данными (base64) — читаем по одной
-  const HEAVY_COLLECTIONS = ['content','tests','trials','flashcard_decks'];
+    'salary_payments','groups','notifs','taskbank','mistakes','contracts','content'];
+  // Коллекции с потенциально тяжёлыми данными (base64) — читаем по одной в фоне
+  const HEAVY_COLLECTIONS = ['tests','trials','flashcard_decks'];
   // Коллекции которые хранятся как массивы (не объекты)
   // contracts — объект {privacy, rules}, не массив — не включаем
   const ARRAY_COLLECTIONS = new Set(['users','attendance','payments','content','tests','hw','trials','slots',
@@ -2809,6 +2915,11 @@ function toggleAccordion(el){
   if(!item) return;
   const wasOpen = item.classList.contains('open');
   item.classList.toggle('open');
+  // Ленивая загрузка картинок при первом открытии аккордеона
+  if(!wasOpen){
+    const cid = item.getAttribute('data-content-id');
+    if(cid) _loadContentImages(cid);
+  }
   // Mark material as viewed when opened (student only)
   if(!wasOpen && currentUser && currentUser.role==='student'){
     const cid = item.getAttribute('data-content-id');
@@ -3381,12 +3492,40 @@ function viewTheory(id){
   if(!c) return;
   document.getElementById('view-article-title').textContent=c.title;
   const viewBlocks = (c.blocks && c.blocks.length) ? c.blocks : nbFromLegacy(c);
-  document.getElementById('view-article-body').innerHTML = nbRenderView(viewBlocks);
+  const bodyEl = document.getElementById('view-article-body');
+  bodyEl.innerHTML = nbRenderView(viewBlocks);
   openModal('modal-view-article');
+  // Если картинки вынесены — подгружаем и подставляем в модалку
+  const hasLazy = viewBlocks.some(b => b.url === '__lazy__');
+  if (hasLazy) {
+    const cached = _contentImagesCache[id];
+    const applyToModal = (imgMap) => {
+      if (!imgMap || imgMap === 'none' || imgMap === 'loading') return;
+      bodyEl.querySelectorAll('img[data-lazy-idx]').forEach(img => {
+        const idx = img.getAttribute('data-lazy-idx');
+        const entry = imgMap[idx];
+        if (entry && entry.url) { img.src = entry.url; img.style.opacity = '1'; img.removeAttribute('data-lazy-idx'); }
+      });
+    };
+    if (cached && cached !== 'loading') {
+      applyToModal(cached);
+    } else {
+      try {
+        _fbInit().ref('db/content_images/' + id).get().then(snap => {
+          const val = snap.val();
+          _contentImagesCache[id] = val || 'none';
+          applyToModal(val);
+        }).catch(() => {});
+      } catch(e) {}
+    }
+  }
 }
 function deleteContent(id){
   requireAdmin('deleteContent');
   save('content',(load('content')||[]).filter(c=>c.id!==id));
+  // Удаляем картинки материала из отдельного узла
+  try { _fbInit().ref('db/content_images/' + id).remove().catch(()=>{}); } catch(e) {}
+  delete _contentImagesCache[id];
   renderContentAdmin();
 }
 
@@ -5215,7 +5354,14 @@ function nbRenderView(blocks){
     if(b.type==='callout') return `<div style="background:#fffbeb;border:1px solid #fce98a;border-radius:10px;padding:12px 16px;color:#856404;margin:12px 0">💡 ${safeRich(b.content)}</div>`;
     if(b.type==='code') return `<pre style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:14px 18px;overflow-x:auto;font-size:0.85rem;margin:12px 0"><code>${esc(b.content)}</code></pre>`;
     if(b.type==='divider') return `<hr style="border:none;border-top:2px solid var(--green-xpale);margin:16px 0">`;
-    if(b.type==='image'||b.type==='image-upload') return b.url ? `<figure style="margin:16px 0;text-align:center"><img src="${safeUrl(b.url)}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1)" alt="${esc(b.caption||'')}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${esc(b.caption||'')}</figcaption></figure>` : '';
+    if(b.type==='image'||b.type==='image-upload') {
+      if (!b.url) return '';
+      if (b.url === '__lazy__') {
+        // Картинка вынесена в content_images — показываем скелетон, подгрузим при открытии
+        return `<figure style="margin:16px 0;text-align:center"><img src="" data-lazy-idx="${b._origIdx !== undefined ? b._origIdx : ''}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1);min-height:80px;background:var(--bg2);opacity:0;transition:opacity 0.3s" alt="${esc(b.caption||'')}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${esc(b.caption||'')}</figcaption></figure>`;
+      }
+      return `<figure style="margin:16px 0;text-align:center"><img src="${safeUrl(b.url)}" style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.1)" alt="${esc(b.caption||'')}"><figcaption style="font-size:0.78rem;color:var(--text3);margin-top:6px">${esc(b.caption||'')}</figcaption></figure>`;
+    }
     if(b.type==='video'){
       const embed=getVideoEmbedUrl(b.url||'');
       if(!embed) return '';
@@ -5271,12 +5417,48 @@ function openEditContent(id){
   document.getElementById('edit-content-title').textContent='✏️ Редактировать урок';
   document.getElementById('ec-title').value=cont.title||'';
   document.getElementById('ec-theory-fields').style.display='block';
-  // Load blocks: prefer saved blocks, fall back to legacy
-  _nbBlocks = cont.blocks && cont.blocks.length ? JSON.parse(JSON.stringify(cont.blocks)) : nbFromLegacy(cont);
-  nbRender();
-  // Populate linked test selector
-  _renderEditContentLinkedTest(cont.linkedTestId || null);
-  openModalEl('modal-edit-content');
+
+  // Загружаем блоки — если картинки были вынесены в content_images, подгружаем их
+  const rawBlocks = cont.blocks && cont.blocks.length ? JSON.parse(JSON.stringify(cont.blocks)) : nbFromLegacy(cont);
+  const hasLazy = rawBlocks.some(b => b.url === '__lazy__');
+
+  if (hasLazy) {
+    // Сначала открываем модалку с плейсхолдерами, потом заменяем
+    _nbBlocks = rawBlocks;
+    nbRender();
+    _renderEditContentLinkedTest(cont.linkedTestId || null);
+    openModalEl('modal-edit-content');
+    // Подгружаем картинки из Firebase
+    const cached = _contentImagesCache[id];
+    const applyImages = (imgMap) => {
+      if (!imgMap || imgMap === 'none' || imgMap === 'loading') return;
+      _nbBlocks = _nbBlocks.map((b, idx) => {
+        if ((b.type === 'image' || b.type === 'image-upload') && b.url === '__lazy__') {
+          const entry = imgMap[b._origIdx !== undefined ? b._origIdx : idx];
+          return entry ? { ...b, url: entry.url, caption: entry.caption || b.caption } : b;
+        }
+        return b;
+      });
+      nbRender();
+    };
+    if (cached && cached !== 'loading') {
+      applyImages(cached);
+    } else {
+      // Грузим если ещё не в кэше
+      try {
+        _fbInit().ref('db/content_images/' + id).get().then(snap => {
+          const val = snap.val();
+          _contentImagesCache[id] = val || 'none';
+          applyImages(val);
+        }).catch(() => {});
+      } catch(e) {}
+    }
+  } else {
+    _nbBlocks = rawBlocks;
+    nbRender();
+    _renderEditContentLinkedTest(cont.linkedTestId || null);
+    openModalEl('modal-edit-content');
+  }
 }
 
 /** Render the linked test section inside edit modal */
