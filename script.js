@@ -16682,9 +16682,10 @@ function _pasteImageToQuestion(dataUrl, target) {
  */
 function _htmlNeedsBlockPaste(html) {
   if (!html) return false;
-  // Картинки — всегда перехватываем
   if (/<img[\s>]/i.test(html)) return true;
-  // Несколько блочных тегов → перехватываем (выделение из нескольких абзацев)
+  if (/v:imagedata/i.test(html)) return true;           // Word VML images
+  if (/background-image\s*:/i.test(html)) return true; // CSS bg images
+  if (/<figure/i.test(html)) return true;               // Notion/Docs figures
   const blockTags = (html.match(/<(p|h[1-6]|li|blockquote|div|table|tr|hr)[\s>]/gi) || []).length;
   return blockTags >= 2;
 }
@@ -16848,29 +16849,24 @@ document.addEventListener('paste', function(e) {
   const target = e.target;
   if (!target) return;
 
-  // Диагностика буфера (временно)
-  if (target.closest('#nb-canvas-new') || target.closest('#modal-add-theory') ||
-      target.closest('#nb-canvas')     || target.closest('#modal-edit-content')) {
-    const items = e.clipboardData && e.clipboardData.items;
-    const types = e.clipboardData && Array.from(e.clipboardData.types || []);
-    const itemTypes = items ? Array.from(items).map(i => i.type + '/' + i.kind) : [];
-    console.log('[Paste] target:', target.tagName, target.id || target.className);
-    console.log('[Paste] types:', types);
-    console.log('[Paste] items:', itemTypes);
-    const html = e.clipboardData && e.clipboardData.getData('text/html');
-    if (html) {
-      const imgCount = (html.match(/<img[\s>]/gi) || []).length;
-      console.log('[Paste] HTML length:', html.length, '| img tags:', imgCount);
-      if (imgCount) console.log('[Paste] first img src:', html.match(/src="([^"]{0,80})/)?.[1]);
-    }
-  }
-
   // ── 1. Блочный редактор «Новый урок» ──────────────────────────
   if (target.closest('#nb-canvas-new') || target.closest('#modal-add-theory')) {
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocksNew', 'nb-canvas-new');
     })) { e.preventDefault(); return; }
     const html1 = e.clipboardData && e.clipboardData.getData('text/html');
+    // Диагностика
+    if (html1) {
+      const _imgTags = (html1.match(/<img[\s>]/gi)||[]).length;
+      const _hasVml  = /v:imagedata/i.test(html1);
+      const _hasBg   = /background-image/i.test(html1);
+      console.log('[Paste1] len:', html1.length, 'img:', _imgTags, 'vml:', _hasVml, 'bg:', _hasBg);
+      if (!_imgTags && !_hasVml && !_hasBg) {
+        // Нет картинок ни в каком формате — показать первые 500 символов body
+        const bodySnip = html1.match(/<body[^>]*>([\s\S]{0,500})/i);
+        console.log('[Paste1] body start:', bodySnip ? bodySnip[1] : html1.substring(0,500));
+      }
+    }
     if (html1 && _htmlNeedsBlockPaste(html1)) {
       e.preventDefault();
       _pasteHtmlToNbCanvas(html1, '_nbBlocksNew', 'nb-canvas-new');
@@ -16884,6 +16880,17 @@ document.addEventListener('paste', function(e) {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocks', 'nb-canvas');
     })) { e.preventDefault(); return; }
     const html2 = e.clipboardData && e.clipboardData.getData('text/html');
+    // Диагностика
+    if (html2) {
+      const _imgTags = (html2.match(/<img[\s>]/gi)||[]).length;
+      const _hasVml  = /v:imagedata/i.test(html2);
+      const _hasBg   = /background-image/i.test(html2);
+      console.log('[Paste2] len:', html2.length, 'img:', _imgTags, 'vml:', _hasVml, 'bg:', _hasBg);
+      if (!_imgTags && !_hasVml && !_hasBg) {
+        const bodySnip = html2.match(/<body[^>]*>([\s\S]{0,500})/i);
+        console.log('[Paste2] body start:', bodySnip ? bodySnip[1] : html2.substring(0,500));
+      }
+    }
     if (html2 && _htmlNeedsBlockPaste(html2)) {
       e.preventDefault();
       _pasteHtmlToNbCanvas(html2, '_nbBlocks', 'nb-canvas');
