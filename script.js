@@ -2724,11 +2724,30 @@ function renderContentAdmin(){
   const library=allContent.filter(c=>c.isLibrary && c.type==='theory');
   const el=document.getElementById('list-theory-accordion');
   if(!el) return;
+
+  // Инжектируем кнопку «Из PDF» рядом с кнопкой создания материала
+  _injectPdfImportButton();
+
   let out='';
   if(content.length) out+=content.map(c=>theoryAccordionHTML(c,true)).join('');
   else if(!library.length){ el.innerHTML=emptyHTML(); return; }
   if(library.length) out+=libSection('📚 Библиотека — не отправлено ученику',library.length,library.map(c=>theoryAccordionHTML(c,true)).join(''));
   el.innerHTML=out;
+}
+
+function _injectPdfImportButton() {
+  // Уже добавлена?
+  if (document.getElementById('_pdf-import-btn')) return;
+  // Ищем кнопку открытия modal-add-theory как ориентир
+  const existing = document.querySelector('[onclick*="modal-add-theory"], [data-modal="modal-add-theory"]');
+  if (!existing) return;
+  const btn = document.createElement('button');
+  btn.id = '_pdf-import-btn';
+  btn.className = 'btn btn-outline btn-sm';
+  btn.style.cssText = 'margin-left:8px';
+  btn.innerHTML = '📄 Из PDF';
+  btn.onclick = openPdfMaterialImport;
+  existing.parentNode.insertBefore(btn, existing.nextSibling);
 }
 
 function theoryAccordionHTML(c, isAdmin, viewed){
@@ -3496,6 +3515,172 @@ function previewTheoryVideo(){}
 function addTheoryFile(){}
 let _theoryImages=[];
 let _theoryFiles=[];
+
+// ══════ PDF → Материал (AI-импорт) ══════
+
+/**
+ * Открывает скрытый <input type=file> для выбора PDF,
+ * затем отправляет его в Claude API и заполняет блочный редактор.
+ */
+function openPdfMaterialImport() {
+  let inp = document.getElementById('_pdf-material-input');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = 'application/pdf';
+    inp.id = '_pdf-material-input';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', _onPdfMaterialSelected);
+  }
+  inp.value = '';
+  inp.click();
+}
+
+async function _onPdfMaterialSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  // Показываем оверлей загрузки
+  _pdfImportShowOverlay('⏳ Читаю PDF…');
+
+  try {
+    // 1. PDF → base64
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = () => rej(new Error('Не удалось прочитать файл'));
+      r.readAsDataURL(file);
+    });
+
+    _pdfImportShowOverlay('🤖 Анализирую содержимое…');
+
+    // 2. Запрос в Claude
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: `Ты помощник-методист. На входе — PDF учебного материала по биологии или химии.
+Преобразуй содержимое в структурированный материал для LMS.
+Отвечай ТОЛЬКО валидным JSON без markdown-обёртки, без пояснений.
+Формат ответа:
+{
+  "title": "Название урока",
+  "blocks": [
+    {"type": "h1", "text": "Заголовок"},
+    {"type": "h2", "text": "Подзаголовок"},
+    {"type": "p", "text": "Абзац текста"},
+    {"type": "h3", "text": "Мелкий заголовок"},
+    {"type": "callout", "text": "Важное замечание"},
+    {"type": "quote", "text": "Цитата или определение"},
+    {"type": "divider"}
+  ]
+}
+Доступные типы блоков: h1, h2, h3, p, callout, quote, divider.
+Сохраняй структуру оригинала: заголовки → h1/h2/h3, определения → quote, важные замечания → callout.
+Не добавляй ничего от себя — только содержимое PDF.`,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: base64 }
+            },
+            { type: 'text', text: 'Преобразуй этот PDF в материал для LMS согласно инструкции.' }
+          ]
+        }]
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const rawText = (data.content || []).map(c => c.text || '').join('');
+    // Очищаем от возможных markdown-обёрток
+    const clean = rawText.replace(/^```(?:json)?\n?/,'').replace(/\n?```$/,'').trim();
+    const parsed = JSON.parse(clean);
+
+    if (!parsed.title || !Array.isArray(parsed.blocks)) {
+      throw new Error('Неверный формат ответа от AI');
+    }
+
+    _pdfImportShowOverlay('✅ Готово! Открываю редактор…');
+
+    // 3. Заполняем блочный редактор и открываем модальное окно
+    const now = Date.now();
+    _nbBlocksNew = parsed.blocks
+      .filter(b => b && b.type)
+      .map((b, i) => {
+        const base = { id: 'nb_' + now + '_' + i };
+        if (b.type === 'divider') return { ...base, type: 'divider', text: '' };
+        return { ...base, type: b.type, text: b.text || '' };
+      });
+
+    if (!_nbBlocksNew.length) _nbBlocksNew = [nbDefaultBlock('p')];
+
+    setTimeout(() => {
+      _pdfImportHideOverlay();
+      // Заполняем заголовок
+      const titleEl = document.getElementById('nth-title');
+      if (titleEl) titleEl.value = parsed.title;
+      // Перерисовываем канвас
+      nbRenderCanvas(_nbBlocksNew, '_nbBlocksNew', 'nb-canvas-new');
+      // Открываем модальное окно создания материала
+      openModalEl(document.getElementById('modal-add-theory'));
+      showNotif('📄 PDF успешно импортирован — проверьте и сохраните материал');
+    }, 400);
+
+  } catch (err) {
+    _pdfImportHideOverlay();
+    console.error('[PDF import]', err);
+    showNotif('❌ Ошибка импорта PDF: ' + err.message, 5000);
+  }
+}
+
+// Оверлей загрузки
+function _pdfImportShowOverlay(msg) {
+  let ov = document.getElementById('_pdf-import-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = '_pdf-import-overlay';
+    ov.style.cssText = `
+      position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    `;
+    ov.innerHTML = `
+      <div style="background:var(--white,#fff);border-radius:16px;padding:32px 40px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.18);max-width:320px">
+        <div id="_pdf-import-spinner" style="font-size:2.2rem;margin-bottom:12px">📄</div>
+        <div id="_pdf-import-msg" style="font-family:Nunito,sans-serif;font-size:1rem;font-weight:600;color:var(--text,#222)"></div>
+      </div>
+    `;
+    document.body.appendChild(ov);
+  }
+  const msgEl = ov.querySelector('#_pdf-import-msg');
+  if (msgEl) msgEl.textContent = msg;
+  ov.style.display = 'flex';
+
+  // Анимация спиннера
+  const sp = ov.querySelector('#_pdf-import-spinner');
+  if (sp && !sp._anim) {
+    sp._anim = true;
+    const frames = ['📄','🔍','📖','✨'];
+    let fi = 0;
+    sp._interval = setInterval(() => { fi=(fi+1)%frames.length; sp.textContent=frames[fi]; }, 500);
+  }
+}
+
+function _pdfImportHideOverlay() {
+  const ov = document.getElementById('_pdf-import-overlay');
+  if (!ov) return;
+  const sp = ov.querySelector('#_pdf-import-spinner');
+  if (sp && sp._interval) { clearInterval(sp._interval); sp._anim = false; }
+  ov.style.display = 'none';
+}
 
 function viewTheory(id){
   const c=(load('content')||[]).find(c=>c.id===id);
