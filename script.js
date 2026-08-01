@@ -3541,56 +3541,77 @@ async function _onPdfMaterialSelected(e) {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
 
-  // Показываем оверлей загрузки
-  _pdfImportShowOverlay('⏳ Читаю PDF…');
+  _pdfImportShowOverlay('⏳ Загружаю PDF.js…');
 
   try {
-    // 1. PDF → base64
-    const base64 = await new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload = () => res(r.result.split(',')[1]);
-      r.onerror = () => rej(new Error('Не удалось прочитать файл'));
-      r.readAsDataURL(file);
-    });
+    // 1. Лениво грузим PDF.js для чтения текста на клиенте
+    await _loadPdfjsIfNeeded();
+
+    _pdfImportShowOverlay('📖 Извлекаю текст из PDF…');
+
+    // 2. PDF → ArrayBuffer → текст через pdfjs
+    const arrayBuf = await file.arrayBuffer();
+    const pdfjsLib = window.pdfjsLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+    let fullText = '';
+    for (let p = 1; p <= pdfDoc.numPages; p++) {
+      const page = await pdfDoc.getPage(p);
+      const tc = await page.getTextContent();
+      let lastY = null;
+      tc.items.forEach(item => {
+        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+          fullText += '\n';
+        }
+        fullText += item.str;
+        lastY = item.transform[5];
+      });
+      fullText += '\n\n';
+    }
+
+    fullText = fullText.trim();
+    if (!fullText) throw new Error('Не удалось извлечь текст из PDF (возможно, PDF отсканирован как картинка)');
 
     _pdfImportShowOverlay('🤖 Анализирую содержимое…');
 
-    // 2. Запрос в Claude
+    // 3. Отправляем текст в Claude как обычное сообщение
+    const prompt = `Преобразуй текст учебного материала в структуру для LMS.
+Отвечай ТОЛЬКО валидным JSON без markdown-обёртки и без пояснений.
+
+Формат:
+{
+  "title": "Название урока (из заголовка документа)",
+  "blocks": [
+    {"type": "h1", "text": "..."},
+    {"type": "h2", "text": "..."},
+    {"type": "h3", "text": "..."},
+    {"type": "p", "text": "..."},
+    {"type": "callout", "text": "Важное замечание"},
+    {"type": "quote", "text": "Определение или цитата"},
+    {"type": "divider"}
+  ]
+}
+
+Правила:
+- Заголовки документа → h1/h2/h3
+- Определения, термины → quote
+- Важные правила, выводы → callout
+- Разделители разделов → divider
+- Обычный текст → p
+- Не добавляй ничего от себя
+
+ТЕКСТ ДОКУМЕНТА:
+${fullText.slice(0, 12000)}`;
+
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 4000,
-        system: `Ты помощник-методист. На входе — PDF учебного материала по биологии или химии.
-Преобразуй содержимое в структурированный материал для LMS.
-Отвечай ТОЛЬКО валидным JSON без markdown-обёртки, без пояснений.
-Формат ответа:
-{
-  "title": "Название урока",
-  "blocks": [
-    {"type": "h1", "text": "Заголовок"},
-    {"type": "h2", "text": "Подзаголовок"},
-    {"type": "p", "text": "Абзац текста"},
-    {"type": "h3", "text": "Мелкий заголовок"},
-    {"type": "callout", "text": "Важное замечание"},
-    {"type": "quote", "text": "Цитата или определение"},
-    {"type": "divider"}
-  ]
-}
-Доступные типы блоков: h1, h2, h3, p, callout, quote, divider.
-Сохраняй структуру оригинала: заголовки → h1/h2/h3, определения → quote, важные замечания → callout.
-Не добавляй ничего от себя — только содержимое PDF.`,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: base64 }
-            },
-            { type: 'text', text: 'Преобразуй этот PDF в материал для LMS согласно инструкции.' }
-          ]
-        }]
+        messages: [{ role: 'user', content: prompt }]
       })
     });
 
@@ -3601,8 +3622,7 @@ async function _onPdfMaterialSelected(e) {
 
     const data = await resp.json();
     const rawText = (data.content || []).map(c => c.text || '').join('');
-    // Очищаем от возможных markdown-обёрток
-    const clean = rawText.replace(/^```(?:json)?\n?/,'').replace(/\n?```$/,'').trim();
+    const clean = rawText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
     const parsed = JSON.parse(clean);
 
     if (!parsed.title || !Array.isArray(parsed.blocks)) {
@@ -3611,7 +3631,7 @@ async function _onPdfMaterialSelected(e) {
 
     _pdfImportShowOverlay('✅ Готово! Открываю редактор…');
 
-    // 3. Заполняем блочный редактор и открываем модальное окно
+    // 4. Заполняем блочный редактор
     const now = Date.now();
     _nbBlocksNew = parsed.blocks
       .filter(b => b && b.type)
@@ -3625,21 +3645,30 @@ async function _onPdfMaterialSelected(e) {
 
     setTimeout(() => {
       _pdfImportHideOverlay();
-      // Заполняем заголовок
       const titleEl = document.getElementById('nth-title');
       if (titleEl) titleEl.value = parsed.title;
-      // Перерисовываем канвас
       nbRenderCanvas(_nbBlocksNew, '_nbBlocksNew', 'nb-canvas-new');
-      // Открываем модальное окно создания материала
       openModalEl(document.getElementById('modal-add-theory'));
       showNotif('📄 PDF успешно импортирован — проверьте и сохраните материал');
-    }, 400);
+    }, 300);
 
   } catch (err) {
     _pdfImportHideOverlay();
     console.error('[PDF import]', err);
-    showNotif('❌ Ошибка импорта PDF: ' + err.message, 5000);
+    showNotif('❌ Ошибка импорта PDF: ' + err.message, 6000);
   }
+}
+
+/** Ленивая загрузка PDF.js */
+function _loadPdfjsIfNeeded() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = res;
+    s.onerror = () => rej(new Error('Не удалось загрузить PDF.js'));
+    document.head.appendChild(s);
+  });
 }
 
 // Оверлей загрузки
