@@ -16682,10 +16682,11 @@ function _pasteImageToQuestion(dataUrl, target) {
  */
 function _htmlNeedsBlockPaste(html) {
   if (!html) return false;
-  if (/<img[\s>]/i.test(html)) return true;
-  if (/v:imagedata/i.test(html)) return true;           // Word VML images
+  if (/<img[\s>]/i.test(html)) return true;            // обычные картинки
   if (/background-image\s*:/i.test(html)) return true; // CSS bg images
   if (/<figure/i.test(html)) return true;               // Notion/Docs figures
+  // Word VML (v:imagedata) — картинки недоступны из браузера, не перехватываем
+  // чтобы не мешать вставке одиночных картинок через _readPastedImage
   const blockTags = (html.match(/<(p|h[1-6]|li|blockquote|div|table|tr|hr)[\s>]/gi) || []).length;
   return blockTags >= 2;
 }
@@ -16849,11 +16850,20 @@ document.addEventListener('paste', function(e) {
   const target = e.target;
   if (!target) return;
 
+  // Определяем активный редактор — проверяем и target, и document.activeElement
+  // (при Ctrl+V фокус может быть на body, а не внутри canvas)
+  const el = target.closest('[id]') ? target : (document.activeElement || target);
+  const inNew  = el.closest('#nb-canvas-new')    || el.closest('#modal-add-theory');
+  const inEdit = el.closest('#nb-canvas')         || el.closest('#modal-edit-content');
+
   // ── 1. Блочный редактор «Новый урок» ──────────────────────────
-  if (target.closest('#nb-canvas-new') || target.closest('#modal-add-theory')) {
+  if (inNew) {
+    // Сначала проверяем есть ли картинка как файл (скриншот, одиночная картинка)
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocksNew', 'nb-canvas-new');
     })) { e.preventDefault(); return; }
+    // Затем HTML (текст с форматированием из браузера/Google Docs)
+    // Word VML пропускаем — картинки из него недоступны
     const html1 = e.clipboardData && e.clipboardData.getData('text/html');
     if (html1 && _htmlNeedsBlockPaste(html1)) {
       e.preventDefault();
@@ -16863,7 +16873,7 @@ document.addEventListener('paste', function(e) {
   }
 
   // ── 2. Блочный редактор «Редактировать урок» ──────────────────
-  if (target.closest('#nb-canvas') || target.closest('#modal-edit-content')) {
+  if (inEdit) {
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocks', 'nb-canvas');
     })) { e.preventDefault(); return; }
