@@ -16861,8 +16861,14 @@ document.addEventListener('paste', function(e) {
       const _hasVml  = /v:imagedata/i.test(html1);
       const _hasBg   = /background-image/i.test(html1);
       console.log('[Paste1] len:', html1.length, 'img:', _imgTags, 'vml:', _hasVml, 'bg:', _hasBg);
+      if (_hasVml) {
+        // Показать первый v:imagedata и соседний <img если есть
+        const vmlSnip = html1.match(/<v:imagedata[^>]{0,300}>/i);
+        console.log('[Paste1] v:imagedata:', vmlSnip ? vmlSnip[0] : 'not found');
+        const imgNearVml = html1.match(/<img[^>]{0,300}>/i);
+        console.log('[Paste1] nearby img:', imgNearVml ? imgNearVml[0] : 'none');
+      }
       if (!_imgTags && !_hasVml && !_hasBg) {
-        // Нет картинок ни в каком формате — показать первые 500 символов body
         const bodySnip = html1.match(/<body[^>]*>([\s\S]{0,500})/i);
         console.log('[Paste1] body start:', bodySnip ? bodySnip[1] : html1.substring(0,500));
       }
