@@ -16694,12 +16694,27 @@ function _htmlNeedsBlockPaste(html) {
  * Поддерживает: h1–h3, p, li, blockquote, img (base64 и src-url).
  * Возвращает true если вставлено хотя бы что-то.
  */
-function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
+/** Загружает внешнюю картинку через fetch → blob → compressImage → base64.
+ *  Возвращает base64 dataURL или null при ошибке (CORS и т.д.). */
+async function _fetchImgAsBase64(src) {
+  try {
+    const resp = await fetch(src, { mode: 'cors' });
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    return await _compressImage(blob);
+  } catch(e) {
+    // CORS или сеть — пробуем просто через Image (для blob: и data:)
+    return null;
+  }
+}
+
+async function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
   const arr = stateVar === '_nbBlocksNew' ? _nbBlocksNew : _nbBlocks;
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
 
+  // Плейсхолдер — объект с type:'image', url заполним после fetch
   const newBlocks = [];
 
   function processNode(node) {
@@ -16714,7 +16729,7 @@ function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
 
     if (tag === 'img') {
       const src = node.getAttribute('src') || '';
-      if (src) newBlocks.push({ ...nbDefaultBlock('image'), url: src, caption: node.getAttribute('alt') || '' });
+      if (src) newBlocks.push({ ...nbDefaultBlock('image'), url: src, caption: node.getAttribute('alt') || '', _rawSrc: src });
       return;
     }
 
@@ -16727,15 +16742,13 @@ function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
     if (tag === 'hr') { newBlocks.push(nbDefaultBlock('divider')); return; }
 
     if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article') {
-      // Проверяем — есть ли внутри img?
       const imgs = node.querySelectorAll('img');
       if (imgs.length) {
-        // Сначала текст до первой картинки
-        const textBefore = node.textContent.trim();
-        if (textBefore) newBlocks.push({ ...nbDefaultBlock('p'), content: node.innerHTML.replace(/<img[^>]*>/gi, '').trim() });
+        const textOnly = node.innerHTML.replace(/<img[^>]*>/gi, '').trim();
+        if (textOnly) newBlocks.push({ ...nbDefaultBlock('p'), content: textOnly });
         imgs.forEach(img => {
           const src = img.getAttribute('src') || '';
-          if (src) newBlocks.push({ ...nbDefaultBlock('image'), url: src, caption: img.getAttribute('alt') || '' });
+          if (src) newBlocks.push({ ...nbDefaultBlock('image'), url: src, caption: img.getAttribute('alt') || '', _rawSrc: src });
         });
       } else {
         const inner = node.innerHTML.trim();
@@ -16756,27 +16769,23 @@ function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
       return;
     }
 
-    // Для body, table, thead, tbody, tr, td, th — обходим дочерние
-    if (['body','table','thead','tbody','tfoot','tr','td','th','figure','figcaption','span','strong','em','a','br','main','header','footer','nav','aside'].includes(tag)) {
-      // table cells — вставим как параграф
-      if (tag === 'td' || tag === 'th') {
-        const text = node.textContent.trim();
-        if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: node.innerHTML.trim() });
-        return;
-      }
+    if (['body','table','thead','tbody','tfoot','tr','figure','figcaption','span','strong','em','a','br','main','header','footer','nav','aside'].includes(tag)) {
       node.childNodes.forEach(child => processNode(child));
       return;
     }
+    if (tag === 'td' || tag === 'th') {
+      const text = node.textContent.trim();
+      if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: node.innerHTML.trim() });
+      return;
+    }
 
-    // Всё остальное — пробуем вытащить текст
     const text = node.textContent.trim();
     if (text) newBlocks.push({ ...nbDefaultBlock('p'), content: text });
   }
 
   doc.body.childNodes.forEach(child => processNode(child));
 
-  // Убрать пустые параграфы и дубли подряд
-  const filtered = newBlocks.filter((b, i) => {
+  const filtered = newBlocks.filter(b => {
     if (!b.content && !b.url) return false;
     if (b.type === 'p' && !b.content.trim()) return false;
     return true;
@@ -16784,7 +16793,7 @@ function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
 
   if (!filtered.length) return false;
 
-  // Вставляем после текущего фокуса или в конец
+  // Определяем insertIdx до async-операций (фокус ещё актуален)
   const canvas = document.getElementById(canvasId);
   const focused = canvas && canvas.querySelector('[contenteditable]:focus, input:focus, textarea:focus');
   let insertIdx = arr.length;
@@ -16795,6 +16804,33 @@ function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
       if (!isNaN(idx)) insertIdx = idx + 1;
     }
   }
+
+  // Конвертируем внешние img в base64 (параллельно)
+  const imgBlocks = filtered.filter(b => b.type === 'image' && b._rawSrc);
+  if (imgBlocks.length) {
+    showNotif('⏳ Загружаю картинки...');
+    await Promise.allSettled(imgBlocks.map(async b => {
+      const src = b._rawSrc;
+      delete b._rawSrc;
+      if (src.startsWith('data:')) return; // уже base64 — ничего не делаем
+      if (src.startsWith('blob:')) {
+        // blob: — читаем напрямую через fetch (работает в том же origin)
+        try {
+          const resp = await fetch(src);
+          const blob = await resp.blob();
+          b.url = await _compressImage(blob);
+        } catch(e) { b.url = src; }
+        return;
+      }
+      // Внешний URL — пробуем fetch с CORS
+      const b64 = await _fetchImgAsBase64(src);
+      if (b64) b.url = b64;
+      // Иначе оставляем src как есть — хотя бы отобразится если нет CORS-ограничений
+    }));
+  } else {
+    filtered.forEach(b => delete b._rawSrc);
+  }
+
   arr.splice(insertIdx, 0, ...filtered);
 
   if (stateVar === '_nbBlocksNew') {
@@ -16802,7 +16838,8 @@ function _pasteHtmlToNbCanvas(html, stateVar, canvasId) {
   } else {
     nbRender();
   }
-  showNotif(`📋 Вставлено ${filtered.length} блок${filtered.length === 1 ? '' : filtered.length < 5 ? 'а' : 'ов'} из буфера`);
+  const n = filtered.length;
+  showNotif(`📋 Вставлено ${n} блок${n === 1 ? '' : n < 5 ? 'а' : 'ов'} из буфера`);
   return true;
 }
 
@@ -16813,27 +16850,27 @@ document.addEventListener('paste', function(e) {
 
   // ── 1. Блочный редактор «Новый урок» ──────────────────────────
   if (target.closest('#nb-canvas-new') || target.closest('#modal-add-theory')) {
-    // Сначала пробуем вставить картинку из буфера
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocksNew', 'nb-canvas-new');
     })) { e.preventDefault(); return; }
-    // Затем — HTML с форматированием/картинками (копирование из Word, Google Docs, браузера)
     const html1 = e.clipboardData && e.clipboardData.getData('text/html');
     if (html1 && _htmlNeedsBlockPaste(html1)) {
-      if (_pasteHtmlToNbCanvas(html1, '_nbBlocksNew', 'nb-canvas-new')) { e.preventDefault(); return; }
+      e.preventDefault();
+      _pasteHtmlToNbCanvas(html1, '_nbBlocksNew', 'nb-canvas-new');
+      return;
     }
   }
 
   // ── 2. Блочный редактор «Редактировать урок» ──────────────────
   if (target.closest('#nb-canvas') || target.closest('#modal-edit-content')) {
-    // Сначала пробуем вставить картинку из буфера
     if (_readPastedImage(e.clipboardData, dataUrl => {
       _pasteImageToNbCanvas(dataUrl, '_nbBlocks', 'nb-canvas');
     })) { e.preventDefault(); return; }
-    // Затем — HTML с форматированием/картинками
     const html2 = e.clipboardData && e.clipboardData.getData('text/html');
     if (html2 && _htmlNeedsBlockPaste(html2)) {
-      if (_pasteHtmlToNbCanvas(html2, '_nbBlocks', 'nb-canvas')) { e.preventDefault(); return; }
+      e.preventDefault();
+      _pasteHtmlToNbCanvas(html2, '_nbBlocks', 'nb-canvas');
+      return;
     }
   }
 
