@@ -1443,17 +1443,21 @@ async function preloadCache(){
     LIGHT_COLLECTIONS.forEach(k => { if (!(k in _cache)) _cache[k] = null; });
   }
 
-  // ── 2. Тяжёлые коллекции — в фоне, не задерживаем появление экрана входа ──
-  Promise.all(HEAVY_COLLECTIONS.map(async k => {
+  // ── 2. Тяжёлые коллекции — грузим параллельно в фоне.
+  //    Каждая коллекция обновляет кэш и немедленно перерисовывает текущую
+  //    страницу, не дожидаясь остальных (было: ждали Promise.all).
+  HEAVY_COLLECTIONS.forEach(async k => {
     try {
       const snap = await _withTimeout(db.ref('db/' + k).get(), 15000);
       _applySnap(k, snap.val());
       console.log('[Firebase] ✅ ' + k + ' загружен (' + (Array.isArray(_cache[k]) ? _cache[k].length + ' эл.' : 'ok') + ')');
+      // Сразу перерисовываем страницу если она открыта — не ждём других коллекций
+      renderNow(k);
     } catch(e) {
       console.warn('[Firebase] ⚠️ Не удалось загрузить ' + k + ':', e.message);
       if (!(k in _cache)) _cache[k] = null;
     }
-  }));
+  });
 
   if (anyError) {
     _preloadWarning = anyError.message || 'Ошибка подключения к серверу';
@@ -2647,7 +2651,9 @@ function theoryAccordionHTML(c, isAdmin, viewed){
 
   // Linked test block (shown both for admin and student)
   const linkedTestId = c.linkedTestId || null;
-  const linkedTestObj = linkedTestId ? (load('tests')||[]).find(t=>t.id===linkedTestId) : null;
+  // Читаем tests ОДИН РАЗ для обоих поисков ниже
+  const _allTestsForLinked = linkedTestId ? (load('tests')||[]) : [];
+  const linkedTestObj = linkedTestId ? _allTestsForLinked.find(t=>t.id===linkedTestId) : null;
 
   let linkedTestBlock = '';
   if (!isAdmin) {
@@ -2655,7 +2661,7 @@ function theoryAccordionHTML(c, isAdmin, viewed){
     if (linkedTestObj) {
       const sid = currentUser && currentUser.id;
       // Find the student's copy of the test (by title + studentId, or direct linkedTestId)
-      const myTest = (load('tests')||[]).find(t => t.studentId === sid && (t.id === linkedTestId || t.linkedFromId === linkedTestId));
+      const myTest = _allTestsForLinked.find(t => t.studentId === sid && (t.id === linkedTestId || t.linkedFromId === linkedTestId));
       if (myTest) {
         const pct = myTest.autoTotal ? Math.round((myTest.autoScore||0)/myTest.autoTotal*100) : 0;
         const statusBadge = myTest.submitted
@@ -3505,6 +3511,7 @@ let _testMaxPtsManual = false;
 let _testsSelectedSid = 'all';
 function renderTestsAdmin(){
   const students = (load('users')||[]).filter(u=>u.role==='student');
+  // Читаем tests ОДИН РАЗ — используем во всей функции
   const allTests = (load('tests')||[]).slice().reverse(); // новые сверху
 
   // Build chip bar
@@ -3540,21 +3547,25 @@ function renderTestsAdmin(){
     </div>`;
   }
 
-  // Update open answers for selected student (use first student if "all")
-  _selectedStudent = _testsSelectedSid === 'all' ? (students[0]||{}).id : _testsSelectedSid;
-  renderOpenAnswers();
-  renderPendingReviewBanner('test', 'tests-pending-banner');
-  // Inject admin comment threads for submitted tests
-  (load('tests')||[]).filter(t=>t.submitted).forEach(t=>{
-    const el2 = document.getElementById(`adm-cmt-test-${t.id}`);
-    if(el2 && !el2.innerHTML.trim()) renderCommentThread('test', t.id, el2);
-  });
-  // Library
-  const _libTests=(load('tests')||[]).filter(t=>t.isLibrary);
+  // Library — используем уже загруженный allTests
+  const _libTests = allTests.filter(t=>t.isLibrary);
   if(_libTests.length){
     const _lEl=document.getElementById('tests-admin-list');
     if(_lEl) _lEl.insertAdjacentHTML('beforeend',libSection('📚 Библиотека — не отправлено',_libTests.length,_libTests.map(t=>testItemHTML(t)).join('')));
   }
+
+  // Inject comment threads for submitted tests — уже есть в allTests, не грузим снова
+  allTests.filter(t=>t.submitted).forEach(t=>{
+    const el2 = document.getElementById(`adm-cmt-test-${t.id}`);
+    if(el2 && !el2.innerHTML.trim()) renderCommentThread('test', t.id, el2);
+  });
+
+  // Вторичные рендеры — откладываем в следующий тик, чтобы не блокировать основной список
+  _selectedStudent = _testsSelectedSid === 'all' ? (students[0]||{}).id : _testsSelectedSid;
+  setTimeout(() => {
+    renderOpenAnswers();
+    renderPendingReviewBanner('test', 'tests-pending-banner');
+  }, 0);
 }
 function testItemHTML(t){
   const pct = t.autoTotal ? Math.round((t.autoScore||0)/t.autoTotal*100) : 0;
@@ -4547,6 +4558,7 @@ let _hwMaxPtsManual = false;
 let _hwSelectedSid = 'all';
 function renderHWAdmin(){
   const students = (load('users')||[]).filter(u=>u.role==='student');
+  // Читаем hw ОДИН РАЗ — используем во всей функции
   const allHWs = (load('hw')||[]).slice().reverse(); // новые сверху
 
   // Build chip bar
@@ -4582,20 +4594,25 @@ function renderHWAdmin(){
     </div>`;
   }
 
-  _selectedStudent = _hwSelectedSid === 'all' ? (students[0]||{}).id : _hwSelectedSid;
-  renderHWOpenAnswers();
-  renderPendingReviewBanner('hw', 'hw-pending-banner');
-  // Inject admin comment threads for submitted HW
-  (load('hw')||[]).filter(h=>h.submitted).forEach(h=>{
-    const el2 = document.getElementById(`adm-cmt-hw-${h.id}`);
-    if(el2 && !el2.innerHTML.trim()) renderCommentThread('hw', h.id, el2);
-  });
-  // Library
-  const _libHWs=(load('hw')||[]).filter(h=>h.isLibrary);
+  // Library — используем уже загруженный allHWs
+  const _libHWs = allHWs.filter(h=>h.isLibrary);
   if(_libHWs.length){
     const _lEl=document.getElementById('hw-admin-list');
     if(_lEl) _lEl.insertAdjacentHTML('beforeend',libSection('📚 Библиотека — не отправлено',_libHWs.length,_libHWs.map(h=>hwItemHTML(h)).join('')));
   }
+
+  // Inject comment threads для сданных ДЗ — используем уже загруженный allHWs
+  allHWs.filter(h=>h.submitted).forEach(h=>{
+    const el2 = document.getElementById(`adm-cmt-hw-${h.id}`);
+    if(el2 && !el2.innerHTML.trim()) renderCommentThread('hw', h.id, el2);
+  });
+
+  // Вторичные рендеры — откладываем в следующий тик, чтобы не блокировать основной список
+  _selectedStudent = _hwSelectedSid === 'all' ? (students[0]||{}).id : _hwSelectedSid;
+  setTimeout(() => {
+    renderHWOpenAnswers();
+    renderPendingReviewBanner('hw', 'hw-pending-banner');
+  }, 0);
 }
 function hwItemHTML(h){
   const pct = h.autoTotal ? Math.round((h.autoScore||0)/h.autoTotal*100) : 0;
